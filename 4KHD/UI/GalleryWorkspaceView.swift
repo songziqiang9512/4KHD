@@ -48,8 +48,10 @@ private struct SectionRail: View {
                         Spacer()
                     }
                     .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 34)
                     .background(library.section == section ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                    .contentShape(RoundedRectangle(cornerRadius: 7))
                 }
                 .buttonStyle(.plain)
             }
@@ -73,13 +75,40 @@ private struct GalleryListPane: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(library.section.title)
+                    Text(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
                         .font(.headline)
                     Text("\(library.visibleItems.count) / \(library.allItems.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
                 Spacer()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("搜索", text: $library.searchText)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .onSubmit {
+                            library.submitSearch()
+                        }
+                    if library.activeSearchQuery != nil || !library.searchText.isEmpty {
+                        Button {
+                            library.clearSearch()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("清空搜索")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .frame(width: 160, height: 28)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 7))
             }
             .padding(12)
 
@@ -90,7 +119,20 @@ private struct GalleryListPane: View {
                             .onTapGesture {
                                 library.select(item)
                             }
+                            .onAppear {
+                                if item.id == library.visibleItems.last?.id {
+                                    library.loadMoreListIfNeeded()
+                                }
+                            }
                     }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("list-bottom-\(library.allItems.count)")
+                        .onAppear {
+                            if library.visibleItems.count >= library.allItems.count {
+                                library.loadMoreListIfNeeded()
+                            }
+                        }
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
@@ -148,24 +190,17 @@ private struct GalleryRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    Button {
-                        library.toggleFavorite(for: item)
-                    } label: {
-                        Label(library.isFavorite(item) ? "已收藏" : "收藏", systemImage: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
+                HStack(spacing: 10) {
+                    if library.isFavorite(item) {
+                        Label("已收藏", systemImage: "bookmark.fill")
                     }
-                    .help(library.isFavorite(item) ? "从收藏移除" : "加入收藏")
 
-                    Button {
-                        NSWorkspace.shared.open(item.detailURL)
-                    } label: {
-                        Label("原网页", systemImage: "safari")
+                    if library.isCached(item) {
+                        Label("已缓存", systemImage: "externaldrive.fill")
                     }
-                    .help(item.detailURL.absoluteString)
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
                 .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
@@ -298,8 +333,19 @@ private struct ImageDetailPane: View {
             Button {
                 library.toggleFavorite(for: item)
             } label: {
-                Label(library.isFavorite(item) ? "已收藏" : "收藏", systemImage: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
+                HStack(spacing: 6) {
+                    Image(systemName: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
+                        .foregroundStyle(library.isFavorite(item) ? Color.red : Color.primary)
+                    Text("收藏")
+                }
             }
+
+            Button {
+                NSWorkspace.shared.open(item.detailURL)
+            } label: {
+                Label("原网页", systemImage: "safari")
+            }
+            .help(item.detailURL.absoluteString)
 
             Button {
                 saveCurrentImage(item: item, slot: slot)
@@ -494,6 +540,17 @@ private struct ZoomableImageCanvas<Placeholder: View>: View {
             .scaleEffect(max(0.35, zoomScale))
             .offset(panOffset)
             .contentShape(Rectangle())
+            .overlay {
+                TrackpadPanView { delta in
+                    guard zoomScale > 1 else { return }
+                    let proposed = CGSize(
+                        width: panOffset.width + delta.width,
+                        height: panOffset.height + delta.height
+                    )
+                    panOffset = clampedPanOffset(proposed, in: proxy.size)
+                    dragStartOffset = panOffset
+                }
+            }
             .gesture(
                 MagnificationGesture()
                     .onChanged { value in
@@ -527,7 +584,6 @@ private struct ZoomableImageCanvas<Placeholder: View>: View {
         .onChange(of: url) { _, _ in resetView() }
         .onChange(of: resetToken) { _, _ in resetView() }
         .animation(.snappy(duration: 0.18), value: zoomScale)
-        .animation(.snappy(duration: 0.18), value: panOffset)
     }
 
     private func resetView() {
@@ -545,6 +601,55 @@ private struct ZoomableImageCanvas<Placeholder: View>: View {
             width: min(max(offset.width, -maxX), maxX),
             height: min(max(offset.height, -maxY), maxY)
         )
+    }
+}
+
+private struct TrackpadPanView: NSViewRepresentable {
+    let onPan: (CGSize) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        ScrollCatcherView(onPan: onPan)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? ScrollCatcherView)?.onPan = onPan
+    }
+
+    private final class ScrollCatcherView: NSView {
+        var onPan: (CGSize) -> Void
+
+        init(onPan: @escaping (CGSize) -> Void) {
+            self.onPan = onPan
+            super.init(frame: .zero)
+            wantsLayer = false
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            let horizontalDelta = event.scrollingDeltaX
+            let verticalDelta = event.scrollingDeltaY
+
+            if abs(horizontalDelta) > abs(verticalDelta) {
+                onPan(CGSize(width: horizontalDelta, height: 0))
+            } else {
+                onPan(CGSize(width: 0, height: verticalDelta))
+            }
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            nextResponder?.mouseDown(with: event)
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            nextResponder?.mouseDragged(with: event)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            nextResponder?.mouseUp(with: event)
+        }
     }
 }
 

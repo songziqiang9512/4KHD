@@ -5,6 +5,7 @@ import Foundation
 final class LibraryStore: ObservableObject {
     @Published var section: GallerySection = .latest {
         didSet {
+            clearSearchState()
             selectFirstItemIfNeeded(force: true)
             refreshFromNetwork()
         }
@@ -16,10 +17,18 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var prefetchPageURL: URL?
     @Published private(set) var isRefreshingList = false
     @Published var isFullscreenViewerPresented = false
+    @Published var searchText = ""
+    @Published private(set) var activeSearchQuery: String?
 
     private var library = ApifyLibrary()
-    private var favorites: [FavoriteGalleryItem] = []
+    @Published private var favorites: [FavoriteGalleryItem] = []
+    private var searchItems: [GalleryItem] = []
+    private var searchNextPageURL: URL?
+    private var searchRefreshTask: Task<Void, Never>?
+    private var pendingSearchLoadMore = false
     private var listRefreshTasks: [GallerySection: Task<Void, Never>] = [:]
+    private var listNextPageURLs: [GallerySection: URL] = [:]
+    private var pendingListLoadMoreSections: Set<GallerySection> = []
     private var itemPageCursors: [GalleryItem.ID: Int] = [:]
     private var resolvedPageURLs: [GalleryItem.ID: [URL]] = [:]
     private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
@@ -33,6 +42,9 @@ final class LibraryStore: ObservableObject {
     }
 
     var allItems: [GalleryItem] {
+        if activeSearchQuery != nil {
+            return searchItems
+        }
         if section == .favorites {
             return favorites.compactMap(Self.favoriteToGalleryItem)
         }
@@ -61,25 +73,105 @@ final class LibraryStore: ObservableObject {
     }
 
     func loadMoreListIfNeeded() {
-        visibleCount = min(visibleCount + 18, allItems.count)
+        if activeSearchQuery != nil {
+            loadMoreSearchIfNeeded()
+            return
+        }
+
+        guard section != .favorites else {
+            visibleCount = min(visibleCount + 18, allItems.count)
+            return
+        }
+
+        if visibleCount < allItems.count {
+            visibleCount = min(visibleCount + 18, allItems.count)
+            return
+        }
+
+        loadNextListPageIfNeeded()
+    }
+
+    func submitSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            clearSearch()
+            return
+        }
+        guard query != activeSearchQuery else { return }
+        activeSearchQuery = query
+        visibleCount = 18
+        selectedItemID = nil
+        loadedImageSlots = []
+        selectedImageIndex = 0
+        prefetchPageURL = nil
+        searchItems = []
+        searchNextPageURL = nil
+        searchRefreshTask?.cancel()
+        listRefreshTasks.values.forEach { $0.cancel() }
+        listRefreshTasks.removeAll()
+        isRefreshingList = true
+        searchRefreshTask = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolveSearch(query: query)
+                await self?.applySearchPage(page, replacing: true)
+            } catch {
+                await self?.finishSearchRefresh()
+            }
+        }
+    }
+
+    func clearSearch() {
+        searchRefreshTask?.cancel()
+        searchRefreshTask = nil
+        clearSearchState()
+        isRefreshingList = false
+        selectFirstItemIfNeeded(force: true)
     }
 
     func refreshFromNetwork() {
+        if activeSearchQuery != nil {
+            submitSearch()
+            return
+        }
         guard section != .favorites else { return }
         let currentSection = section
         listRefreshTasks[currentSection]?.cancel()
         isRefreshingList = true
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
-                let items = try await SiteListResolver.resolve(section: currentSection)
-                await self?.applyNetworkItems(items, section: currentSection)
+                let page = try await SiteListResolver.resolve(section: currentSection)
+                await self?.applyNetworkPage(page, section: currentSection)
             } catch {
                 await self?.finishListRefresh(section: currentSection)
             }
         }
     }
 
-    private func applyNetworkItems(_ items: [GalleryItem], section: GallerySection) {
+    private func loadNextListPageIfNeeded() {
+        let currentSection = section
+        guard listRefreshTasks[currentSection] == nil else {
+            pendingListLoadMoreSections.insert(currentSection)
+            return
+        }
+        guard let nextPageURL = listNextPageURLs[currentSection] else { return }
+
+        isRefreshingList = true
+        listRefreshTasks[currentSection] = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolve(pageURL: nextPageURL, section: currentSection)
+                await self?.appendNetworkPage(page, section: currentSection)
+            } catch {
+                await self?.finishListRefresh(section: currentSection)
+            }
+        }
+    }
+
+    private func applyNetworkPage(_ page: SiteListPage, section: GallerySection) {
+        guard activeSearchQuery == nil else {
+            finishListRefresh(section: section)
+            return
+        }
+        let items = page.items
         guard !items.isEmpty else {
             finishListRefresh(section: section)
             return
@@ -89,6 +181,7 @@ final class LibraryStore: ObservableObject {
         let selectedIndex = selectedImageIndex
 
         library = library.replacing(section: section, with: items)
+        listNextPageURLs[section] = page.nextPageURL
         visibleCount = min(visibleCount, allItems.count)
 
         if let selectedID, allItems.contains(where: { $0.id == selectedID }) {
@@ -110,14 +203,93 @@ final class LibraryStore: ObservableObject {
         finishListRefresh(section: section)
     }
 
+    private func appendNetworkPage(_ page: SiteListPage, section: GallerySection) {
+        guard !page.items.isEmpty else {
+            listNextPageURLs[section] = page.nextPageURL
+            finishListRefresh(section: section)
+            return
+        }
+
+        let oldCount = allItems.count
+        library = library.appending(section: section, items: page.items)
+        listNextPageURLs[section] = page.nextPageURL
+        if section == self.section {
+            visibleCount = min(max(visibleCount + 18, oldCount + 1), allItems.count)
+        }
+        finishListRefresh(section: section)
+    }
+
     private func finishListRefresh(section: GallerySection) {
         listRefreshTasks[section] = nil
         if section == self.section {
             isRefreshingList = false
+            if pendingListLoadMoreSections.remove(section) != nil {
+                loadMoreListIfNeeded()
+            }
         }
     }
 
-    func select(_ item: GalleryItem) {
+    private func loadMoreSearchIfNeeded() {
+        if visibleCount < allItems.count {
+            visibleCount = min(visibleCount + 18, allItems.count)
+            return
+        }
+        guard searchRefreshTask == nil else {
+            pendingSearchLoadMore = true
+            return
+        }
+        guard let nextPageURL = searchNextPageURL else { return }
+
+        isRefreshingList = true
+        searchRefreshTask = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolveSearch(pageURL: nextPageURL)
+                await self?.applySearchPage(page, replacing: false)
+            } catch {
+                await self?.finishSearchRefresh()
+            }
+        }
+    }
+
+    private func applySearchPage(_ page: SiteListPage, replacing: Bool) {
+        if replacing {
+            searchItems = page.items
+        } else {
+            let oldCount = searchItems.count
+            var existingIDs = Set(searchItems.map(\.id))
+            searchItems.append(contentsOf: page.items.filter { existingIDs.insert($0.id).inserted })
+            visibleCount = min(max(visibleCount + 18, oldCount + 1), allItems.count)
+        }
+        searchNextPageURL = page.nextPageURL
+
+        if replacing {
+            selectedItemID = searchItems.first?.id
+            if let first = searchItems.first {
+                rebuildInitialSlots(for: first)
+            }
+        }
+        finishSearchRefresh()
+    }
+
+    private func finishSearchRefresh() {
+        searchRefreshTask = nil
+        isRefreshingList = false
+        if pendingSearchLoadMore {
+            pendingSearchLoadMore = false
+            loadMoreSearchIfNeeded()
+        }
+    }
+
+    private func clearSearchState() {
+        activeSearchQuery = nil
+        searchText = ""
+        searchItems = []
+        searchNextPageURL = nil
+        pendingSearchLoadMore = false
+    }
+
+    func select(_ item: GalleryItem, force: Bool = false) {
+        guard force || selectedItem?.detailURL != item.detailURL else { return }
         selectedItemID = item.id
         selectedImageIndex = 0
         rebuildInitialSlots(for: item)
@@ -126,8 +298,10 @@ final class LibraryStore: ObservableObject {
     func toggleFavorite(for item: GalleryItem) {
         if favorites.contains(where: { $0.detailURL == item.detailURL.absoluteString }) {
             favorites.removeAll { $0.detailURL == item.detailURL.absoluteString }
+            DetailPageImageCache.shared.setPersistent(false, forDetailURL: item.detailURL)
         } else {
             favorites.append(Self.galleryToFavorite(item))
+            DetailPageImageCache.shared.setPersistent(true, forDetailURL: item.detailURL)
         }
         saveFavorites()
         if section == .favorites {
@@ -137,6 +311,10 @@ final class LibraryStore: ObservableObject {
 
     func isFavorite(_ item: GalleryItem) -> Bool {
         favorites.contains(where: { $0.detailURL == item.detailURL.absoluteString })
+    }
+
+    func isCached(_ item: GalleryItem) -> Bool {
+        DetailPageImageCache.shared.containsCachedPage(forDetailURL: item.detailURL)
     }
 
     func selectImage(at index: Int) {
@@ -183,6 +361,10 @@ final class LibraryStore: ObservableObject {
 
     func registerResolvedPage(_ page: ResolvedImagePage) {
         guard let item = selectedItem else { return }
+        if isFavorite(item) {
+            DetailPageImageCache.shared.setPersistent(true, forDetailURL: item.detailURL)
+        }
+        objectWillChange.send()
         let isExpectedPage = pageURLs(for: item).contains(page.pageURL)
             || loadedImageSlots.contains(where: { $0.pageURL == page.pageURL })
             || requestedDetailPageURLs[item.id, default: []].contains(page.pageURL)
@@ -223,7 +405,7 @@ final class LibraryStore: ObservableObject {
             return
         }
         if force || selectedItemID == nil {
-            select(first)
+            select(first, force: force)
         }
     }
 
@@ -234,6 +416,10 @@ final class LibraryStore: ObservableObject {
             return
         }
         favorites = decoded
+        for favorite in favorites {
+            guard let detailURL = URL(string: favorite.detailURL) else { continue }
+            DetailPageImageCache.shared.setPersistent(true, forDetailURL: detailURL)
+        }
     }
 
     private func saveFavorites() {

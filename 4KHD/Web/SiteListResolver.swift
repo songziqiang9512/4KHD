@@ -1,10 +1,38 @@
 import Foundation
 
+struct SiteListPage {
+    let items: [GalleryItem]
+    let nextPageURL: URL?
+}
+
 enum SiteListResolver {
-    static func resolve(section: GallerySection) async throws -> [GalleryItem] {
-        guard let siteURL = section.siteURL else { return [] }
-        let html = try await fetchHTML(siteURL)
-        return parse(html: html, section: section)
+    static func resolve(section: GallerySection) async throws -> SiteListPage {
+        guard let siteURL = section.siteURL else {
+            return SiteListPage(items: [], nextPageURL: nil)
+        }
+        return try await resolve(pageURL: siteURL, section: section)
+    }
+
+    static func resolveSearch(query: String) async throws -> SiteListPage {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.4khd.com"
+        components.path = "/"
+        components.queryItems = [URLQueryItem(name: "s", value: query)]
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try await resolveSearch(pageURL: url)
+    }
+
+    static func resolveSearch(pageURL: URL) async throws -> SiteListPage {
+        let html = try await fetchHTML(pageURL)
+        return parse(html: html, pageURL: pageURL, section: .latest, usesLatestPagination: false)
+    }
+
+    static func resolve(pageURL: URL, section: GallerySection) async throws -> SiteListPage {
+        let html = try await fetchHTML(pageURL)
+        return parse(html: html, pageURL: pageURL, section: section)
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {
@@ -29,8 +57,11 @@ enum SiteListResolver {
         return html
     }
 
-    private static func parse(html: String, section: GallerySection) -> [GalleryItem] {
-        listItemHTML(in: html).compactMap { makeItem(from: $0, section: section) }
+    private static func parse(html: String, pageURL: URL, section: GallerySection, usesLatestPagination: Bool = true) -> SiteListPage {
+        SiteListPage(
+            items: listItemHTML(in: html).compactMap { makeItem(from: $0, section: section) },
+            nextPageURL: nextPageURL(in: html, baseURL: pageURL, section: section, usesLatestPagination: usesLatestPagination)
+        )
     }
 
     private static func listItemHTML(in html: String) -> [String] {
@@ -43,6 +74,60 @@ enum SiteListResolver {
             guard let matchRange = Range(result.range, in: html) else { return nil }
             return String(html[matchRange])
         }
+    }
+
+    private static func nextPageURL(in html: String, baseURL: URL, section: GallerySection, usesLatestPagination: Bool) -> URL? {
+        if section == .latest, usesLatestPagination {
+            return latestNextPageURL(in: html)
+        }
+
+        if let explicitNext = firstMatch(#"<link[^>]+rel=["']next["'][^>]+href=["']([^"']+)["']"#, in: html)
+            .flatMap(decodeHTML)
+            .flatMap({ URL(string: $0, relativeTo: baseURL)?.absoluteURL }) {
+            return explicitNext
+        }
+
+        if let nextLink = firstMatch(#"<a[^>]+class=["'][^"']*(?:next|wp-block-query-pagination-next)[^"']*["'][^>]+href=["']([^"']+)["']"#, in: html)
+            .flatMap(decodeHTML)
+            .flatMap({ URL(string: $0, relativeTo: baseURL)?.absoluteURL }) {
+            return nextLink
+        }
+
+        return queryPaginationNextPageURL(in: html, baseURL: baseURL)
+    }
+
+    private static func latestNextPageURL(in html: String) -> URL? {
+        let currentPage = firstMatch(#"<span[^>]+class=["'][^"']*page-numbers current[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#, in: html)
+            .flatMap { Int($0.replacingOccurrences(of: ",", with: "")) } ?? 1
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.4khd.com"
+        components.path = "/"
+        components.queryItems = [URLQueryItem(name: "query-3-page", value: "\(currentPage + 1)")]
+        return components.url
+    }
+
+    private static func queryPaginationNextPageURL(in html: String, baseURL: URL) -> URL? {
+        let currentPage = firstMatch(#"<span[^>]+class=["'][^"']*page-numbers current[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#, in: html)
+            .flatMap { Int($0.replacingOccurrences(of: ",", with: "")) } ?? 1
+        let pattern = #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>\s*([0-9,]+)\s*</a>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let candidates = regex.matches(in: html, range: range).compactMap { result -> (page: Int, url: URL)? in
+            guard result.numberOfRanges > 2,
+                  let hrefRange = Range(result.range(at: 1), in: html),
+                  let pageRange = Range(result.range(at: 2), in: html),
+                  let pageNumber = Int(html[pageRange].replacingOccurrences(of: ",", with: "")),
+                  pageNumber > currentPage,
+                  let href = decodeHTML(String(html[hrefRange])),
+                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL else {
+                return nil
+            }
+            return (pageNumber, url)
+        }
+        return candidates.min { $0.page < $1.page }?.url
     }
 
     private static func makeItem(from html: String, section: GallerySection) -> GalleryItem? {

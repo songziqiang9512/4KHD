@@ -162,22 +162,6 @@ struct DetailImageResolverView: NSViewRepresentable {
     private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 }
 
-final class DetailPageImageCache {
-    static let shared = DetailPageImageCache()
-
-    private var storage: [String: ResolvedImagePage] = [:]
-
-    private init() {}
-
-    func urls(for pageURL: URL) -> ResolvedImagePage? {
-        storage[pageURL.absoluteString]
-    }
-
-    func store(_ page: ResolvedImagePage) {
-        storage[page.pageURL.absoluteString] = page
-    }
-}
-
 enum LocalDetailHTMLStore {
     nonisolated static func html(for pageURL: URL, bundle: Bundle = .main) -> String? {
         guard pageURL.trailingPageNumber == nil else { return nil }

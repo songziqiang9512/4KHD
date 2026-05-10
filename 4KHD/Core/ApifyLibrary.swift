@@ -43,6 +43,17 @@ final class ApifyLibrary {
         return ApifyLibrary(itemsBySection: updatedItemsBySection)
     }
 
+    func appending(section: GallerySection, items: [GalleryItem]) -> ApifyLibrary {
+        var updatedItemsBySection = itemsBySection
+        var existingItems = updatedItemsBySection[section] ?? []
+        var existingIDs = Set(existingItems.map(\.id))
+        for item in items where existingIDs.insert(item.id).inserted {
+            existingItems.append(item)
+        }
+        updatedItemsBySection[section] = existingItems
+        return ApifyLibrary(itemsBySection: updatedItemsBySection)
+    }
+
     private static func loadPayload(bundle: Bundle) -> RootPayload? {
         let candidates = [
             URL(fileURLWithPath: #filePath)
