@@ -113,9 +113,9 @@ final class LibraryStore: ObservableObject {
         searchRefreshTask = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolveSearch(query: query)
-                await self?.applySearchPage(page, replacing: true)
+                self?.applySearchPage(page, replacing: true)
             } catch {
-                await self?.finishSearchRefresh()
+                self?.finishSearchRefresh()
             }
         }
     }
@@ -140,9 +140,9 @@ final class LibraryStore: ObservableObject {
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolve(section: currentSection)
-                await self?.applyNetworkPage(page, section: currentSection)
+                self?.applyNetworkPage(page, section: currentSection)
             } catch {
-                await self?.finishListRefresh(section: currentSection)
+                self?.finishListRefresh(section: currentSection)
             }
         }
     }
@@ -159,9 +159,9 @@ final class LibraryStore: ObservableObject {
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolve(pageURL: nextPageURL, section: currentSection)
-                await self?.appendNetworkPage(page, section: currentSection)
+                self?.appendNetworkPage(page, section: currentSection)
             } catch {
-                await self?.finishListRefresh(section: currentSection)
+                self?.finishListRefresh(section: currentSection)
             }
         }
     }
@@ -244,9 +244,9 @@ final class LibraryStore: ObservableObject {
         searchRefreshTask = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolveSearch(pageURL: nextPageURL)
-                await self?.applySearchPage(page, replacing: false)
+                self?.applySearchPage(page, replacing: false)
             } catch {
-                await self?.finishSearchRefresh()
+                self?.finishSearchRefresh()
             }
         }
     }
@@ -520,10 +520,10 @@ final class LibraryStore: ObservableObject {
             do {
                 let page = try await DetailPageHTMLResolver.resolve(pageURL: pageURL)
                 guard !Task.isCancelled else { return }
-                await self?.registerResolvedPage(page)
+                self?.registerResolvedPage(page)
             } catch {
                 guard !Task.isCancelled else { return }
-                await self?.markDetailPageResolutionFailed(pageURL)
+                self?.markDetailPageResolutionFailed(pageURL)
             }
         }
     }
