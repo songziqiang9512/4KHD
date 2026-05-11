@@ -6,18 +6,19 @@ enum DetailPageHTMLResolver {
             return cached
         }
 
-        let page = try await Task.detached(priority: .utility) {
-            let html: String
-            do {
-                html = try await fetchHTML(pageURL)
-            } catch {
-                guard let localHTML = LocalDetailHTMLStore.html(for: pageURL) else {
-                    throw error
-                }
-                html = localHTML
+        let html: String
+        do {
+            html = try await fetchHTML(pageURL)
+        } catch {
+            guard let localHTML = LocalDetailHTMLStore.html(for: pageURL) else {
+                throw error
             }
-            return try parse(html: html, pageURL: pageURL)
-        }.value
+            html = localHTML
+        }
+        try Task.checkCancellation()
+
+        let page = try parse(html: html, pageURL: pageURL)
+        try Task.checkCancellation()
         DetailPageImageCache.shared.store(page)
         return page
     }

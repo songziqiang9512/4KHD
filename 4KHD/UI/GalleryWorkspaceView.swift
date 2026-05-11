@@ -420,7 +420,6 @@ private struct FullscreenImageViewerOverlay: View {
     @EnvironmentObject private var library: LibraryStore
 
     @State private var resetToken = UUID()
-    @State private var viewerDetailFailed = false
 
     var body: some View {
         if library.isFullscreenViewerPresented {
@@ -429,28 +428,9 @@ private struct FullscreenImageViewerOverlay: View {
 
                 if let item = library.selectedItem, let slot = library.selectedSlot {
                     GeometryReader { proxy in
-                        DetailImageResolverView(
-                            pageURL: slot.pageURL,
-                            onResolvedPage: { page in
-                                Task { @MainActor in
-                                    library.registerResolvedPage(page)
-                                    viewerDetailFailed = false
-                                }
-                            },
-                            onFailure: {
-                                viewerDetailFailed = true
-                            }
-                        )
-                        .frame(width: 1, height: 1)
-                        .opacity(0.001)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-
                         ZoomableImageCanvas(url: slot.knownURL, resetToken: resetToken) {
-                            DetailPlaceholder(kind: viewerDetailFailed ? .failed : .loading)
-                        } onDisplayed: {
-                            viewerDetailFailed = false
-                        }
+                            DetailPlaceholder(kind: .loading)
+                        } onDisplayed: {}
                         .frame(width: proxy.size.width, height: proxy.size.height)
                     }
                     .clipped()
@@ -479,7 +459,6 @@ private struct FullscreenImageViewerOverlay: View {
             .transition(.opacity)
             .zIndex(20)
             .onChange(of: library.selectedSlot?.id) { _, _ in
-                viewerDetailFailed = false
                 resetToken = UUID()
             }
             .onExitCommand {

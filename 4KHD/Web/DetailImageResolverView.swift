@@ -36,12 +36,7 @@ struct DetailImageResolverView: NSViewRepresentable {
             return
         }
 
-        var request = URLRequest(url: pageURL)
-        request.timeoutInterval = 30
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("https://www.4khd.com/", forHTTPHeaderField: "Referer")
-        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
-        webView.load(request)
+        context.coordinator.resolveHTMLFirst(pageURL: pageURL, in: webView)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -50,14 +45,50 @@ struct DetailImageResolverView: NSViewRepresentable {
         var onResolvedPage: (ResolvedImagePage) -> Void = { _ in }
         var onFailure: () -> Void = {}
         private var generation = UUID()
+        private var htmlResolutionTask: Task<Void, Never>?
         private var extractionTask: Task<Void, Never>?
 
         func cancelCurrentWork(in webView: WKWebView) {
             generation = UUID()
+            htmlResolutionTask?.cancel()
+            htmlResolutionTask = nil
             extractionTask?.cancel()
             extractionTask = nil
             loadedPageURL = nil
             webView.stopLoading()
+        }
+
+        func resolveHTMLFirst(pageURL: URL, in webView: WKWebView) {
+            let currentGeneration = generation
+            htmlResolutionTask?.cancel()
+            htmlResolutionTask = Task { [weak self, weak webView] in
+                do {
+                    let page = try await DetailPageHTMLResolver.resolve(pageURL: pageURL)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        guard let self, self.generation == currentGeneration else { return }
+                        self.loadedPageURL = pageURL
+                        self.onResolvedPage(page)
+                    }
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        guard let self,
+                              let webView,
+                              self.generation == currentGeneration else { return }
+                        self.loadWebFallback(pageURL: pageURL, in: webView)
+                    }
+                }
+            }
+        }
+
+        func loadWebFallback(pageURL: URL, in webView: WKWebView) {
+            var request = URLRequest(url: pageURL)
+            request.timeoutInterval = 30
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("https://www.4khd.com/", forHTTPHeaderField: "Referer")
+            request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+            webView.load(request)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -193,10 +224,10 @@ extension URL {
     }
 
     nonisolated func isSameDetailPath(as other: URL) -> Bool {
-        normalizedDetailPath == other.normalizedDetailPath
+        normalizedDetailPathKey == other.normalizedDetailPathKey
     }
 
-    private nonisolated var normalizedDetailPath: String {
+    nonisolated var normalizedDetailPathKey: String {
         let path = trailingPageNumber == nil ? self.path : deletingLastPathComponent().path
         return path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }

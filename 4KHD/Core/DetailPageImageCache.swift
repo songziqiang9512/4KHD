@@ -15,6 +15,7 @@ final class DetailPageImageCache {
     private let cacheURL: URL
     private let expirationInterval: TimeInterval = 7 * 24 * 60 * 60
     private var storage: [String: Entry] = [:]
+    private var cachedDetailPaths = Set<String>()
     private var didLoadFromDisk = false
 
     private init() {
@@ -34,6 +35,7 @@ final class DetailPageImageCache {
         }
         if !entry.isPersistent, Date().timeIntervalSince(entry.updatedAt) > expirationInterval {
             storage[key] = nil
+            cachedDetailPaths.remove(entry.pageURL.normalizedDetailPathKey)
             saveToDiskLocked()
             lock.unlock()
             return nil
@@ -54,6 +56,7 @@ final class DetailPageImageCache {
             updatedAt: Date(),
             isPersistent: existing?.isPersistent ?? false
         )
+        cachedDetailPaths.insert(page.pageURL.normalizedDetailPathKey)
         saveToDiskLocked()
         lock.unlock()
     }
@@ -61,9 +64,7 @@ final class DetailPageImageCache {
     func containsCachedPage(forDetailURL detailURL: URL) -> Bool {
         lock.lock()
         loadFromDiskIfNeededLocked()
-        let hasEntry = storage.values.contains { entry in
-            entry.pageURL.isSameDetailPath(as: detailURL)
-        }
+        let hasEntry = cachedDetailPaths.contains(detailURL.normalizedDetailPathKey)
         lock.unlock()
         return hasEntry
     }
@@ -91,9 +92,11 @@ final class DetailPageImageCache {
         guard let data = try? Data(contentsOf: cacheURL),
               let decoded = try? JSONDecoder().decode([String: Entry].self, from: data) else {
             storage = [:]
+            cachedDetailPaths = []
             return
         }
         storage = decoded
+        rebuildCachedDetailPathsLocked()
         pruneExpiredEntriesLocked()
     }
 
@@ -104,8 +107,13 @@ final class DetailPageImageCache {
             entry.isPersistent || now.timeIntervalSince(entry.updatedAt) <= expirationInterval
         }
         if storage.count != originalCount {
+            rebuildCachedDetailPathsLocked()
             saveToDiskLocked()
         }
+    }
+
+    private func rebuildCachedDetailPathsLocked() {
+        cachedDetailPaths = Set(storage.values.map { $0.pageURL.normalizedDetailPathKey })
     }
 
     private func saveToDiskLocked() {
