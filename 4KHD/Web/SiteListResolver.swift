@@ -6,6 +6,8 @@ struct SiteListPage {
 }
 
 enum SiteListResolver {
+    private static let requestCoalescer = HTMLRequestCoalescer()
+
     static func resolve(section: GallerySection) async throws -> SiteListPage {
         guard let siteURL = section.siteURL else {
             return SiteListPage(items: [], nextPageURL: nil)
@@ -36,6 +38,12 @@ enum SiteListResolver {
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {
+        try await requestCoalescer.value(for: url) {
+            try await fetchHTMLFromNetwork(url)
+        }
+    }
+
+    private static func fetchHTMLFromNetwork(_ url: URL) async throws -> String {
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -207,5 +215,25 @@ enum SiteListResolver {
             .replacingOccurrences(of: "&#038;", with: "&")
             .replacingOccurrences(of: "&#8211;", with: "-")
             .removingPercentEncoding ?? value
+    }
+}
+
+private actor HTMLRequestCoalescer {
+    private var tasks: [URL: Task<String, Error>] = [:]
+
+    func value(for url: URL, operation: @escaping @Sendable () async throws -> String) async throws -> String {
+        if let task = tasks[url] {
+            return try await task.value
+        }
+
+        let task = Task {
+            try await operation()
+        }
+        tasks[url] = task
+
+        defer {
+            tasks[url] = nil
+        }
+        return try await task.value
     }
 }

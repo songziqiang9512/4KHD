@@ -14,6 +14,7 @@ struct DetailImageResolverView: NSViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.websiteDataStore = .default()
+        configuration.userContentController.addUserScript(Self.resourceBlockingScript)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -191,6 +192,24 @@ struct DetailImageResolverView: NSViewRepresentable {
     }
 
     private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+    private static let resourceBlockingScript = WKUserScript(
+        source: #"""
+        (() => {
+          const removeHeavyNodes = () => {
+            document.querySelectorAll("script[src], iframe, video, audio, source, link[rel='preload'], link[rel='prefetch']").forEach((node) => node.remove());
+            document.querySelectorAll("img").forEach((img) => {
+              img.loading = "lazy";
+              img.removeAttribute("srcset");
+              img.removeAttribute("sizes");
+            });
+          };
+          removeHeavyNodes();
+          new MutationObserver(removeHeavyNodes).observe(document.documentElement, { childList: true, subtree: true });
+        })();
+        """#,
+        injectionTime: .atDocumentStart,
+        forMainFrameOnly: false
+    )
 }
 
 enum LocalDetailHTMLStore {
