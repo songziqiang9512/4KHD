@@ -14,9 +14,22 @@
 		986D1CCE2F824386006EDCBC /* 4KHD.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = 4KHD.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		986D1CE42FBB0001006EDCBC /* Exceptions for "4KHD" folder in "4KHD" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 986D1CCD2F824386006EDCBC /* 4KHD */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		986D1CD02F824386006EDCBC /* 4KHD */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				986D1CE42FBB0001006EDCBC /* Exceptions for "4KHD" folder in "4KHD" target */,
+			);
 			path = 4KHD;
 			sourceTree = "<group>";
 		};
