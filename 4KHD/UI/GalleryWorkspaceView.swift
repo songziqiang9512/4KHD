@@ -5,20 +5,24 @@ import UniformTypeIdentifiers
 
 struct GalleryWorkspaceView: View {
     @EnvironmentObject private var library: LibraryStore
+    @AppStorage("com.songziqiang.4khd.isSectionRailCollapsed") private var isSectionRailCollapsed = false
 
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
-                SectionRail()
-                    .frame(width: 128)
+                HStack(spacing: 0) {
+                    SectionRail(isCollapsed: $isSectionRailCollapsed)
+                        .frame(width: isSectionRailCollapsed ? 48 : 112)
 
-                GalleryListPane()
-                    .frame(width: 330)
+                    GalleryListPane()
+                        .frame(width: 280)
+                }
+                .background(.ultraThinMaterial)
 
                 Divider()
 
                 ImageDetailPane()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
             }
 
             FullscreenImageViewerOverlay()
@@ -32,22 +36,45 @@ struct GalleryWorkspaceView: View {
 
 private struct SectionRail: View {
     @EnvironmentObject private var library: LibraryStore
+    @Binding var isCollapsed: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("4KHD")
-                .font(.title2.weight(.bold))
-                .padding(.bottom, 12)
+            HStack {
+                if !isCollapsed {
+                    Text("4KHD")
+                        .font(.title2.weight(.bold))
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    isCollapsed.toggle()
+                } label: {
+                    Image(systemName: isCollapsed ? "sidebar.left" : "sidebar.leading")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(isCollapsed ? "展开侧边栏" : "隐藏侧边栏")
+            }
+            .padding(.bottom, 10)
 
             ForEach(GallerySection.allCases) { section in
                 Button {
                     library.section = section
                 } label: {
                     HStack {
-                        Text(section.title)
-                        Spacer()
+                        if isCollapsed {
+                            Text(collapsedTitle(for: section))
+                                .font(.callout.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text(section.title)
+                            Spacer()
+                        }
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, isCollapsed ? 0 : 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 34)
                     .background(library.section == section ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
@@ -58,12 +85,23 @@ private struct SectionRail: View {
 
             Spacer()
 
-            Text(library.isRefreshingList ? "线上刷新中" : "线上数据")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if !isCollapsed {
+                Text(library.isRefreshingList ? "线上刷新中" : "线上数据")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding(12)
+    }
+
+    private func collapsedTitle(for section: GallerySection) -> String {
+        switch section {
+        case .latest: "新"
+        case .popular: "荐"
+        case .cosplay: "C"
+        case .album: "写"
+        case .favorites: "藏"
+        }
     }
 }
 
@@ -73,7 +111,7 @@ private struct GalleryListPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
                         .font(.headline)
@@ -86,11 +124,11 @@ private struct GalleryListPane: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                     TextField("搜索", text: $library.searchText)
                         .textFieldStyle(.plain)
-                        .font(.caption)
+                        .font(.callout)
                         .onSubmit {
                             library.submitSearch()
                         }
@@ -106,11 +144,13 @@ private struct GalleryListPane: View {
                         .help("清空搜索")
                     }
                 }
-                .padding(.horizontal, 8)
-                .frame(width: 160, height: 28)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 7))
+                .padding(.horizontal, 9)
+                .frame(width: 156, height: 30)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.16), lineWidth: 1))
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
 
             ScrollView {
                 LazyVStack(spacing: 8) {
@@ -125,6 +165,12 @@ private struct GalleryListPane: View {
                                 }
                             }
                     }
+                    ListFooterStatus()
+                        .onAppear {
+                            if library.canLoadMoreList {
+                                library.loadMoreListIfNeeded()
+                            }
+                        }
                     Color.clear
                         .frame(height: 1)
                         .id("list-bottom-\(library.allItems.count)")
@@ -135,7 +181,7 @@ private struct GalleryListPane: View {
                         }
                 }
                 .padding(.horizontal, 10)
-                .padding(.bottom, 10)
+                .padding(.bottom, 8)
                 .background(
                     GeometryReader { proxy in
                         let frame = proxy.frame(in: .named("GalleryListScroll"))
@@ -169,45 +215,66 @@ private struct GalleryRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             PosterWebImage(url: item.coverURL, contentMode: .fill)
-                .frame(width: 76, height: 104)
+                .frame(width: 68, height: 92)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
                     KindBadge(kind: item.kind)
-                    Text("\(item.imageCount) 张")
-                    Text("\(item.pageCount) 页")
+                    Text("\(item.imageCount) 张 · \(item.pageCount) 页")
+                        .lineLimit(1)
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
                 Text(item.title)
                     .font(.callout.weight(.semibold))
-                    .lineLimit(3)
+                    .lineLimit(2)
 
                 Text(item.subtitle)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
 
-                HStack(spacing: 10) {
+                HStack(spacing: 9) {
                     if library.isFavorite(item) {
-                        Label("已收藏", systemImage: "bookmark.fill")
+                        CompactStatusIcon("已收藏", systemImage: "bookmark.fill")
                     }
 
                     if library.isCached(item) {
-                        Label("已缓存", systemImage: "externaldrive.fill")
+                        CompactStatusIcon("已缓存", systemImage: "externaldrive.fill")
                     }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(8)
-        .background(isSelected ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .padding(7)
+        .background(isSelected ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1))
+    }
+}
+
+private struct ListFooterStatus: View {
+    @EnvironmentObject private var library: LibraryStore
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if library.isRefreshingList {
+                ProgressView()
+                    .controlSize(.small)
+                Text("加载下一页")
+            } else if library.canLoadMoreList {
+                Image(systemName: "arrow.down")
+                Text("继续加载")
+            } else if !library.visibleItems.isEmpty {
+                Text("已到末尾")
+            }
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
     }
 }
 
@@ -219,12 +286,12 @@ private struct ImageDetailPane: View {
     @State private var detailFailed = false
     @State private var detailResetToken = UUID()
     @State private var saveTask: ImageTask?
+    private let headerHeight: CGFloat = 54
+    private let filmstripHeight: CGFloat = 112
 
     var body: some View {
         if let item = library.selectedItem, let slot = library.selectedSlot {
-            VStack(spacing: 0) {
-                header(item: item, slot: slot)
-
+            ZStack {
                 ZStack {
                     Color(red: 0.06, green: 0.06, blue: 0.065)
 
@@ -246,7 +313,11 @@ private struct ImageDetailPane: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
 
-                        ZoomableImageCanvas(url: slot.knownURL, resetToken: detailResetToken) {
+                        ZoomableImageCanvas(
+                            url: slot.knownURL,
+                            resetToken: detailResetToken,
+                            contentInsets: EdgeInsets(top: headerHeight, leading: 0, bottom: filmstripHeight, trailing: 0)
+                        ) {
                             DetailPlaceholder(kind: detailFailed ? .failed : .loading)
                         } onDisplayed: {
                             displayedImageURL = slot.knownURL
@@ -264,14 +335,34 @@ private struct ImageDetailPane: View {
                         StepButton(systemName: "chevron.right") { library.stepImage(1) }
                     }
                     .padding(.horizontal, 18)
+
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Text("\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.45), in: Capsule())
+                                .padding(16)
+                            Spacer()
+                        }
+                    }
                 }
 
-                Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
-                    library.selectImage(at: index)
-                } onReachedEnd: {
-                    library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+                VStack(spacing: 0) {
+                    header(item: item, slot: slot)
+                        .frame(height: headerHeight)
+                    Spacer()
+                    Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
+                        library.selectImage(at: index)
+                    } onReachedEnd: {
+                        library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: item.id) { _, _ in
                 displayedImageURL = nil
                 saveMessage = ""
@@ -300,6 +391,7 @@ private struct ImageDetailPane: View {
                 Text(item.title)
                     .font(.headline)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 HStack(spacing: 10) {
                     KindBadge(kind: item.kind)
                     Text("\(item.imageCount) 张")
@@ -309,6 +401,7 @@ private struct ImageDetailPane: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+            .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
 
             Spacer()
 
@@ -321,14 +414,18 @@ private struct ImageDetailPane: View {
             Button {
                 library.isFullscreenViewerPresented = true
             } label: {
-                Label("全屏", systemImage: "arrow.up.left.and.arrow.down.right")
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .frame(width: 22)
             }
+            .help("全屏")
 
             Button {
                 detailResetToken = UUID()
             } label: {
-                Label("实际大小", systemImage: "1.magnifyingglass")
+                Image(systemName: "1.magnifyingglass")
+                    .frame(width: 22)
             }
+            .help("实际大小")
 
             Button {
                 library.toggleFavorite(for: item)
@@ -343,21 +440,29 @@ private struct ImageDetailPane: View {
             Button {
                 NSWorkspace.shared.open(item.detailURL)
             } label: {
-                Label("原网页", systemImage: "safari")
+                Image(systemName: "safari")
+                    .frame(width: 22)
             }
-            .help(item.detailURL.absoluteString)
+            .help("打开原网页：\(item.detailURL.absoluteString)")
 
             Button {
                 saveCurrentImage(item: item, slot: slot)
             } label: {
-                Label("保存", systemImage: "square.and.arrow.down")
+                Image(systemName: "square.and.arrow.down")
+                    .frame(width: 22)
             }
             .disabled(slot.knownURL == nil)
+            .help("保存")
         }
         .buttonStyle(.bordered)
+        .controlSize(.small)
         .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(.regularMaterial)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.35)
+        }
     }
 
     private func saveCurrentImage(item: GalleryItem, slot: ImageSlot) {
@@ -420,6 +525,7 @@ private struct FullscreenImageViewerOverlay: View {
     @EnvironmentObject private var library: LibraryStore
 
     @State private var resetToken = UUID()
+    @State private var isChromeHidden = false
 
     var body: some View {
         if library.isFullscreenViewerPresented {
@@ -427,21 +533,38 @@ private struct FullscreenImageViewerOverlay: View {
                 Color.black.ignoresSafeArea()
 
                 if let item = library.selectedItem, let slot = library.selectedSlot {
-                    GeometryReader { proxy in
-                        ZoomableImageCanvas(url: slot.knownURL, resetToken: resetToken) {
-                            DetailPlaceholder(kind: .loading)
-                        } onDisplayed: {}
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                    }
-                    .clipped()
-
-                    VStack(spacing: 0) {
-                        fullscreenHeader(item: item, slot: slot)
-                        Spacer()
-                        Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
-                            library.selectImage(at: index)
-                        } onReachedEnd: {
-                            library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+                    if isChromeHidden {
+                        GeometryReader { proxy in
+                            ZoomableImageCanvas(url: slot.knownURL, resetToken: resetToken, contentInsets: .init()) {
+                                DetailPlaceholder(kind: .loading)
+                            } onDisplayed: {}
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                        }
+                        .clipped()
+                        restoreChromeButton()
+                    } else {
+                        ZStack {
+                            GeometryReader { proxy in
+                                ZoomableImageCanvas(
+                                    url: slot.knownURL,
+                                    resetToken: resetToken,
+                                    contentInsets: EdgeInsets(top: 54, leading: 0, bottom: 112, trailing: 0)
+                                ) {
+                                    DetailPlaceholder(kind: .loading)
+                                } onDisplayed: {}
+                                .frame(width: proxy.size.width, height: proxy.size.height)
+                            }
+                            .clipped()
+                            VStack(spacing: 0) {
+                                fullscreenHeader(item: item, slot: slot)
+                                    .frame(height: 54)
+                                Spacer()
+                                Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
+                                    library.selectImage(at: index)
+                                } onReachedEnd: {
+                                    library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+                                }
+                            }
                         }
                     }
 
@@ -460,6 +583,11 @@ private struct FullscreenImageViewerOverlay: View {
             .zIndex(20)
             .onChange(of: library.selectedSlot?.id) { _, _ in
                 resetToken = UUID()
+            }
+            .onChange(of: library.isFullscreenViewerPresented) { _, isPresented in
+                if !isPresented {
+                    isChromeHidden = false
+                }
             }
             .onExitCommand {
                 library.isFullscreenViewerPresented = false
@@ -487,37 +615,86 @@ private struct FullscreenImageViewerOverlay: View {
             }
 
             Button {
+                isChromeHidden = true
+            } label: {
+                Label("隐藏控制", systemImage: "rectangle.compress.vertical")
+            }
+            .help("隐藏顶部标题栏和底部缩略图栏")
+
+            Button {
                 library.isFullscreenViewerPresented = false
             } label: {
                 Label("关闭", systemImage: "xmark")
             }
         }
         .buttonStyle(.bordered)
+        .controlSize(.small)
         .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
+    }
+
+    private func restoreChromeButton() -> some View {
+        VStack {
+            HStack {
+                Spacer()
+                Button {
+                    isChromeHidden = false
+                } label: {
+                    Label("显示控制", systemImage: "rectangle.expand.vertical")
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("恢复顶部标题栏和底部缩略图栏")
+                .padding(14)
+            }
+            Spacer()
+        }
     }
 }
 
 private struct ZoomableImageCanvas<Placeholder: View>: View {
     let url: URL?
     let resetToken: UUID
+    let contentInsets: EdgeInsets
     @ViewBuilder let placeholder: () -> Placeholder
     let onDisplayed: () -> Void
 
     @State private var zoomScale: CGFloat = 1
-    @State private var lastMagnification: CGFloat = 1
     @State private var panOffset: CGSize = .zero
     @State private var dragStartOffset: CGSize = .zero
+    @State private var imageSize: CGSize?
 
     var body: some View {
         GeometryReader { proxy in
-            RemoteImageView(url: url, contentMode: .fit, priority: .userInitiated, onLoaded: onDisplayed) {
-                placeholder()
+            let fitSize = contentSize(in: proxy.size)
+            let fitCenter = CGPoint(
+                x: contentInsets.leading + fitSize.width / 2,
+                y: contentInsets.top + fitSize.height / 2
+            )
+
+            ZStack {
+                RemoteImageView(
+                    url: url,
+                    contentMode: .fit,
+                    priority: .userInitiated,
+                    onLoaded: onDisplayed,
+                    onImageLoaded: { image in
+                        imageSize = image.size
+                        panOffset = clampedPanOffset(panOffset, in: fitSize, imageSize: image.size)
+                        dragStartOffset = panOffset
+                    }
+                ) {
+                    placeholder()
+                }
+                .frame(width: fitSize.width, height: fitSize.height)
+                .scaleEffect(zoomScale)
+                .offset(panOffset)
+                .position(fitCenter)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .scaleEffect(max(0.35, zoomScale))
-            .offset(panOffset)
             .contentShape(Rectangle())
             .overlay {
                 TrackpadPanView { delta in
@@ -526,24 +703,14 @@ private struct ZoomableImageCanvas<Placeholder: View>: View {
                         width: panOffset.width + delta.width,
                         height: panOffset.height + delta.height
                     )
-                    panOffset = clampedPanOffset(proposed, in: proxy.size)
+                    panOffset = clampedPanOffset(proposed, in: fitSize, imageSize: imageSize)
                     dragStartOffset = panOffset
+                } onMagnify: { magnification, location in
+                    zoom(by: magnification, around: locationInContent(location, containerSize: proxy.size), in: fitSize)
+                } onMagnifyEnded: {
+                    settleZoom(in: fitSize)
                 }
             }
-            .gesture(
-                MagnificationGesture()
-                    .onChanged { value in
-                        let delta = value / lastMagnification
-                        zoomScale = min(max(zoomScale * delta, 0.35), 5)
-                        lastMagnification = value
-                        panOffset = clampedPanOffset(panOffset, in: proxy.size)
-                    }
-                    .onEnded { _ in
-                        lastMagnification = 1
-                        panOffset = clampedPanOffset(panOffset, in: proxy.size)
-                        dragStartOffset = panOffset
-                    }
-            )
             .simultaneousGesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
@@ -551,10 +718,10 @@ private struct ZoomableImageCanvas<Placeholder: View>: View {
                             width: dragStartOffset.width + value.translation.width,
                             height: dragStartOffset.height + value.translation.height
                         )
-                        panOffset = clampedPanOffset(proposed, in: proxy.size)
+                        panOffset = clampedPanOffset(proposed, in: fitSize, imageSize: imageSize)
                     }
                     .onEnded { _ in
-                        panOffset = clampedPanOffset(panOffset, in: proxy.size)
+                        panOffset = clampedPanOffset(panOffset, in: fitSize, imageSize: imageSize)
                         dragStartOffset = panOffset
                     }
             )
@@ -567,38 +734,116 @@ private struct ZoomableImageCanvas<Placeholder: View>: View {
 
     private func resetView() {
         zoomScale = 1
-        lastMagnification = 1
         panOffset = .zero
+        dragStartOffset = .zero
+        imageSize = nil
+    }
+
+    private func contentSize(in containerSize: CGSize) -> CGSize {
+        CGSize(
+            width: max(containerSize.width - contentInsets.leading - contentInsets.trailing, 1),
+            height: max(containerSize.height - contentInsets.top - contentInsets.bottom, 1)
+        )
+    }
+
+    private func locationInContent(_ location: CGPoint, containerSize: CGSize) -> CGPoint {
+        CGPoint(
+            x: location.x - contentInsets.leading,
+            y: location.y - contentInsets.top
+        )
+    }
+
+    private func zoom(by magnification: CGFloat, around location: CGPoint, in containerSize: CGSize) {
+        let currentScale = zoomScale
+        let nextScale = min(max(currentScale * (1 + magnification), 0.65), 5)
+        guard nextScale != currentScale else { return }
+
+        let center = CGPoint(x: containerSize.width / 2, y: containerSize.height / 2)
+        let relativePoint = CGSize(
+            width: location.x - center.x,
+            height: location.y - center.y
+        )
+        let scaleRatio = nextScale / currentScale
+        let proposedOffset = CGSize(
+            width: relativePoint.width * (1 - scaleRatio) + panOffset.width * scaleRatio,
+            height: relativePoint.height * (1 - scaleRatio) + panOffset.height * scaleRatio
+        )
+
+        zoomScale = nextScale
+        panOffset = clampedPanOffset(proposedOffset, in: containerSize, imageSize: imageSize)
+        dragStartOffset = panOffset
+    }
+
+    private func settleZoom(in containerSize: CGSize) {
+        guard zoomScale < 1 else {
+            panOffset = clampedPanOffset(panOffset, in: containerSize, imageSize: imageSize)
+            dragStartOffset = panOffset
+            return
+        }
+
+        withAnimation(.snappy(duration: 0.2)) {
+            zoomScale = 1
+            panOffset = .zero
+        }
         dragStartOffset = .zero
     }
 
-    private func clampedPanOffset(_ offset: CGSize, in size: CGSize) -> CGSize {
+    private func clampedPanOffset(_ offset: CGSize, in containerSize: CGSize, imageSize: CGSize?) -> CGSize {
         guard zoomScale > 1 else { return .zero }
-        let maxX = max(size.width * (zoomScale - 1) / 2, 0)
-        let maxY = max(size.height * (zoomScale - 1) / 2, 0)
+        let fittedSize = fittedImageSize(in: containerSize, imageSize: imageSize)
+        let maxX = max((fittedSize.width * zoomScale - containerSize.width) / 2, 0)
+        let maxY = max((fittedSize.height * zoomScale - containerSize.height) / 2, 0)
         return CGSize(
             width: min(max(offset.width, -maxX), maxX),
             height: min(max(offset.height, -maxY), maxY)
         )
     }
+
+    private func fittedImageSize(in containerSize: CGSize, imageSize: CGSize?) -> CGSize {
+        guard let imageSize,
+              imageSize.width > 0,
+              imageSize.height > 0,
+              containerSize.width > 0,
+              containerSize.height > 0 else {
+            return containerSize
+        }
+
+        let scale = min(containerSize.width / imageSize.width, containerSize.height / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
 }
 
 private struct TrackpadPanView: NSViewRepresentable {
     let onPan: (CGSize) -> Void
+    let onMagnify: (CGFloat, CGPoint) -> Void
+    let onMagnifyEnded: () -> Void
 
     func makeNSView(context: Context) -> NSView {
-        ScrollCatcherView(onPan: onPan)
+        ScrollCatcherView(onPan: onPan, onMagnify: onMagnify, onMagnifyEnded: onMagnifyEnded)
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? ScrollCatcherView)?.onPan = onPan
+        guard let catcher = nsView as? ScrollCatcherView else { return }
+        catcher.onPan = onPan
+        catcher.onMagnify = onMagnify
+        catcher.onMagnifyEnded = onMagnifyEnded
     }
 
     private final class ScrollCatcherView: NSView {
         var onPan: (CGSize) -> Void
+        var onMagnify: (CGFloat, CGPoint) -> Void
+        var onMagnifyEnded: () -> Void
 
-        init(onPan: @escaping (CGSize) -> Void) {
+        override var isFlipped: Bool { true }
+
+        init(
+            onPan: @escaping (CGSize) -> Void,
+            onMagnify: @escaping (CGFloat, CGPoint) -> Void,
+            onMagnifyEnded: @escaping () -> Void
+        ) {
             self.onPan = onPan
+            self.onMagnify = onMagnify
+            self.onMagnifyEnded = onMagnifyEnded
             super.init(frame: .zero)
             wantsLayer = false
         }
@@ -618,6 +863,15 @@ private struct TrackpadPanView: NSViewRepresentable {
             }
         }
 
+        override func magnify(with event: NSEvent) {
+            let location = convert(event.locationInWindow, from: nil)
+            onMagnify(event.magnification, location)
+        }
+
+        override func endGesture(with event: NSEvent) {
+            onMagnifyEnded()
+        }
+
         override func mouseDown(with event: NSEvent) {
             nextResponder?.mouseDown(with: event)
         }
@@ -633,60 +887,127 @@ private struct TrackpadPanView: NSViewRepresentable {
 }
 
 private struct Filmstrip: View {
+    @EnvironmentObject private var library: LibraryStore
+
     let slots: [ImageSlot]
     let selectedIndex: Int
     let onSelect: (Int) -> Void
     let onReachedEnd: () -> Void
     @State private var viewportWidth: CGFloat = 0
+    @State private var contentOffsetX: CGFloat = 0
 
     var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 10) {
-                ForEach(slots.indices, id: \.self) { index in
-                    let slot = slots[index]
-                    Button {
-                        onSelect(index)
-                    } label: {
-                        ZStack(alignment: .bottomLeading) {
-                            SlotThumbnail(slot: slot)
-                            Text("#\(slot.displayIndex)")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(.black.opacity(0.5), in: Capsule())
-                                .padding(5)
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 10) {
+                    ForEach(slots.indices, id: \.self) { index in
+                        let slot = slots[index]
+                        Button {
+                            onSelect(index)
+                        } label: {
+                            ZStack(alignment: .bottomLeading) {
+                                SlotThumbnail(slot: slot)
+                                Text("#\(slot.displayIndex)")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(.black.opacity(0.5), in: Capsule())
+                                    .padding(5)
+                            }
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(selectedIndex == index ? Color.accentColor : Color.white.opacity(0.15), lineWidth: selectedIndex == index ? 2 : 1))
                         }
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(selectedIndex == index ? Color.accentColor : Color.white.opacity(0.15), lineWidth: selectedIndex == index ? 2 : 1))
+                        .buttonStyle(.plain)
+                        .id(index)
                     }
-                    .buttonStyle(.plain)
+
+                    if library.prefetchPageURL != nil {
+                        LoadingFilmstripTile()
+                    }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    GeometryReader { proxy in
+                        let frame = proxy.frame(in: .named("FilmstripScroll"))
+                        Color.clear
+                            .onChange(of: frame.minX) { _, _ in
+                                contentOffsetX = -frame.minX
+                                if frame.width > viewportWidth,
+                                   frame.maxX - viewportWidth < 180 {
+                                    onReachedEnd()
+                                }
+                            }
+                            .onAppear {
+                                contentOffsetX = -frame.minX
+                            }
+                    }
+                )
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .coordinateSpace(name: "FilmstripScroll")
+            .frame(height: 112)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .top) {
+                Divider().opacity(0.35)
+            }
             .background(
                 GeometryReader { proxy in
-                    let frame = proxy.frame(in: .named("FilmstripScroll"))
                     Color.clear
-                        .onChange(of: frame.minX) { _, _ in
-                            if frame.width > viewportWidth,
-                               frame.maxX - viewportWidth < 180 {
-                                onReachedEnd()
-                            }
-                        }
+                        .onAppear { viewportWidth = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, value in viewportWidth = value }
                 }
             )
-        }
-        .coordinateSpace(name: "FilmstripScroll")
-        .frame(height: 120)
-        .background(Color(red: 0.08, green: 0.08, blue: 0.085))
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { viewportWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, value in viewportWidth = value }
+            .onChange(of: selectedIndex) { _, index in
+                guard slots.indices.contains(index),
+                      isIndexOutsideVisibleFilmstrip(index) else { return }
+                withAnimation(.snappy(duration: 0.2)) {
+                    scrollProxy.scrollTo(index, anchor: .leading)
+                }
             }
-        )
+        }
+    }
+
+    private func isIndexOutsideVisibleFilmstrip(_ index: Int) -> Bool {
+        let itemPitch: CGFloat = 82
+        let horizontalPadding: CGFloat = 14
+        let itemStart = horizontalPadding + CGFloat(index) * itemPitch
+        let itemEnd = itemStart + 72
+        let visibleStart = max(contentOffsetX, 0)
+        let visibleEnd = visibleStart + viewportWidth
+        return itemStart < visibleStart || itemEnd > visibleEnd
+    }
+}
+
+private struct CompactStatusIcon: View {
+    let title: String
+    let systemImage: String
+
+    init(_ title: String, systemImage: String) {
+        self.title = title
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 14, height: 14)
+            .help(title)
+    }
+}
+
+private struct LoadingFilmstripTile: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("加载中")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 72, height: 96)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
     }
 }
 

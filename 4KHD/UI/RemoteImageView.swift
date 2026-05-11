@@ -7,6 +7,7 @@ struct RemoteImageView<Placeholder: View>: View {
     let priority: TaskPriority
     @ViewBuilder let placeholder: () -> Placeholder
     let onLoaded: () -> Void
+    let onImageLoaded: (NSImage) -> Void
     @State private var image: NSImage?
     @State private var loadedURL: URL?
     @State private var imageTask: ImageTask?
@@ -16,12 +17,14 @@ struct RemoteImageView<Placeholder: View>: View {
         contentMode: ContentMode,
         priority: TaskPriority = .utility,
         onLoaded: @escaping () -> Void = {},
+        onImageLoaded: @escaping (NSImage) -> Void = { _ in },
         @ViewBuilder placeholder: @escaping () -> Placeholder
     ) {
         self.url = url
         self.contentMode = contentMode
         self.priority = priority
         self.onLoaded = onLoaded
+        self.onImageLoaded = onImageLoaded
         self.placeholder = placeholder
     }
 
@@ -45,7 +48,8 @@ struct RemoteImageView<Placeholder: View>: View {
             imageTask = RemoteImagePipeline.shared.loadImage(with: request) { loadedImage in
                 guard loadedURL == url else { return }
                 image = loadedImage
-                if loadedImage != nil {
+                if let loadedImage {
+                    onImageLoaded(loadedImage)
                     onLoaded()
                 }
             }

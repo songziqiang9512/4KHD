@@ -55,6 +55,19 @@ final class LibraryStore: ObservableObject {
         Array(allItems.prefix(visibleCount))
     }
 
+    var canLoadMoreList: Bool {
+        if visibleCount < allItems.count {
+            return true
+        }
+        if activeSearchQuery != nil {
+            return searchNextPageURL != nil
+        }
+        if section == .favorites {
+            return false
+        }
+        return listNextPageURLs[section] != nil
+    }
+
     var selectedItem: GalleryItem? {
         allItems.first { $0.id == selectedItemID } ?? allItems.first
     }
@@ -321,7 +334,7 @@ final class LibraryStore: ObservableObject {
         guard index >= 0 else { return }
         if index >= loadedImageSlots.count {
             let oldCount = loadedImageSlots.count
-            ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange)
+            guard ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange) else { return }
             if loadedImageSlots.indices.contains(oldCount) {
                 selectedImageIndex = oldCount
                 return
@@ -337,21 +350,31 @@ final class LibraryStore: ObservableObject {
     func stepImage(_ delta: Int) {
         let nextIndex = selectedImageIndex + delta
         if delta > 0, nextIndex >= loadedImageSlots.count {
-            ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange)
+            if ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange) {
+                pendingSelectionIndex = loadedImageSlots.count
+            }
+            return
         }
         selectImage(at: nextIndex)
     }
 
-    func ensureNextDetailPageLoaded(reason: DetailPageLoadReason) {
-        guard let item = selectedItem else { return }
+    @discardableResult
+    func ensureNextDetailPageLoaded(reason: DetailPageLoadReason) -> Bool {
+        guard let item = selectedItem else { return false }
         let cursor = itemPageCursors[item.id, default: 1]
         let pageURLs = pageURLs(for: item)
-        guard cursor < pageURLs.count else { return }
+        guard cursor < pageURLs.count else {
+            if let currentPageURL = selectedSlot?.pageURL {
+                resolveDetailPage(currentPageURL)
+            }
+            return false
+        }
         let pageURL = pageURLs[cursor]
-        guard requestedDetailPageURLs[item.id, default: []].insert(pageURL).inserted else { return }
+        guard requestedDetailPageURLs[item.id, default: []].insert(pageURL).inserted else { return true }
         itemPageCursors[item.id] = cursor + 1
         prefetchPageURL = pageURL
         resolveDetailPage(pageURL)
+        return true
     }
 
     private func ensureNextDetailPageLoadedIfApproachingEnd(from index: Int) {
@@ -389,6 +412,7 @@ final class LibraryStore: ObservableObject {
             }
             loadedImageSlots.replaceSubrange(firstIndex...lastIndex, with: resolvedSlots)
             selectedImageIndex = min(selectedImageIndex, max(loadedImageSlots.count - 1, 0))
+            applyPendingSelectionIfPossible()
             return
         }
         appendResolvedSlots(for: item, page: page)
