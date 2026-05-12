@@ -33,6 +33,15 @@
 - 区分推荐内容和广告内容的数据模型
 - 使用 Nuke 负责图片加载、缓存和请求优先级
 
+## 截图
+
+发布到 GitHub 时，可以把截图放在这里：
+
+```text
+docs/screenshots/main-window.png
+docs/screenshots/fullscreen-viewer.png
+```
+
 ## 架构思路
 
 ```text
