@@ -145,7 +145,8 @@ private struct LocalRootFolderRow: View {
         LocalFolderRowContent(
             title: root.title,
             subtitle: "\(root.imageCount) 张 · \(root.url.path)",
-            systemImage: isExpanded ? "folder.fill.badge.minus" : "folder.fill",
+            coverURL: root.tree.coverURL,
+            isExpanded: isExpanded,
             indent: 0,
             isSelected: isSelected,
             action: action
@@ -164,7 +165,8 @@ private struct LocalFolderRow: View {
         LocalFolderRowContent(
             title: folder.title,
             subtitle: "\(folder.images.count) 张当前目录 · \(folder.imageCount) 张含子目录",
-            systemImage: isExpanded ? "folder.fill.badge.minus" : "folder.fill",
+            coverURL: folder.coverURL,
+            isExpanded: isExpanded,
             indent: CGFloat(level) * 16,
             isSelected: isSelected,
             action: action
@@ -175,7 +177,8 @@ private struct LocalFolderRow: View {
 private struct LocalFolderRowContent: View {
     let title: String
     let subtitle: String
-    let systemImage: String
+    let coverURL: URL?
+    let isExpanded: Bool
     let indent: CGFloat
     let isSelected: Bool
     let action: () -> Void
@@ -185,10 +188,20 @@ private struct LocalFolderRowContent: View {
             HStack(spacing: 10) {
                 Color.clear.frame(width: indent, height: 1)
 
-                Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 28, height: 32)
+                ZStack(alignment: .bottomTrailing) {
+                    RemoteImageView(url: coverURL, contentMode: .fill, priority: .utility) {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(.secondary))
+                    }
+                    .frame(width: 46, height: 62)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                    Image(systemName: isExpanded ? "chevron.down.circle.fill" : "chevron.right.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white, Color.black.opacity(0.55))
+                        .padding(4)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)

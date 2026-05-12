@@ -12,34 +12,38 @@ struct GalleryWorkspaceView: View {
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
-                WorkspaceModuleRail(selection: $module)
-                    .frame(width: 58)
-                    .background(.ultraThinMaterial)
+                HStack(spacing: 0) {
+                    SectionRail(module: $module, isCollapsed: $isSectionRailCollapsed)
+                        .frame(width: isSectionRailCollapsed ? 48 : 112)
+
+                    if module == .online {
+                        GalleryListPane()
+                            .frame(width: 280)
+                    } else {
+                        LocalFolderPane()
+                            .environmentObject(localLibrary)
+                            .frame(width: 330)
+                    }
+                }
+                .background(.ultraThinMaterial)
 
                 Divider()
 
                 if module == .online {
-                    HStack(spacing: 0) {
-                        SectionRail(isCollapsed: $isSectionRailCollapsed)
-                            .frame(width: isSectionRailCollapsed ? 48 : 112)
-
-                        GalleryListPane()
-                            .frame(width: 280)
-                    }
-                    .background(.ultraThinMaterial)
-
-                    Divider()
-
                     ImageDetailPane()
                         .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    LocalLibraryWorkspaceView()
+                    LocalImageDetailPane()
                         .environmentObject(localLibrary)
+                        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
 
             if module == .online {
                 FullscreenImageViewerOverlay()
+            } else {
+                LocalFullscreenImageViewerOverlay()
+                    .environmentObject(localLibrary)
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
@@ -54,41 +58,9 @@ private enum WorkspaceModule: String {
     case local
 }
 
-private struct WorkspaceModuleRail: View {
-    @Binding var selection: WorkspaceModule
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Button {
-                selection = .online
-            } label: {
-                Image(systemName: "globe")
-                    .frame(width: 34, height: 34)
-                    .background(selection == .online ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .help("在线图库")
-
-            Button {
-                selection = .local
-            } label: {
-                Image(systemName: "folder")
-                    .frame(width: 34, height: 34)
-                    .background(selection == .local ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .help("本地图库")
-
-            Spacer()
-        }
-        .font(.system(size: 16, weight: .semibold))
-        .foregroundStyle(.primary)
-        .padding(.vertical, 14)
-    }
-}
-
 private struct SectionRail: View {
     @EnvironmentObject private var library: LibraryStore
+    @Binding var module: WorkspaceModule
     @Binding var isCollapsed: Bool
 
     var body: some View {
@@ -115,6 +87,7 @@ private struct SectionRail: View {
 
             ForEach(GallerySection.allCases) { section in
                 Button {
+                    module = .online
                     library.section = section
                 } label: {
                     HStack {
@@ -130,16 +103,37 @@ private struct SectionRail: View {
                     .padding(.horizontal, isCollapsed ? 0 : 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 34)
-                    .background(library.section == section ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                    .background(module == .online && library.section == section ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
                     .contentShape(RoundedRectangle(cornerRadius: 7))
                 }
                 .buttonStyle(.plain)
             }
 
+            Button {
+                module = .local
+            } label: {
+                HStack {
+                    if isCollapsed {
+                        Text("本")
+                            .font(.callout.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("本地")
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, isCollapsed ? 0 : 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 34)
+                .background(module == .local ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                .contentShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(.plain)
+
             Spacer()
 
             if !isCollapsed {
-                Text(library.isRefreshingList ? "线上刷新中" : "线上数据")
+                Text(module == .local ? "本地目录" : (library.isRefreshingList ? "线上刷新中" : "线上数据"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
