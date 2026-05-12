@@ -5,7 +5,6 @@ enum GallerySection: String, CaseIterable, Identifiable {
     case popular
     case cosplay
     case album
-    case local
     case favorites
 
     var id: String { rawValue }
@@ -16,7 +15,6 @@ enum GallerySection: String, CaseIterable, Identifiable {
         case .popular: "推荐"
         case .cosplay: "Cosplay"
         case .album: "写真"
-        case .local: "本地"
         case .favorites: "收藏"
         }
     }
@@ -31,7 +29,7 @@ enum GallerySection: String, CaseIterable, Identifiable {
             URL(string: "https://www.4khd.com/pages/cosplay")!
         case .album:
             URL(string: "https://www.4khd.com/pages/album")!
-        case .local, .favorites:
+        case .favorites:
             nil
         }
     }
@@ -45,7 +43,6 @@ enum ContentKind: String, Codable {
     case gallery
     case recommended
     case advertisement
-    case local
 }
 
 struct GalleryItem: Identifiable {

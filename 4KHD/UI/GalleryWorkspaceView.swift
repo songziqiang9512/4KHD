@@ -5,32 +5,85 @@ import UniformTypeIdentifiers
 
 struct GalleryWorkspaceView: View {
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var localLibrary: LocalLibraryStore
     @AppStorage("com.songziqiang.4khd.isSectionRailCollapsed") private var isSectionRailCollapsed = false
+    @State private var module: WorkspaceModule = .online
 
     var body: some View {
         ZStack {
             HStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    SectionRail(isCollapsed: $isSectionRailCollapsed)
-                        .frame(width: isSectionRailCollapsed ? 48 : 112)
-
-                    GalleryListPane()
-                        .frame(width: 280)
-                }
-                .background(.ultraThinMaterial)
+                WorkspaceModuleRail(selection: $module)
+                    .frame(width: 58)
+                    .background(.ultraThinMaterial)
 
                 Divider()
 
-                ImageDetailPane()
-                    .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
+                if module == .online {
+                    HStack(spacing: 0) {
+                        SectionRail(isCollapsed: $isSectionRailCollapsed)
+                            .frame(width: isSectionRailCollapsed ? 48 : 112)
+
+                        GalleryListPane()
+                            .frame(width: 280)
+                    }
+                    .background(.ultraThinMaterial)
+
+                    Divider()
+
+                    ImageDetailPane()
+                        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    LocalLibraryWorkspaceView()
+                        .environmentObject(localLibrary)
+                }
             }
 
-            FullscreenImageViewerOverlay()
+            if module == .online {
+                FullscreenImageViewerOverlay()
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             library.refreshFromNetwork()
         }
+    }
+}
+
+private enum WorkspaceModule: String {
+    case online
+    case local
+}
+
+private struct WorkspaceModuleRail: View {
+    @Binding var selection: WorkspaceModule
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Button {
+                selection = .online
+            } label: {
+                Image(systemName: "globe")
+                    .frame(width: 34, height: 34)
+                    .background(selection == .online ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("在线图库")
+
+            Button {
+                selection = .local
+            } label: {
+                Image(systemName: "folder")
+                    .frame(width: 34, height: 34)
+                    .background(selection == .local ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("本地图库")
+
+            Spacer()
+        }
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundStyle(.primary)
+        .padding(.vertical, 14)
     }
 }
 
@@ -86,7 +139,7 @@ private struct SectionRail: View {
             Spacer()
 
             if !isCollapsed {
-                Text(library.section == .local ? "本地目录" : (library.isRefreshingList ? "线上刷新中" : "线上数据"))
+                Text(library.isRefreshingList ? "线上刷新中" : "线上数据")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -100,7 +153,6 @@ private struct SectionRail: View {
         case .popular: "荐"
         case .cosplay: "C"
         case .album: "写"
-        case .local: "本"
         case .favorites: "藏"
         }
     }
@@ -125,44 +177,32 @@ private struct GalleryListPane: View {
 
                 Spacer()
 
-                if library.section == .local {
-                    Button {
-                        importLocalFolder()
-                    } label: {
-                        Image(systemName: "folder.badge.plus")
-                            .frame(width: 22)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("导入本地图片文件夹")
-                } else {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        TextField("搜索", text: $library.searchText)
-                            .textFieldStyle(.plain)
-                            .font(.callout)
-                            .onSubmit {
-                                library.submitSearch()
-                            }
-                        if library.activeSearchQuery != nil || !library.searchText.isEmpty {
-                            Button {
-                                library.clearSearch()
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("清空搜索")
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    TextField("搜索", text: $library.searchText)
+                        .textFieldStyle(.plain)
+                        .font(.callout)
+                        .onSubmit {
+                            library.submitSearch()
                         }
+                    if library.activeSearchQuery != nil || !library.searchText.isEmpty {
+                        Button {
+                            library.clearSearch()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("清空搜索")
                     }
-                    .padding(.horizontal, 9)
-                    .frame(width: 156, height: 30)
-                    .background(Color(nsColor: .textBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.16), lineWidth: 1))
                 }
+                .padding(.horizontal, 9)
+                .frame(width: 156, height: 30)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.16), lineWidth: 1))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -377,18 +417,6 @@ private struct GalleryListPane: View {
         return normalized.isEmpty ? "未知作者" : normalized
     }
 
-    private func importLocalFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.prompt = "导入"
-        panel.message = "选择一个包含图片的文件夹"
-
-        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
-        library.importLocalFolder(folderURL)
-    }
 }
 
 private struct FavoriteAuthorGroup: Identifiable {
@@ -639,7 +667,7 @@ private struct GalleryRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 5) {
                     KindBadge(kind: item.kind)
-                    Text(item.kind == .local ? "\(item.imageCount) 张" : "\(item.imageCount) 张 · \(item.pageCount) 页")
+                    Text("\(item.imageCount) 张 · \(item.pageCount) 页")
                         .lineLimit(1)
                 }
                 .font(.caption2)
@@ -714,24 +742,22 @@ private struct ImageDetailPane: View {
                     Color(red: 0.06, green: 0.06, blue: 0.065)
 
                     GeometryReader { proxy in
-                        if !slot.pageURL.isFileURL {
-                            DetailImageResolverView(
-                                pageURL: slot.pageURL,
-                                onResolvedPage: { page in
-                                    Task { @MainActor in
-                                        library.registerResolvedPage(page)
-                                    }
-                                },
-                                onFailure: {
-                                    detailFailed = true
-                                    isDetailReady = true
+                        DetailImageResolverView(
+                            pageURL: slot.pageURL,
+                            onResolvedPage: { page in
+                                Task { @MainActor in
+                                    library.registerResolvedPage(page)
                                 }
-                            )
-                            .frame(width: 1, height: 1)
-                            .opacity(0.001)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                        }
+                            },
+                            onFailure: {
+                                detailFailed = true
+                                isDetailReady = true
+                            }
+                        )
+                        .frame(width: 1, height: 1)
+                        .opacity(0.001)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
 
                         ZoomableImageCanvas(
                             url: slot.knownURL,
@@ -815,9 +841,7 @@ private struct ImageDetailPane: View {
                 HStack(spacing: 10) {
                     KindBadge(kind: item.kind)
                     Text("\(item.imageCount) 张")
-                    if item.kind != .local {
-                        Text("\(item.pageCount) 页")
-                    }
+                    Text("\(item.pageCount) 页")
                     Text("#\(slot.displayIndex)")
                 }
                 .font(.caption)
@@ -849,25 +873,23 @@ private struct ImageDetailPane: View {
             }
             .help("实际大小")
 
-            if item.kind != .local {
-                Button {
-                    library.toggleFavorite(for: item)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
-                            .foregroundStyle(library.isFavorite(item) ? Color.red : Color.primary)
-                        Text("收藏")
-                    }
+            Button {
+                library.toggleFavorite(for: item)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
+                        .foregroundStyle(library.isFavorite(item) ? Color.red : Color.primary)
+                    Text("收藏")
                 }
-
-                Button {
-                    NSWorkspace.shared.open(item.detailURL)
-                } label: {
-                    Image(systemName: "safari")
-                        .frame(width: 22)
-                }
-                .help("打开原网页：\(item.detailURL.absoluteString)")
             }
+
+            Button {
+                NSWorkspace.shared.open(item.detailURL)
+            } label: {
+                Image(systemName: "safari")
+                    .frame(width: 22)
+            }
+            .help("打开原网页：\(item.detailURL.absoluteString)")
 
             Button {
                 saveCurrentImage(item: item, slot: slot)
@@ -893,22 +915,9 @@ private struct ImageDetailPane: View {
         guard let imageURL = slot.knownURL else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.image]
-        panel.nameFieldStringValue = imageURL.isFileURL ? imageURL.lastPathComponent : "\(item.id)-\(slot.displayIndex).jpg"
+        panel.nameFieldStringValue = "\(item.id)-\(slot.displayIndex).jpg"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let target = panel.url else { return }
-
-        if imageURL.isFileURL {
-            do {
-                if FileManager.default.fileExists(atPath: target.path) {
-                    try FileManager.default.removeItem(at: target)
-                }
-                try FileManager.default.copyItem(at: imageURL, to: target)
-                saveMessage = "已保存"
-            } catch {
-                saveMessage = "保存失败"
-            }
-            return
-        }
 
         saveMessage = "保存中"
         saveTask?.cancel()
@@ -929,7 +938,7 @@ private struct ImageDetailPane: View {
 
 }
 
-private struct DetailPlaceholder: View {
+struct DetailPlaceholder: View {
     enum Kind {
         case loading
         case failed
@@ -1092,7 +1101,7 @@ private struct FullscreenImageViewerOverlay: View {
     }
 }
 
-private struct ZoomableImageCanvas<Placeholder: View>: View {
+struct ZoomableImageCanvas<Placeholder: View>: View {
     let url: URL?
     let resetToken: UUID
     let contentInsets: EdgeInsets
@@ -1492,7 +1501,6 @@ private struct KindBadge: View {
         case .gallery: "图集"
         case .recommended: "推荐"
         case .advertisement: "广告"
-        case .local: "本地"
         }
     }
 
@@ -1501,12 +1509,11 @@ private struct KindBadge: View {
         case .gallery: .secondary
         case .recommended: .blue
         case .advertisement: .orange
-        case .local: .green
         }
     }
 }
 
-private struct StepButton: View {
+struct StepButton: View {
     let systemName: String
     let action: () -> Void
 
