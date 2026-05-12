@@ -8,9 +8,11 @@ final class LocalLibraryStore: ObservableObject {
     @Published var selectedFolderID: LocalFolderNode.ID?
     @Published var selectedImageIndex = 0
     @Published var isFullscreenViewerPresented = false
+    @Published private(set) var isScanning = false
 
     private var rootURLs: [URL] = []
     private var excludedFolderPathsByRootPath: [String: Set<String>] = [:]
+    private var scanTask: Task<Void, Never>?
     private static let rootFoldersDefaultsKey = "com.songziqiang.4khd.localRootFolders.v2"
     private static let legacyRootFoldersDefaultsKey = "com.songziqiang.4khd.localFolders.v1"
     private static let excludedFoldersDefaultsKey = "com.songziqiang.4khd.localExcludedFolders.v1"
@@ -41,13 +43,20 @@ final class LocalLibraryStore: ObservableObject {
 
     func importRootFolder(_ folderURL: URL) {
         let url = folderURL.standardizedFileURL
-        guard let root = Self.scanRoot(at: url, excluding: excludedFolderPathsByRootPath[url.path, default: []]) else { return }
-        rootURLs.removeAll { $0 == url }
-        rootURLs.insert(url, at: 0)
-        roots.removeAll { $0.url == url }
-        roots.insert(root, at: 0)
-        saveRootFolders()
-        selectFolder(root.tree, force: true)
+        isScanning = true
+        scanTask?.cancel()
+        scanTask = Task { [weak self] in
+            let excludedPaths = self?.excludedFolderPathsByRootPath[url.path, default: []] ?? []
+            let root = await Task.detached(priority: .userInitiated) {
+                Self.scanRoot(at: url, excluding: excludedPaths)
+            }.value
+
+            guard !Task.isCancelled, let root else {
+                self?.isScanning = false
+                return
+            }
+            self?.applyImportedRoot(root, url: url)
+        }
     }
 
     func removeFolder(_ folder: LocalFolderNode) {
@@ -75,16 +84,15 @@ final class LocalLibraryStore: ObservableObject {
     }
 
     func selectFolder(_ folder: LocalFolderNode, force: Bool = false) {
-        guard force || selectedFolderID != folder.id else { return }
-        selectedFolderID = folder.id
+        let targetFolder = folder.images.isEmpty ? Self.firstFolderWithImages(in: folder) ?? folder : folder
+        guard force || selectedFolderID != targetFolder.id else { return }
+        selectedFolderID = targetFolder.id
         selectedImageIndex = 0
-        RemoteImagePipeline.shared.prefetchDetailImages(upcomingImageURLs)
     }
 
     func selectImage(at index: Int) {
         guard selectedImages.indices.contains(index) else { return }
         selectedImageIndex = index
-        RemoteImagePipeline.shared.prefetchDetailImages(upcomingImageURLs)
     }
 
     func stepImage(_ delta: Int) {
@@ -101,10 +109,25 @@ final class LocalLibraryStore: ObservableObject {
             ?? []
         loadExcludedFolders()
         rootURLs = storedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL }
-        roots = rootURLs.compactMap { url in
-            Self.scanRoot(at: url, excluding: excludedFolderPathsByRootPath[url.path, default: []])
+        roots = []
+        selectedFolderID = nil
+        isScanning = !rootURLs.isEmpty
+        scanTask?.cancel()
+        scanTask = Task { [weak self] in
+            guard let self else { return }
+            let rootURLs = self.rootURLs
+            let excluded = self.excludedFolderPathsByRootPath
+            let scannedRoots = await Task.detached(priority: .utility) {
+                rootURLs.compactMap { url in
+                    Self.scanRoot(at: url, excluding: excluded[url.path, default: []])
+                }
+            }.value
+
+            guard !Task.isCancelled else { return }
+            self.roots = scannedRoots
+            self.selectedFolderID = self.firstFolder?.id
+            self.isScanning = false
         }
-        selectedFolderID = firstFolder?.id
     }
 
     private func saveRootFolders() {
@@ -128,24 +151,47 @@ final class LocalLibraryStore: ObservableObject {
 
     private func reloadRoot(_ url: URL) {
         let excludedPaths = excludedFolderPathsByRootPath[url.path, default: []]
-        if let root = Self.scanRoot(at: url, excluding: excludedPaths),
-           let index = roots.firstIndex(where: { $0.url == url }) {
-            roots[index] = root
-            if selectedFolderID == nil || Self.folder(withID: selectedFolderID, in: root.tree) == nil {
-                selectedFolderID = Self.firstFolderWithImages(in: root.tree)?.id ?? root.tree.id
-                selectedImageIndex = 0
+        isScanning = true
+        scanTask?.cancel()
+        scanTask = Task { [weak self] in
+            let scannedRoot = await Task.detached(priority: .userInitiated) {
+                Self.scanRoot(at: url, excluding: excludedPaths)
+            }.value
+
+            guard !Task.isCancelled else { return }
+            if let scannedRoot,
+               let index = self?.roots.firstIndex(where: { $0.url == url }) {
+                self?.roots[index] = scannedRoot
+                if self?.selectedFolderID == nil || Self.folder(withID: self?.selectedFolderID, in: scannedRoot.tree) == nil {
+                    self?.selectedFolderID = Self.firstFolderWithImages(in: scannedRoot.tree)?.id ?? scannedRoot.tree.id
+                    self?.selectedImageIndex = 0
+                }
+                self?.isScanning = false
+            } else if let root = self?.roots.first(where: { $0.url == url }) {
+                self?.isScanning = false
+                self?.removeRoot(root)
+            } else {
+                self?.isScanning = false
             }
-        } else if let root = roots.first(where: { $0.url == url }) {
-            removeRoot(root)
         }
     }
 
-    private static func scanRoot(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalLibraryRoot? {
+    private func applyImportedRoot(_ root: LocalLibraryRoot, url: URL) {
+        rootURLs.removeAll { $0 == url }
+        rootURLs.insert(url, at: 0)
+        roots.removeAll { $0.url == url }
+        roots.insert(root, at: 0)
+        saveRootFolders()
+        isScanning = false
+        selectFolder(root.tree, force: true)
+    }
+
+    private nonisolated static func scanRoot(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalLibraryRoot? {
         guard let tree = scanFolder(at: url, excluding: excludedFolderPaths), tree.imageCount > 0 else { return nil }
         return LocalLibraryRoot(url: url, tree: tree)
     }
 
-    private static func scanFolder(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalFolderNode? {
+    private nonisolated static func scanFolder(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalFolderNode? {
         let standardizedURL = url.standardizedFileURL
         guard !excludedFolderPaths.contains(standardizedURL.path) else { return nil }
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .contentTypeKey]

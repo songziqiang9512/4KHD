@@ -45,10 +45,10 @@ struct RemoteImageView<Placeholder: View>: View {
             image = nil
             guard let url else { return }
             if url.isFileURL {
-                let loadedImage = NSImage(contentsOf: url)
+                let data = await LocalImageDataCache.shared.data(for: url)
                 guard loadedURL == url else { return }
-                image = loadedImage
-                if let loadedImage {
+                if let data, let loadedImage = NSImage(data: data) {
+                    image = loadedImage
                     onImageLoaded(loadedImage)
                     onLoaded()
                 }
@@ -159,6 +159,33 @@ final class RemoteImagePipeline {
         configuration.httpMaximumConnectionsPerHost = 6
         return configuration
     }()
+}
+
+actor LocalImageDataCache {
+    static let shared = LocalImageDataCache()
+
+    private let cache = NSCache<NSURL, NSData>()
+
+    private init() {
+        cache.countLimit = 240
+        cache.totalCostLimit = 256 * 1024 * 1024
+    }
+
+    func data(for url: URL) async -> Data? {
+        let key = url as NSURL
+        if let cached = cache.object(forKey: key) {
+            return cached as Data
+        }
+
+        let loaded = await Task.detached(priority: .utility) {
+            try? Data(contentsOf: url, options: [.mappedIfSafe])
+        }.value
+
+        if let loaded {
+            cache.setObject(loaded as NSData, forKey: key, cost: loaded.count)
+        }
+        return loaded
+    }
 }
 
 private extension TaskPriority {

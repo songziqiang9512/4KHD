@@ -11,9 +11,15 @@ struct LocalFolderPane: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("本地图库")
                         .font(.headline)
-                    Text("\(localLibrary.roots.count) 个根目录")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        if localLibrary.isScanning {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(localLibrary.isScanning ? "扫描目录中" : "\(localLibrary.roots.count) 个根目录")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
@@ -145,7 +151,7 @@ private struct LocalRootFolderRow: View {
         LocalFolderRowContent(
             title: root.title,
             subtitle: "\(root.imageCount) 张 · \(root.url.path)",
-            coverURL: root.tree.coverURL,
+            coverURL: root.tree.directCoverURL,
             isExpanded: isExpanded,
             indent: 0,
             isSelected: isSelected,
@@ -165,7 +171,7 @@ private struct LocalFolderRow: View {
         LocalFolderRowContent(
             title: folder.title,
             subtitle: "\(folder.images.count) 张当前目录 · \(folder.imageCount) 张含子目录",
-            coverURL: folder.coverURL,
+            coverURL: folder.directCoverURL,
             isExpanded: isExpanded,
             indent: CGFloat(level) * 16,
             isSelected: isSelected,
@@ -189,13 +195,9 @@ private struct LocalFolderRowContent: View {
                 Color.clear.frame(width: indent, height: 1)
 
                 ZStack(alignment: .bottomTrailing) {
-                    RemoteImageView(url: coverURL, contentMode: .fill, priority: .utility) {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.08))
-                            .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(.secondary))
-                    }
-                    .frame(width: 46, height: 62)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    folderThumbnail
+                        .frame(width: 46, height: 62)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
 
                     Image(systemName: isExpanded ? "chevron.down.circle.fill" : "chevron.right.circle.fill")
                         .font(.caption.weight(.semibold))
@@ -222,5 +224,26 @@ private struct LocalFolderRowContent: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+    }
+
+    private var folderIconPlaceholder: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .overlay(
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            )
+    }
+
+    @ViewBuilder
+    private var folderThumbnail: some View {
+        if let coverURL {
+            RemoteImageView(url: coverURL, contentMode: .fill, priority: .utility) {
+                folderIconPlaceholder
+            }
+        } else {
+            folderIconPlaceholder
+        }
     }
 }

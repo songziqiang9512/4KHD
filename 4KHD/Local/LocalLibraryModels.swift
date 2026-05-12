@@ -1,15 +1,15 @@
 import Foundation
 
-struct LocalLibraryRoot: Identifiable, Hashable {
+struct LocalLibraryRoot: Identifiable, Hashable, Sendable {
     let url: URL
     let tree: LocalFolderNode
 
     var id: String { url.path }
     var title: String { url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent }
-    var imageCount: Int { tree.imageCount }
+    nonisolated var imageCount: Int { tree.imageCount }
 }
 
-struct LocalFolderNode: Identifiable, Hashable {
+struct LocalFolderNode: Identifiable, Hashable, Sendable {
     let url: URL
     let title: String
     let folders: [LocalFolderNode]
@@ -17,16 +17,16 @@ struct LocalFolderNode: Identifiable, Hashable {
 
     var id: String { url.path }
 
-    var imageCount: Int {
+    nonisolated var imageCount: Int {
         images.count + folders.reduce(0) { $0 + $1.imageCount }
     }
 
-    var coverURL: URL? {
-        images.first?.url ?? folders.lazy.compactMap(\.coverURL).first
+    nonisolated var directCoverURL: URL? {
+        images.first?.url
     }
 }
 
-struct LocalImageItem: Identifiable, Hashable {
+struct LocalImageItem: Identifiable, Hashable, Sendable {
     let url: URL
     let title: String
 
