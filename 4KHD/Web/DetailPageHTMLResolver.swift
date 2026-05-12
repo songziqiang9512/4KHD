@@ -6,15 +6,7 @@ enum DetailPageHTMLResolver {
             return cached
         }
 
-        let html: String
-        do {
-            html = try await fetchHTML(pageURL)
-        } catch {
-            guard let localHTML = LocalDetailHTMLStore.html(for: pageURL) else {
-                throw error
-            }
-            html = localHTML
-        }
+        let html = try await fetchHTML(pageURL)
         try Task.checkCancellation()
 
         let page = try parse(html: html, pageURL: pageURL)

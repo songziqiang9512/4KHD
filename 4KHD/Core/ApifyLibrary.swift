@@ -60,9 +60,7 @@ final class ApifyLibrary {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-                .appendingPathComponent("Scripts/outputs/4khd_site_capture/apify-expanded/expanded-ui-content.json"),
-            bundle.url(forResource: "expanded-ui-content", withExtension: "json", subdirectory: "ApifyCapture"),
-            bundle.url(forResource: "expanded-ui-content", withExtension: "json")
+                .appendingPathComponent("Scripts/outputs/4khd_site_capture/apify-expanded/expanded-ui-content.json")
         ].compactMap { $0 }
 
         for url in candidates {

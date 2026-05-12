@@ -212,30 +212,6 @@ struct DetailImageResolverView: NSViewRepresentable {
     )
 }
 
-enum LocalDetailHTMLStore {
-    nonisolated static func html(for pageURL: URL, bundle: Bundle = .main) -> String? {
-        guard pageURL.trailingPageNumber == nil else { return nil }
-        let slug = pageURL.deletingPathExtension().lastPathComponent
-        guard !slug.isEmpty else { return nil }
-        let name = "detail-\(slug)"
-        let candidates = [
-            bundle.url(forResource: name, withExtension: "html", subdirectory: "ApifyCapture"),
-            bundle.url(forResource: name, withExtension: "html"),
-            URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("Scripts/outputs/4khd_site_capture/\(name).html")
-        ].compactMap { $0 }
-
-        for url in candidates {
-            guard let html = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            return html
-        }
-        return nil
-    }
-}
-
 extension URL {
     nonisolated var trailingPageNumber: Int? {
         guard let last = pathComponents.last else { return nil }
