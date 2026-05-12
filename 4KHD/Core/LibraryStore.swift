@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class LibraryStore: ObservableObject {
@@ -22,6 +23,7 @@ final class LibraryStore: ObservableObject {
 
     private var library = ApifyLibrary()
     @Published private var favorites: [FavoriteGalleryItem] = []
+    @Published private var localItems: [GalleryItem] = []
     private var searchItems: [GalleryItem] = []
     private var searchNextPageURL: URL?
     private var searchRefreshTask: Task<Void, Never>?
@@ -35,9 +37,11 @@ final class LibraryStore: ObservableObject {
     private var detailPageTasks: [String: Task<Void, Never>] = [:]
     private var pendingSelectionIndex: Int?
     private static let favoritesDefaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
+    private static let localFoldersDefaultsKey = "com.songziqiang.4khd.localFolders.v1"
 
     init() {
         loadFavorites()
+        loadLocalFolders()
         selectFirstItemIfNeeded(force: true)
     }
 
@@ -47,6 +51,9 @@ final class LibraryStore: ObservableObject {
         }
         if section == .favorites {
             return favorites.compactMap(Self.favoriteToGalleryItem)
+        }
+        if section == .local {
+            return localItems
         }
         return library.items(in: section)
     }
@@ -63,6 +70,9 @@ final class LibraryStore: ObservableObject {
             return searchNextPageURL != nil
         }
         if section == .favorites {
+            return false
+        }
+        if section == .local {
             return false
         }
         return listNextPageURLs[section] != nil
@@ -91,7 +101,7 @@ final class LibraryStore: ObservableObject {
             return
         }
 
-        guard section != .favorites else {
+        guard section.isNetworkBacked else {
             visibleCount = min(visibleCount + 18, allItems.count)
             return
         }
@@ -146,7 +156,7 @@ final class LibraryStore: ObservableObject {
             submitSearch()
             return
         }
-        guard section != .favorites else { return }
+        guard section.isNetworkBacked else { return }
         let currentSection = section
         listRefreshTasks[currentSection]?.cancel()
         isRefreshingList = true
@@ -309,6 +319,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func toggleFavorite(for item: GalleryItem) {
+        guard item.kind != .local else { return }
         if favorites.contains(where: { $0.detailURL == item.detailURL.absoluteString }) {
             favorites.removeAll { $0.detailURL == item.detailURL.absoluteString }
             DetailPageImageCache.shared.setPersistent(false, forDetailURL: item.detailURL)
@@ -323,11 +334,29 @@ final class LibraryStore: ObservableObject {
     }
 
     func isFavorite(_ item: GalleryItem) -> Bool {
-        favorites.contains(where: { $0.detailURL == item.detailURL.absoluteString })
+        guard item.kind != .local else { return false }
+        return favorites.contains(where: { $0.detailURL == item.detailURL.absoluteString })
     }
 
     func isCached(_ item: GalleryItem) -> Bool {
-        DetailPageImageCache.shared.containsCachedPage(forDetailURL: item.detailURL)
+        guard item.kind != .local else { return false }
+        return DetailPageImageCache.shared.containsCachedPage(forDetailURL: item.detailURL)
+    }
+
+    func importLocalFolder(_ folderURL: URL) {
+        let standardizedFolderURL = folderURL.standardizedFileURL
+        let imageURLs = Self.localImageURLs(in: standardizedFolderURL)
+        guard !imageURLs.isEmpty else { return }
+
+        let item = Self.localGalleryItem(folderURL: standardizedFolderURL, imageURLs: imageURLs)
+        localItems.removeAll { $0.detailURL == standardizedFolderURL }
+        localItems.insert(item, at: 0)
+        saveLocalFolders()
+
+        if section == .local {
+            visibleCount = min(max(visibleCount, 18), allItems.count)
+            select(item, force: true)
+        }
     }
 
     func selectImage(at index: Int) {
@@ -446,6 +475,24 @@ final class LibraryStore: ObservableObject {
         }
     }
 
+    private func loadLocalFolders() {
+        guard let folderPaths = UserDefaults.standard.array(forKey: Self.localFoldersDefaultsKey) as? [String] else {
+            localItems = []
+            return
+        }
+        localItems = folderPaths.compactMap { path in
+            let folderURL = URL(fileURLWithPath: path).standardizedFileURL
+            let imageURLs = Self.localImageURLs(in: folderURL)
+            guard !imageURLs.isEmpty else { return nil }
+            return Self.localGalleryItem(folderURL: folderURL, imageURLs: imageURLs)
+        }
+    }
+
+    private func saveLocalFolders() {
+        let folderPaths = localItems.map(\.detailURL.path)
+        UserDefaults.standard.set(folderPaths, forKey: Self.localFoldersDefaultsKey)
+    }
+
     private func saveFavorites() {
         guard let data = try? JSONEncoder().encode(favorites) else { return }
         UserDefaults.standard.set(data, forKey: Self.favoritesDefaultsKey)
@@ -538,6 +585,7 @@ final class LibraryStore: ObservableObject {
     }
 
     private func resolveDetailPage(_ pageURL: URL) {
+        guard !pageURL.isFileURL else { return }
         let key = pageURL.absoluteString
         guard detailPageTasks[key] == nil else { return }
         detailPageTasks[key] = Task { [weak self] in
@@ -584,6 +632,49 @@ final class LibraryStore: ObservableObject {
         let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard path != detailPath else { return 1 }
         return Int(path.split(separator: "/").last ?? "") ?? 1
+    }
+
+    private static func localImageURLs(in folderURL: URL) -> [URL] {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .contentTypeKey]
+        guard let urls = FileManager.default.enumerator(
+            at: folderURL,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            return []
+        }
+
+        return urls
+            .compactMap { $0 as? URL }
+            .filter { url in
+                guard let values = try? url.resourceValues(forKeys: keys),
+                      values.isRegularFile == true,
+                      let contentType = values.contentType else {
+                    return false
+                }
+                return contentType.conforms(to: .image)
+            }
+            .sorted { lhs, rhs in
+                lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+            }
+    }
+
+    private static func localGalleryItem(folderURL: URL, imageURLs: [URL]) -> GalleryItem {
+        let folderName = folderURL.lastPathComponent.isEmpty ? folderURL.path : folderURL.lastPathComponent
+        return GalleryItem(
+            id: "local-\(folderURL.path)",
+            section: .local,
+            kind: .local,
+            title: folderName,
+            rawTitle: folderName,
+            subtitle: folderURL.path,
+            detailURL: folderURL,
+            coverURL: imageURLs.first,
+            imageCount: imageURLs.count,
+            pageCount: 1,
+            pageURLs: [folderURL],
+            sampleImageURLs: imageURLs
+        )
     }
 }
 

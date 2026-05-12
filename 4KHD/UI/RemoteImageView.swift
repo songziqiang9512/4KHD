@@ -44,6 +44,16 @@ struct RemoteImageView<Placeholder: View>: View {
             loadedURL = url
             image = nil
             guard let url else { return }
+            if url.isFileURL {
+                let loadedImage = NSImage(contentsOf: url)
+                guard loadedURL == url else { return }
+                image = loadedImage
+                if let loadedImage {
+                    onImageLoaded(loadedImage)
+                    onLoaded()
+                }
+                return
+            }
             let request = RemoteImagePipeline.shared.request(for: url, priority: priority.nukePriority)
             imageTask = RemoteImagePipeline.shared.loadImage(with: request) { loadedImage in
                 guard loadedURL == url else { return }
@@ -127,8 +137,9 @@ final class RemoteImagePipeline {
     }
 
     func prefetchDetailImages(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
-        let requests = urls.map { request(for: $0, priority: .low) }
+        let remoteURLs = urls.filter { !$0.isFileURL }
+        guard !remoteURLs.isEmpty else { return }
+        let requests = remoteURLs.map { request(for: $0, priority: .low) }
         detailPrefetcher.startPrefetching(with: requests)
     }
 

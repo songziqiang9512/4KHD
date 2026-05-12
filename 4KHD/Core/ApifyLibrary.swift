@@ -77,7 +77,7 @@ final class ApifyLibrary {
 
     private static func mapPayload(_ payload: RootPayload?) -> [GallerySection: [GalleryItem]] {
         var mapped: [GallerySection: [GalleryItem]] = [:]
-        for section in GallerySection.allCases {
+        for section in GallerySection.allCases where section.isNetworkBacked {
             let rawItems = payload?.sections[section.rawValue]?.items ?? []
             mapped[section] = rawItems.compactMap { Self.makeItem($0, section: section) }
         }
