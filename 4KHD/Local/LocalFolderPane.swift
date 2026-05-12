@@ -239,7 +239,7 @@ private struct LocalFolderRowContent: View {
     @ViewBuilder
     private var folderThumbnail: some View {
         if let coverURL {
-            RemoteImageView(url: coverURL, contentMode: .fill, priority: .utility) {
+            RemoteImageView(url: coverURL, contentMode: .fill, priority: .utility, localMaxPixelSize: 160) {
                 folderIconPlaceholder
             }
         } else {

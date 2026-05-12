@@ -16,10 +16,12 @@ struct LocalImageDetailPane: View {
                     Color(red: 0.06, green: 0.06, blue: 0.065)
 
                     GeometryReader { proxy in
+                        let maxPixelSize = max(proxy.size.width, proxy.size.height) * 2
                         ZoomableImageCanvas(
                             url: image.url,
                             resetToken: resetToken,
-                            contentInsets: EdgeInsets(top: headerHeight, leading: 0, bottom: filmstripHeight, trailing: 0)
+                            contentInsets: EdgeInsets(top: headerHeight, leading: 0, bottom: filmstripHeight, trailing: 0),
+                            localMaxPixelSize: maxPixelSize
                         ) {
                             DetailPlaceholder(kind: .loading)
                         } onDisplayed: {}
@@ -191,7 +193,7 @@ private struct LocalImageThumbnail: View {
     let url: URL
 
     var body: some View {
-        RemoteImageView(url: url, contentMode: .fill, priority: .utility) {
+        RemoteImageView(url: url, contentMode: .fill, priority: .utility, localMaxPixelSize: 220) {
             Rectangle()
                 .fill(Color.white.opacity(0.08))
                 .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(.secondary))

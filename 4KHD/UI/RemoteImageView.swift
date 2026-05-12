@@ -1,10 +1,12 @@
 import Nuke
 import SwiftUI
+import ImageIO
 
 struct RemoteImageView<Placeholder: View>: View {
     let url: URL?
     let contentMode: ContentMode
     let priority: TaskPriority
+    let localMaxPixelSize: CGFloat?
     @ViewBuilder let placeholder: () -> Placeholder
     let onLoaded: () -> Void
     let onImageLoaded: (NSImage) -> Void
@@ -16,6 +18,7 @@ struct RemoteImageView<Placeholder: View>: View {
         url: URL?,
         contentMode: ContentMode,
         priority: TaskPriority = .utility,
+        localMaxPixelSize: CGFloat? = nil,
         onLoaded: @escaping () -> Void = {},
         onImageLoaded: @escaping (NSImage) -> Void = { _ in },
         @ViewBuilder placeholder: @escaping () -> Placeholder
@@ -23,6 +26,7 @@ struct RemoteImageView<Placeholder: View>: View {
         self.url = url
         self.contentMode = contentMode
         self.priority = priority
+        self.localMaxPixelSize = localMaxPixelSize
         self.onLoaded = onLoaded
         self.onImageLoaded = onImageLoaded
         self.placeholder = placeholder
@@ -45,9 +49,9 @@ struct RemoteImageView<Placeholder: View>: View {
             image = nil
             guard let url else { return }
             if url.isFileURL {
-                let data = await LocalImageDataCache.shared.data(for: url)
+                let loadedImage = await LocalImageCache.shared.image(for: url, maxPixelSize: localMaxPixelSize)
                 guard loadedURL == url else { return }
-                if let data, let loadedImage = NSImage(data: data) {
+                if let loadedImage {
                     image = loadedImage
                     onImageLoaded(loadedImage)
                     onLoaded()
@@ -161,30 +165,58 @@ final class RemoteImagePipeline {
     }()
 }
 
-actor LocalImageDataCache {
-    static let shared = LocalImageDataCache()
+actor LocalImageCache {
+    static let shared = LocalImageCache()
 
-    private let cache = NSCache<NSURL, NSData>()
+    private let cache = NSCache<NSString, NSImage>()
 
     private init() {
-        cache.countLimit = 240
-        cache.totalCostLimit = 256 * 1024 * 1024
+        cache.countLimit = 320
+        cache.totalCostLimit = 384 * 1024 * 1024
     }
 
-    func data(for url: URL) async -> Data? {
-        let key = url as NSURL
+    func image(for url: URL, maxPixelSize: CGFloat?) async -> NSImage? {
+        let key = "\(url.path)#\(Int(maxPixelSize ?? 0))" as NSString
         if let cached = cache.object(forKey: key) {
-            return cached as Data
+            return cached
         }
 
         let loaded = await Task.detached(priority: .utility) {
-            try? Data(contentsOf: url, options: [.mappedIfSafe])
+            loadImage(at: url, maxPixelSize: maxPixelSize)
         }.value
 
         if let loaded {
-            cache.setObject(loaded as NSData, forKey: key, cost: loaded.count)
+            cache.setObject(loaded, forKey: key, cost: loaded.cacheCost)
         }
         return loaded
+    }
+}
+
+nonisolated private func loadImage(at url: URL, maxPixelSize: CGFloat?) -> NSImage? {
+    guard let maxPixelSize, maxPixelSize > 0 else {
+        return NSImage(contentsOf: url)
+    }
+
+    let options: CFDictionary = [
+        kCGImageSourceShouldCache: false
+    ] as CFDictionary
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else { return nil }
+
+    let downsampleOptions: CFDictionary = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: Int(maxPixelSize)
+    ] as CFDictionary
+
+    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else { return nil }
+    return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+}
+
+private extension NSImage {
+    nonisolated var cacheCost: Int {
+        guard let representation = representations.first else { return 1 }
+        return max(representation.pixelsWide * representation.pixelsHigh * 4, 1)
     }
 }
 

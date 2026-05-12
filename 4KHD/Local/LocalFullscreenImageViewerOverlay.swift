@@ -13,7 +13,13 @@ struct LocalFullscreenImageViewerOverlay: View {
                 if let folder = localLibrary.selectedFolder, let image = localLibrary.selectedImage {
                     if isChromeHidden {
                         GeometryReader { proxy in
-                            ZoomableImageCanvas(url: image.url, resetToken: resetToken, contentInsets: .init()) {
+                            let maxPixelSize = max(proxy.size.width, proxy.size.height) * 2
+                            ZoomableImageCanvas(
+                                url: image.url,
+                                resetToken: resetToken,
+                                contentInsets: .init(),
+                                localMaxPixelSize: maxPixelSize
+                            ) {
                                 DetailPlaceholder(kind: .loading)
                             } onDisplayed: {}
                             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -23,10 +29,12 @@ struct LocalFullscreenImageViewerOverlay: View {
                     } else {
                         ZStack {
                             GeometryReader { proxy in
+                                let maxPixelSize = max(proxy.size.width, proxy.size.height) * 2
                                 ZoomableImageCanvas(
                                     url: image.url,
                                     resetToken: resetToken,
-                                    contentInsets: EdgeInsets(top: 54, leading: 0, bottom: 112, trailing: 0)
+                                    contentInsets: EdgeInsets(top: 54, leading: 0, bottom: 112, trailing: 0),
+                                    localMaxPixelSize: maxPixelSize
                                 ) {
                                     DetailPlaceholder(kind: .loading)
                                 } onDisplayed: {}

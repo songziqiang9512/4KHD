@@ -1099,6 +1099,7 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
     let url: URL?
     let resetToken: UUID
     let contentInsets: EdgeInsets
+    let localMaxPixelSize: CGFloat?
     @ViewBuilder let placeholder: () -> Placeholder
     let onDisplayed: () -> Void
 
@@ -1106,6 +1107,22 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
     @State private var panOffset: CGSize = .zero
     @State private var dragStartOffset: CGSize = .zero
     @State private var imageSize: CGSize?
+
+    init(
+        url: URL?,
+        resetToken: UUID,
+        contentInsets: EdgeInsets,
+        localMaxPixelSize: CGFloat? = nil,
+        @ViewBuilder placeholder: @escaping () -> Placeholder,
+        onDisplayed: @escaping () -> Void
+    ) {
+        self.url = url
+        self.resetToken = resetToken
+        self.contentInsets = contentInsets
+        self.localMaxPixelSize = localMaxPixelSize
+        self.placeholder = placeholder
+        self.onDisplayed = onDisplayed
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -1120,6 +1137,7 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
                     url: url,
                     contentMode: .fit,
                     priority: .userInitiated,
+                    localMaxPixelSize: localMaxPixelSize,
                     onLoaded: onDisplayed,
                     onImageLoaded: { image in
                         imageSize = image.size
