@@ -109,6 +109,9 @@ struct WorkspaceShell: View {
         .frame(minWidth: 1080, minHeight: 700)
         .environment(immersive)
         .task {
+            // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
+            // 后续子页面解析走 URLSession 直拉也带得上同一张票。
+            CookieBridge.shared.start()
             apply(selection)
             library.refreshFromNetwork()
         }
