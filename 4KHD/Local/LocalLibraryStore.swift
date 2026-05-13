@@ -1,21 +1,21 @@
-import Combine
 import Foundation
 import UniformTypeIdentifiers
 
 @MainActor
-final class LocalLibraryStore: ObservableObject {
-    @Published private(set) var roots: [LocalLibraryRoot] = []
-    @Published var selectedFolderID: LocalFolderNode.ID?
-    @Published var selectedImageIndex = 0
-    @Published var isFullscreenViewerPresented = false
-    @Published private(set) var isScanning = false
+@Observable
+final class LocalLibraryStore {
+    private(set) var roots: [LocalLibraryRoot] = []
+    var selectedFolderID: LocalFolderNode.ID?
+    var selectedImageIndex = 0
+    var isFullscreenViewerPresented = false
+    private(set) var isScanning = false
 
-    private var rootURLs: [URL] = []
-    private var excludedFolderPathsByRootPath: [String: Set<String>] = [:]
-    private var scanTask: Task<Void, Never>?
-    private static let rootFoldersDefaultsKey = "com.songziqiang.4khd.localRootFolders.v2"
-    private static let legacyRootFoldersDefaultsKey = "com.songziqiang.4khd.localFolders.v1"
-    private static let excludedFoldersDefaultsKey = "com.songziqiang.4khd.localExcludedFolders.v1"
+    @ObservationIgnored private var rootURLs: [URL] = []
+    @ObservationIgnored private var excludedFolderPathsByRootPath: [String: Set<String>] = [:]
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private static let rootFoldersDefaultsKey = "com.songziqiang.4khd.localRootFolders.v2"
+    @ObservationIgnored private static let legacyRootFoldersDefaultsKey = "com.songziqiang.4khd.localFolders.v1"
+    @ObservationIgnored private static let excludedFoldersDefaultsKey = "com.songziqiang.4khd.localExcludedFolders.v1"
 
     init() {
         loadRootFolders()

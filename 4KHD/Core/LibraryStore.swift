@@ -1,40 +1,44 @@
-import Combine
 import Foundation
 
 @MainActor
-final class LibraryStore: ObservableObject {
-    @Published var section: GallerySection = .latest {
+@Observable
+final class LibraryStore {
+    var section: GallerySection = .latest {
         didSet {
             clearSearchState()
             selectFirstItemIfNeeded(force: true)
             refreshFromNetwork()
         }
     }
-    @Published var selectedItemID: GalleryItem.ID?
-    @Published var selectedImageIndex = 0
-    @Published private(set) var visibleCount = 18
-    @Published private(set) var loadedImageSlots: [ImageSlot] = []
-    @Published private(set) var prefetchPageURL: URL?
-    @Published private(set) var isRefreshingList = false
-    @Published var isFullscreenViewerPresented = false
-    @Published var searchText = ""
-    @Published private(set) var activeSearchQuery: String?
+    var selectedItemID: GalleryItem.ID?
+    var selectedImageIndex = 0
+    private(set) var visibleCount = 18
+    private(set) var loadedImageSlots: [ImageSlot] = []
+    private(set) var prefetchPageURL: URL?
+    private(set) var isRefreshingList = false
+    var isFullscreenViewerPresented = false
+    var searchText = ""
+    private(set) var activeSearchQuery: String?
 
-    private var library = ApifyLibrary()
-    @Published private var favorites: [FavoriteGalleryItem] = []
-    private var searchItems: [GalleryItem] = []
-    private var searchNextPageURL: URL?
-    private var searchRefreshTask: Task<Void, Never>?
-    private var pendingSearchLoadMore = false
-    private var listRefreshTasks: [GallerySection: Task<Void, Never>] = [:]
-    private var listNextPageURLs: [GallerySection: URL] = [:]
-    private var pendingListLoadMoreSections: Set<GallerySection> = []
-    private var itemPageCursors: [GalleryItem.ID: Int] = [:]
-    private var resolvedPageURLs: [GalleryItem.ID: [URL]] = [:]
-    private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
-    private var detailPageTasks: [String: Task<Void, Never>] = [:]
-    private var pendingSelectionIndex: Int?
-    private static let favoritesDefaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
+    // 收藏要被 isFavorite(_:) 间接读到，所以让 @Observable 跟踪它。
+    private var favorites: [FavoriteGalleryItem] = []
+
+    // 以下都是纯内部状态，view 永远不会读 —— 用 @ObservationIgnored 关掉自动跟踪，
+    // 减少不必要的 invalidate。
+    @ObservationIgnored private var library = ApifyLibrary()
+    @ObservationIgnored private var searchItems: [GalleryItem] = []
+    @ObservationIgnored private var searchNextPageURL: URL?
+    @ObservationIgnored private var searchRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingSearchLoadMore = false
+    @ObservationIgnored private var listRefreshTasks: [GallerySection: Task<Void, Never>] = [:]
+    @ObservationIgnored private var listNextPageURLs: [GallerySection: URL] = [:]
+    @ObservationIgnored private var pendingListLoadMoreSections: Set<GallerySection> = []
+    @ObservationIgnored private var itemPageCursors: [GalleryItem.ID: Int] = [:]
+    @ObservationIgnored private var resolvedPageURLs: [GalleryItem.ID: [URL]] = [:]
+    @ObservationIgnored private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
+    @ObservationIgnored private var detailPageTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var pendingSelectionIndex: Int?
+    @ObservationIgnored private static let favoritesDefaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
 
     init() {
         loadFavorites()
@@ -383,7 +387,8 @@ final class LibraryStore: ObservableObject {
         if isFavorite(item) {
             DetailPageImageCache.shared.setPersistent(true, forDetailURL: item.detailURL)
         }
-        objectWillChange.send()
+        // @Observable 不再有 objectWillChange.send()；
+        // 后续对 loadedImageSlots / selectedImageIndex 的写入会自动 invalidate 订阅。
         let isExpectedPage = pageURLs(for: item).contains(page.pageURL)
             || loadedImageSlots.contains(where: { $0.pageURL == page.pageURL })
             || requestedDetailPageURLs[item.id, default: []].contains(page.pageURL)

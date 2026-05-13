@@ -3,8 +3,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct LocalImageDetailPane: View {
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
-    @EnvironmentObject private var immersive: ImmersiveController
+    @Environment(LocalLibraryStore.self) private var localLibrary
+    @Environment(ImmersiveController.self) private var immersive
     @State private var resetToken = UUID()
     @State private var saveMessage = ""
 

@@ -4,7 +4,7 @@ import SwiftUI
 /// 三段式中部内容栏 —— 显示当前所选本地目录里的所有图片，
 /// 完全用系统 `List` + 缩略图行，selection 由 `LocalLibraryStore.selectedImageIndex` 桥接。
 struct LocalImageContentList: View {
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
+    @Environment(LocalLibraryStore.self) private var localLibrary
 
     private var selectionBinding: Binding<LocalImageItem.ID?> {
         Binding(

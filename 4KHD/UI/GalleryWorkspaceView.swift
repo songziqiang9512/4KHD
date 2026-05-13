@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct GalleryContentList: View {
-    @EnvironmentObject private var library: LibraryStore
+    @Environment(LibraryStore.self) private var library
     @AppStorage("com.songziqiang.4khd.favoriteAuthorOverrides.v1") private var favoriteAuthorOverridesJSON = "{}"
     @State private var expandedFavoriteAuthorIDs = Set<String>()
 
@@ -24,7 +24,9 @@ struct GalleryContentList: View {
     }
 
     var body: some View {
-        List(selection: selectionBinding) {
+        // shadow 一份 @Bindable 以便 .searchable(text:) 用 $library.searchText
+        @Bindable var library = library
+        return List(selection: selectionBinding) {
             if shouldGroupFavorites {
                 ForEach(favoriteAuthorGroups) { group in
                     Section {
@@ -437,7 +439,7 @@ private enum FavoriteAuthorNameParser {
 }
 
 private struct GalleryRow: View {
-    @EnvironmentObject private var library: LibraryStore
+    @Environment(LibraryStore.self) private var library
     let item: GalleryItem
 
     var body: some View {
@@ -487,7 +489,7 @@ private struct GalleryRow: View {
 }
 
 private struct ListFooterStatus: View {
-    @EnvironmentObject private var library: LibraryStore
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
         HStack(spacing: 8) {
@@ -510,8 +512,8 @@ private struct ListFooterStatus: View {
 }
 
 struct ImageDetailPane: View {
-    @EnvironmentObject private var library: LibraryStore
-    @EnvironmentObject private var immersive: ImmersiveController
+    @Environment(LibraryStore.self) private var library
+    @Environment(ImmersiveController.self) private var immersive
     @State private var displayedImageURL: URL?
     @State private var saveMessage = ""
     @State private var isDetailReady = false
@@ -1004,7 +1006,7 @@ private struct TrackpadPanView: NSViewRepresentable {
 }
 
 private struct Filmstrip: View {
-    @EnvironmentObject private var library: LibraryStore
+    @Environment(LibraryStore.self) private var library
 
     let slots: [ImageSlot]
     let selectedIndex: Int

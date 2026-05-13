@@ -1,19 +1,20 @@
 import AppKit
-import Combine
 import SwiftUI
 
 // MARK: - Immersive 控制器（窗内大图模式）
 
-/// 共享给详情面板的沉浸模式控制器。改用 `ObservableObject` + `.environmentObject`，
-/// 是因为 SwiftUI 工具栏对 `@Environment(.value, closure)` 偶发不可靠。
+/// 共享给详情面板的沉浸模式控制器。
+/// 用 Swift 5.9 的 `@Observable` —— SwiftUI 只在真正读过的字段变化时重渲染，
+/// 既消除 `Combine` 的耦合，也避免了之前用 `ObservableObject` 时偶发的工具栏不可靠问题。
 @MainActor
-final class ImmersiveController: ObservableObject {
-    @Published var isImmersive: Bool = false
-    @Published var columnVisibility: NavigationSplitViewVisibility = .all
-    @Published var peekRevealing: Bool = false
+@Observable
+final class ImmersiveController {
+    var isImmersive: Bool = false
+    var columnVisibility: NavigationSplitViewVisibility = .all
+    var peekRevealing: Bool = false
 
-    private var nonImmersiveVisibility: NavigationSplitViewVisibility = .all
-    private var peekHideWorkItem: DispatchWorkItem?
+    @ObservationIgnored private var nonImmersiveVisibility: NavigationSplitViewVisibility = .all
+    @ObservationIgnored private var peekHideWorkItem: DispatchWorkItem?
 
     func toggle() {
         set(!isImmersive)
@@ -70,9 +71,10 @@ final class ImmersiveController: ObservableObject {
 /// macOS 三段式工作区外壳。普通状态使用 `NavigationSplitView`；进入沉浸模式后切换
 /// 到一张 detail 占满窗口的布局，左缘鼠标触发条会把侧栏 / 中栏作为浮层滑出来。
 struct WorkspaceShell: View {
-    @EnvironmentObject private var library: LibraryStore
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
-    @StateObject private var immersive = ImmersiveController()
+    @Environment(LibraryStore.self) private var library
+    @Environment(LocalLibraryStore.self) private var localLibrary
+    // @State 持有 @Observable 子对象 —— SwiftUI 会复用同一实例。
+    @State private var immersive = ImmersiveController()
 
     @SceneStorage("com.songziqiang.4khd.sidebarSelection")
     private var storedSelection: String = SidebarSelection.online(.latest).rawValue
@@ -95,15 +97,17 @@ struct WorkspaceShell: View {
     }
 
     var body: some View {
-        Group {
+        // 在 body 内 shadow 一份 @Bindable，给需要 $... 写法的地方提供 binding。
+        @Bindable var immersive = immersive
+        return Group {
             if immersive.isImmersive {
                 immersiveBody
             } else {
-                splitBody
+                splitBody(columnVisibility: $immersive.columnVisibility)
             }
         }
         .frame(minWidth: 1080, minHeight: 700)
-        .environmentObject(immersive)
+        .environment(immersive)
         .task {
             apply(selection)
             library.refreshFromNetwork()
@@ -112,8 +116,9 @@ struct WorkspaceShell: View {
 
     // MARK: - 普通三段式
 
-    private var splitBody: some View {
-        NavigationSplitView(columnVisibility: $immersive.columnVisibility) {
+    @ViewBuilder
+    private func splitBody(columnVisibility: Binding<NavigationSplitViewVisibility>) -> some View {
+        NavigationSplitView(columnVisibility: columnVisibility) {
             WorkspaceSidebar(selection: selectionBinding)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } content: {
@@ -168,8 +173,9 @@ struct WorkspaceShell: View {
         case .online:
             GalleryContentList()
         case .local:
+            // localLibrary 已经由 App 通过 .environment(_:) 注入，子视图自动继承，
+            // 不用再显式 forwarding。
             LocalImageContentList()
-                .environmentObject(localLibrary)
         }
     }
 
@@ -180,7 +186,6 @@ struct WorkspaceShell: View {
             ImageDetailPane()
         case .local:
             LocalImageDetailPane()
-                .environmentObject(localLibrary)
         }
     }
 
@@ -229,8 +234,8 @@ enum SidebarSelection: Hashable {
 // MARK: - Sidebar
 
 struct WorkspaceSidebar: View {
-    @EnvironmentObject private var library: LibraryStore
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
+    @Environment(LibraryStore.self) private var library
+    @Environment(LocalLibraryStore.self) private var localLibrary
     @Binding var selection: SidebarSelection?
 
     var body: some View {
@@ -292,7 +297,7 @@ struct WorkspaceSidebar: View {
 
 /// 侧栏中的递归本地目录项 —— 用系统 `DisclosureGroup` 表达层级。
 struct LocalFolderSidebarRow: View {
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
+    @Environment(LocalLibraryStore.self) private var localLibrary
     let folder: LocalFolderNode
     let level: Int
 
