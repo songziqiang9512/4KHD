@@ -103,6 +103,10 @@ final class LocalLibraryStore: ObservableObject {
         roots.lazy.compactMap { Self.firstFolderWithImages(in: $0.tree) ?? $0.tree }.first
     }
 
+    func findFolder(id: LocalFolderNode.ID) -> LocalFolderNode? {
+        roots.lazy.compactMap { Self.folder(withID: id, in: $0.tree) }.first
+    }
+
     private func loadRootFolders() {
         let storedPaths = (UserDefaults.standard.array(forKey: Self.rootFoldersDefaultsKey) as? [String])
             ?? (UserDefaults.standard.array(forKey: Self.legacyRootFoldersDefaultsKey) as? [String])

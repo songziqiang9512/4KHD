@@ -333,26 +333,24 @@ final class LibraryStore: ObservableObject {
     func selectImage(at index: Int) {
         guard index >= 0 else { return }
         if index >= loadedImageSlots.count {
-            let oldCount = loadedImageSlots.count
-            guard ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange) else { return }
-            if loadedImageSlots.indices.contains(oldCount) {
-                selectedImageIndex = oldCount
-                return
-            }
-            pendingSelectionIndex = oldCount
+            // 还没加载到这张：尝试拉下一页，并挂上 pendingSelectionIndex，等 slot 到位后跳过去。
+            ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange)
+            pendingSelectionIndex = loadedImageSlots.count
+            return
         }
-        if loadedImageSlots.indices.contains(index) {
-            selectedImageIndex = index
-            ensureNextDetailPageLoadedIfApproachingEnd(from: index)
-        }
+        selectedImageIndex = index
+        ensureNextDetailPageLoadedIfApproachingEnd(from: index)
     }
 
     func stepImage(_ delta: Int) {
         let nextIndex = selectedImageIndex + delta
         if delta > 0, nextIndex >= loadedImageSlots.count {
-            if ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange) {
-                pendingSelectionIndex = loadedImageSlots.count
-            }
+            // 一律尝试一次"加载下一页"。如果 cursor 还有空间，会真的请求；如果已经满了，
+            // 也无所谓——之前请求的还在路上，会在 chainLoadIfNeeded 里链式接力。
+            // 关键：pendingSelectionIndex 一定设上，新 slot 一到就跳过去。
+            // ⚠️ 不要在这里 force-restart 当前页，否则会把已在解析的页 task 反复打断。
+            ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange)
+            pendingSelectionIndex = loadedImageSlots.count
             return
         }
         selectImage(at: nextIndex)
@@ -363,14 +361,12 @@ final class LibraryStore: ObservableObject {
         guard let item = selectedItem else { return false }
         let cursor = itemPageCursors[item.id, default: 1]
         let pageURLs = pageURLs(for: item)
-        guard cursor < pageURLs.count else {
-            if let currentPageURL = selectedSlot?.pageURL {
-                resolveDetailPage(currentPageURL)
-            }
-            return false
-        }
+        guard cursor < pageURLs.count else { return false }
         let pageURL = pageURLs[cursor]
-        guard requestedDetailPageURLs[item.id, default: []].insert(pageURL).inserted else { return true }
+        guard requestedDetailPageURLs[item.id, default: []].insert(pageURL).inserted else {
+            // 已发过请求但还没回，视为"在路上"。返回 true 让上层照常挂 pendingSelectionIndex。
+            return true
+        }
         itemPageCursors[item.id] = cursor + 1
         prefetchPageURL = pageURL
         resolveDetailPage(pageURL)
@@ -413,10 +409,21 @@ final class LibraryStore: ObservableObject {
             loadedImageSlots.replaceSubrange(firstIndex...lastIndex, with: resolvedSlots)
             selectedImageIndex = min(selectedImageIndex, max(loadedImageSlots.count - 1, 0))
             applyPendingSelectionIfPossible()
+            chainLoadIfNeeded()
             return
         }
         appendResolvedSlots(for: item, page: page)
         applyPendingSelectionIfPossible()
+        chainLoadIfNeeded()
+    }
+
+    /// 一页解析回来之后，无脑尝试拉下一页。
+    /// - `ensureNextDetailPageLoaded` 内部会自己判断 cursor 是否还有空间，没有就直接 no-op；
+    /// - 这条让 pageURLs 在某一页的 HTML 里继续长出来（比如 page3 的页脚揭示了 page6..page10）时，
+    ///   链路自动跟进，不需要用户再戳按钮；
+    /// - 用户已经挂着 `pendingSelectionIndex`（连点过下一张）时，也确保接力。
+    private func chainLoadIfNeeded() {
+        ensureNextDetailPageLoaded(reason: .approachingLoadedEnd)
     }
 
     private func selectFirstItemIfNeeded(force: Bool) {
@@ -557,6 +564,12 @@ final class LibraryStore: ObservableObject {
         if prefetchPageURL == pageURL {
             prefetchPageURL = nil
         }
+        // 失败时清掉 requestedDetailPageURLs，让下次 ensureNext 仍有机会重试这条；
+        // cursor 不回滚 —— 不死磕，但 chainLoad 会继续往后接力。
+        for itemID in requestedDetailPageURLs.keys {
+            requestedDetailPageURLs[itemID]?.remove(pageURL)
+        }
+        chainLoadIfNeeded()
     }
 
     private func cancelOutstandingDetailPageTasks() {

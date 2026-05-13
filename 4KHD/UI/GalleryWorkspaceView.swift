@@ -3,289 +3,94 @@ import Nuke
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct GalleryWorkspaceView: View {
-    @EnvironmentObject private var library: LibraryStore
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
-    @AppStorage("com.songziqiang.4khd.isSectionRailCollapsed") private var isSectionRailCollapsed = false
-    @State private var module: WorkspaceModule = .online
-
-    var body: some View {
-        ZStack {
-            HStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    SectionRail(module: $module, isCollapsed: $isSectionRailCollapsed)
-                        .frame(width: isSectionRailCollapsed ? 48 : 112)
-
-                    if module == .online {
-                        GalleryListPane()
-                            .frame(width: 280)
-                    } else {
-                        LocalFolderPane()
-                            .environmentObject(localLibrary)
-                            .frame(width: 330)
-                    }
-                }
-                .background(.ultraThinMaterial)
-
-                Divider()
-
-                if module == .online {
-                    ImageDetailPane()
-                        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    LocalImageDetailPane()
-                        .environmentObject(localLibrary)
-                        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-
-            if module == .online {
-                FullscreenImageViewerOverlay()
-            } else {
-                LocalFullscreenImageViewerOverlay()
-                    .environmentObject(localLibrary)
-            }
-        }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .task {
-            library.refreshFromNetwork()
-        }
-    }
-}
-
-private enum WorkspaceModule: String {
-    case online
-    case local
-}
-
-private struct SectionRail: View {
-    @EnvironmentObject private var library: LibraryStore
-    @Binding var module: WorkspaceModule
-    @Binding var isCollapsed: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                if !isCollapsed {
-                    Text("4KHD")
-                        .font(.title2.weight(.bold))
-                }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    isCollapsed.toggle()
-                } label: {
-                    Image(systemName: isCollapsed ? "sidebar.left" : "sidebar.leading")
-                        .frame(width: 22, height: 22)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help(isCollapsed ? "展开侧边栏" : "隐藏侧边栏")
-            }
-            .padding(.bottom, 10)
-
-            ForEach(GallerySection.allCases) { section in
-                Button {
-                    module = .online
-                    library.section = section
-                } label: {
-                    HStack {
-                        if isCollapsed {
-                            Text(collapsedTitle(for: section))
-                                .font(.callout.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text(section.title)
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal, isCollapsed ? 0 : 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 34)
-                    .background(module == .online && library.section == section ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                    .contentShape(RoundedRectangle(cornerRadius: 7))
-                }
-                .buttonStyle(.plain)
-            }
-
-            Button {
-                module = .local
-            } label: {
-                HStack {
-                    if isCollapsed {
-                        Text("本")
-                            .font(.callout.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("本地")
-                        Spacer()
-                    }
-                }
-                .padding(.horizontal, isCollapsed ? 0 : 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 34)
-                .background(module == .local ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                .contentShape(RoundedRectangle(cornerRadius: 7))
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            if !isCollapsed {
-                Text(module == .local ? "本地目录" : (library.isRefreshingList ? "线上刷新中" : "线上数据"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(12)
-    }
-
-    private func collapsedTitle(for section: GallerySection) -> String {
-        switch section {
-        case .latest: "新"
-        case .popular: "荐"
-        case .cosplay: "C"
-        case .album: "写"
-        case .favorites: "藏"
-        }
-    }
-}
-
-private struct GalleryListPane: View {
+struct GalleryContentList: View {
     @EnvironmentObject private var library: LibraryStore
     @AppStorage("com.songziqiang.4khd.favoriteAuthorOverrides.v1") private var favoriteAuthorOverridesJSON = "{}"
-    @State private var viewportHeight: CGFloat = 0
     @State private var expandedFavoriteAuthorIDs = Set<String>()
 
+    private var selectionBinding: Binding<GalleryItem.ID?> {
+        Binding(
+            get: { library.selectedItemID },
+            set: { newValue in
+                guard let newValue,
+                      let item = library.allItems.first(where: { $0.id == newValue }) else { return }
+                // 避免在 view update 周期内直接写 @Published（会触发
+                // "Publishing changes from within view updates" 警告）
+                DispatchQueue.main.async {
+                    library.select(item)
+                }
+            }
+        )
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
-                        .font(.headline)
-                    Text("\(library.visibleItems.count) / \(library.allItems.count)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    TextField("搜索", text: $library.searchText)
-                        .textFieldStyle(.plain)
-                        .font(.callout)
-                        .onSubmit {
-                            library.submitSearch()
-                        }
-                    if library.activeSearchQuery != nil || !library.searchText.isEmpty {
-                        Button {
-                            library.clearSearch()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("清空搜索")
-                    }
-                }
-                .padding(.horizontal, 9)
-                .frame(width: 156, height: 30)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.16), lineWidth: 1))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    if shouldGroupFavorites {
-                        ForEach(favoriteAuthorGroups) { group in
-                            FavoriteAuthorFolderRow(
-                                group: group,
-                                isExpanded: expandedFavoriteAuthorIDs.contains(group.id)
-                            )
-                            .onTapGesture {
-                                toggleFavoriteGroup(group.id)
-                            }
-                            .onAppear {
-                                if group.id == favoriteAuthorGroups.last?.id {
-                                    library.loadMoreListIfNeeded()
-                                }
-                            }
-                            .contextMenu {
-                                Button("重命名目录") {
-                                    renameFavoriteGroup(group)
-                                }
-                            }
-
-                            if expandedFavoriteAuthorIDs.contains(group.id) {
-                                ForEach(group.items) { item in
-                                    GalleryRow(item: item, isSelected: library.selectedItem?.id == item.id)
-                                        .padding(.leading, 18)
-                                        .onTapGesture {
-                                            library.select(item)
-                                        }
-                                        .contextMenu {
-                                            favoriteMoveMenu(for: item, currentGroup: group)
-                                        }
-                                }
+        List(selection: selectionBinding) {
+            if shouldGroupFavorites {
+                ForEach(favoriteAuthorGroups) { group in
+                    Section {
+                        if expandedFavoriteAuthorIDs.contains(group.id) {
+                            ForEach(group.items) { item in
+                                GalleryRow(item: item)
+                                    .tag(item.id)
+                                    .contextMenu { favoriteMoveMenu(for: item, currentGroup: group) }
                             }
                         }
-                    } else {
-                        ForEach(library.visibleItems) { item in
-                            GalleryRow(item: item, isSelected: library.selectedItem?.id == item.id)
-                                .onTapGesture {
-                                    library.select(item)
-                                }
-                                .onAppear {
-                                    if item.id == library.visibleItems.last?.id {
-                                        library.loadMoreListIfNeeded()
-                                    }
-                                }
+                    } header: {
+                        FavoriteAuthorSectionHeader(
+                            group: group,
+                            isExpanded: expandedFavoriteAuthorIDs.contains(group.id)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { toggleFavoriteGroup(group.id) }
+                        .contextMenu {
+                            Button("重命名目录") { renameFavoriteGroup(group) }
                         }
-                    }
-                    ListFooterStatus()
                         .onAppear {
-                            if library.canLoadMoreList {
+                            if group.id == favoriteAuthorGroups.last?.id {
                                 library.loadMoreListIfNeeded()
                             }
                         }
-                    Color.clear
-                        .frame(height: 1)
-                        .id("list-bottom-\(library.allItems.count)")
+                    }
+                }
+            } else {
+                ForEach(library.visibleItems) { item in
+                    GalleryRow(item: item)
+                        .tag(item.id)
                         .onAppear {
-                            if library.visibleItems.count >= library.allItems.count {
+                            if item.id == library.visibleItems.last?.id {
                                 library.loadMoreListIfNeeded()
                             }
                         }
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
-                .background(
-                    GeometryReader { proxy in
-                        let frame = proxy.frame(in: .named("GalleryListScroll"))
-                        Color.clear
-                            .onChange(of: frame.minY) { _, _ in
-                                if frame.maxY - viewportHeight < 220 {
-                                    library.loadMoreListIfNeeded()
-                                }
-                            }
-                    }
-                )
             }
-            .coordinateSpace(name: "GalleryListScroll")
-            .background(
-                GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { viewportHeight = proxy.size.height }
-                        .onChange(of: proxy.size.height) { _, value in viewportHeight = value }
+
+            if library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty {
+                ListFooterStatus()
+                    .listRowSeparator(.hidden)
+                    .onAppear {
+                        if library.canLoadMoreList { library.loadMoreListIfNeeded() }
+                    }
+            }
+        }
+        .listStyle(.inset)
+        .searchable(text: $library.searchText, placement: .toolbar, prompt: "搜索 4KHD")
+        .onSubmit(of: .search) { library.submitSearch() }
+        .onChange(of: library.searchText) { _, value in
+            if value.isEmpty && library.activeSearchQuery != nil { library.clearSearch() }
+        }
+        .navigationTitle(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
+        .navigationSubtitle("\(library.visibleItems.count) / \(library.allItems.count)")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    library.refreshFromNetwork()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
-            )
+                .keyboardShortcut("r", modifiers: [.command])
+                .help("刷新")
+                .disabled(library.isRefreshingList)
+            }
         }
         .onChange(of: library.section) { _, section in
             if section != .favorites {
@@ -422,38 +227,23 @@ private struct FavoriteAuthorGroup: Identifiable {
     }
 }
 
-private struct FavoriteAuthorFolderRow: View {
+private struct FavoriteAuthorSectionHeader: View {
     let group: FavoriteAuthorGroup
     let isExpanded: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: isExpanded ? "folder.fill.badge.minus" : "folder.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 34, height: 34)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(group.author)
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1)
-
-                Text("\(group.items.count) 个收藏")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
-
+        HStack(spacing: 6) {
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.tertiary)
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            Text(group.author)
+                .font(.callout.weight(.semibold))
+            Spacer(minLength: 4)
+            Text("\(group.items.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
-        .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -648,17 +438,15 @@ private enum FavoriteAuthorNameParser {
 
 private struct GalleryRow: View {
     @EnvironmentObject private var library: LibraryStore
-
     let item: GalleryItem
-    let isSelected: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             PosterWebImage(url: item.coverURL, contentMode: .fill)
-                .frame(width: 68, height: 92)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .frame(width: 64, height: 86)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 5) {
                     KindBadge(kind: item.kind)
                     Text("\(item.imageCount) 张 · \(item.pageCount) 页")
@@ -678,20 +466,23 @@ private struct GalleryRow: View {
 
                 HStack(spacing: 9) {
                     if library.isFavorite(item) {
-                        CompactStatusIcon("已收藏", systemImage: "bookmark.fill")
+                        Image(systemName: "bookmark.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .help("已收藏")
                     }
-
                     if library.isCached(item) {
-                        CompactStatusIcon("已缓存", systemImage: "externaldrive.fill")
+                        Image(systemName: "externaldrive.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .help("已缓存")
                     }
                 }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(7)
-        .background(isSelected ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1))
+        .padding(.vertical, 2)
     }
 }
 
@@ -718,190 +509,185 @@ private struct ListFooterStatus: View {
     }
 }
 
-private struct ImageDetailPane: View {
+struct ImageDetailPane: View {
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var immersive: ImmersiveController
     @State private var displayedImageURL: URL?
     @State private var saveMessage = ""
     @State private var isDetailReady = false
     @State private var detailFailed = false
     @State private var detailResetToken = UUID()
     @State private var saveTask: ImageTask?
-    private let headerHeight: CGFloat = 54
-    private let filmstripHeight: CGFloat = 112
 
     var body: some View {
-        if let item = library.selectedItem, let slot = library.selectedSlot {
-            ZStack {
-                ZStack {
-                    Color(red: 0.06, green: 0.06, blue: 0.065)
-
-                    GeometryReader { proxy in
-                        DetailImageResolverView(
-                            pageURL: slot.pageURL,
-                            onResolvedPage: { page in
-                                Task { @MainActor in
-                                    library.registerResolvedPage(page)
-                                }
-                            },
-                            onFailure: {
-                                detailFailed = true
-                                isDetailReady = true
-                            }
-                        )
-                        .frame(width: 1, height: 1)
-                        .opacity(0.001)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-
-                        ZoomableImageCanvas(
-                            url: slot.knownURL,
-                            resetToken: detailResetToken,
-                            contentInsets: EdgeInsets(top: headerHeight, leading: 0, bottom: filmstripHeight, trailing: 0)
-                        ) {
-                            DetailPlaceholder(kind: detailFailed ? .failed : .loading)
-                        } onDisplayed: {
-                            displayedImageURL = slot.knownURL
-                            isDetailReady = true
-                            detailFailed = false
-                        }
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                    }
-                    .clipped()
-
-                    HStack {
-                        StepButton(systemName: "chevron.left") { library.stepImage(-1) }
-                            .disabled(library.selectedImageIndex == 0)
-                        Spacer()
-                        StepButton(systemName: "chevron.right") { library.stepImage(1) }
-                    }
-                    .padding(.horizontal, 18)
-
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Text("\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.black.opacity(0.45), in: Capsule())
-                                .padding(16)
-                            Spacer()
-                        }
-                    }
-                }
-
-                VStack(spacing: 0) {
-                    header(item: item, slot: slot)
-                        .frame(height: headerHeight)
-                    Spacer()
-                    Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
-                        library.selectImage(at: index)
-                    } onReachedEnd: {
-                        library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
-                    }
-                }
+        Group {
+            if let item = library.selectedItem, let slot = library.selectedSlot {
+                content(item: item, slot: slot)
+            } else {
+                ContentUnavailableView("没有可显示内容", systemImage: "photo")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: item.id) { _, _ in
-                displayedImageURL = nil
-                saveMessage = ""
-                isDetailReady = false
-                detailFailed = false
-                RemoteImagePipeline.shared.stopDetailPrefetching()
-            }
-            .onChange(of: slot.id) { _, _ in
-                displayedImageURL = nil
-                saveMessage = ""
-                isDetailReady = false
-                detailFailed = false
-                RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
-            }
-            .onAppear {
-                RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
-            }
-        } else {
-            ContentUnavailableView("没有可显示内容", systemImage: "photo")
         }
     }
 
-    private func header(item: GalleryItem, slot: ImageSlot) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                HStack(spacing: 10) {
-                    KindBadge(kind: item.kind)
-                    Text("\(item.imageCount) 张")
-                    Text("\(item.pageCount) 页")
-                    Text("#\(slot.displayIndex)")
+    @ViewBuilder
+    private func content(item: GalleryItem, slot: ImageSlot) -> some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            GeometryReader { proxy in
+                DetailImageResolverView(
+                    pageURL: slot.pageURL,
+                    onResolvedPage: { page in
+                        Task { @MainActor in
+                            library.registerResolvedPage(page)
+                        }
+                    },
+                    onFailure: {
+                        detailFailed = true
+                        isDetailReady = true
+                    }
+                )
+                .frame(width: 1, height: 1)
+                .opacity(0.001)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
+                ZoomableImageCanvas(
+                    url: slot.knownURL,
+                    resetToken: detailResetToken,
+                    contentInsets: EdgeInsets()
+                ) {
+                    DetailPlaceholder(kind: detailFailed ? .failed : .loading)
+                } onDisplayed: {
+                    displayedImageURL = slot.knownURL
+                    isDetailReady = true
+                    detailFailed = false
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+            .clipped()
 
-            Spacer()
+            HStack {
+                StepButton(systemName: "chevron.left") { library.stepImage(-1) }
+                    .disabled(library.selectedImageIndex == 0)
+                Spacer()
+                StepButton(systemName: "chevron.right") { library.stepImage(1) }
+            }
+            .padding(.horizontal, 18)
 
+            VStack {
+                Spacer()
+                HStack {
+                    Text("\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(16)
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
+                library.selectImage(at: index)
+            } onReachedEnd: {
+                library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+            }
+        }
+        .navigationTitle(item.title)
+        .navigationSubtitle("\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))")
+        .toolbar { detailToolbar(item: item, slot: slot) }
+        .onExitCommand {
+            if immersive.isImmersive { immersive.toggle() }
+        }
+        .onChange(of: item.id) { _, _ in
+            displayedImageURL = nil
+            saveMessage = ""
+            isDetailReady = false
+            detailFailed = false
+            RemoteImagePipeline.shared.stopDetailPrefetching()
+        }
+        .onChange(of: slot.id) { _, _ in
+            displayedImageURL = nil
+            saveMessage = ""
+            isDetailReady = false
+            detailFailed = false
+            RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
+        }
+        .onAppear {
+            RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private func detailToolbar(item: GalleryItem, slot: ImageSlot) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                library.stepImage(-1)
+            } label: {
+                Label("上一张", systemImage: "chevron.left")
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command])
+            .disabled(library.selectedImageIndex == 0)
+
+            Button {
+                library.stepImage(1)
+            } label: {
+                Label("下一张", systemImage: "chevron.right")
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command])
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
             if !saveMessage.isEmpty {
                 Text(saveMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
             Button {
-                library.isFullscreenViewerPresented = true
+                library.toggleFavorite(for: item)
             } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .frame(width: 22)
+                Label("收藏", systemImage: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
             }
-            .help("全屏")
+            .keyboardShortcut("d", modifiers: [.command])
+            .help(library.isFavorite(item) ? "取消收藏" : "收藏")
 
             Button {
                 detailResetToken = UUID()
             } label: {
-                Image(systemName: "1.magnifyingglass")
-                    .frame(width: 22)
+                Label("实际大小", systemImage: "1.magnifyingglass")
             }
+            .keyboardShortcut("0", modifiers: [.command])
             .help("实际大小")
 
             Button {
-                library.toggleFavorite(for: item)
+                immersive.toggle()
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
-                        .foregroundStyle(library.isFavorite(item) ? Color.red : Color.primary)
-                    Text("收藏")
-                }
+                Label("全屏", systemImage: immersive.isImmersive
+                      ? "arrow.down.right.and.arrow.up.left"
+                      : "arrow.up.left.and.arrow.down.right")
             }
+            .help(immersive.isImmersive ? "退出大图模式" : "进入大图模式")
 
             Button {
                 NSWorkspace.shared.open(item.detailURL)
             } label: {
-                Image(systemName: "safari")
-                    .frame(width: 22)
+                Label("原网页", systemImage: "safari")
             }
-            .help("打开原网页：\(item.detailURL.absoluteString)")
+            .help("打开原网页")
 
             Button {
                 saveCurrentImage(item: item, slot: slot)
             } label: {
-                Image(systemName: "square.and.arrow.down")
-                    .frame(width: 22)
+                Label("保存", systemImage: "square.and.arrow.down")
             }
+            .keyboardShortcut("s", modifiers: [.command])
             .disabled(slot.knownURL == nil)
             .help("保存")
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider().opacity(0.35)
         }
     }
 
@@ -961,138 +747,11 @@ struct DetailPlaceholder: View {
     }
 }
 
-private struct FullscreenImageViewerOverlay: View {
-    @EnvironmentObject private var library: LibraryStore
-
-    @State private var resetToken = UUID()
-    @State private var isChromeHidden = false
-
-    var body: some View {
-        if library.isFullscreenViewerPresented {
-            ZStack {
-                Color.black.ignoresSafeArea()
-
-                if let item = library.selectedItem, let slot = library.selectedSlot {
-                    if isChromeHidden {
-                        GeometryReader { proxy in
-                            ZoomableImageCanvas(url: slot.knownURL, resetToken: resetToken, contentInsets: .init()) {
-                                DetailPlaceholder(kind: .loading)
-                            } onDisplayed: {}
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                        }
-                        .clipped()
-                        restoreChromeButton()
-                    } else {
-                        ZStack {
-                            GeometryReader { proxy in
-                                ZoomableImageCanvas(
-                                    url: slot.knownURL,
-                                    resetToken: resetToken,
-                                    contentInsets: EdgeInsets(top: 54, leading: 0, bottom: 112, trailing: 0)
-                                ) {
-                                    DetailPlaceholder(kind: .loading)
-                                } onDisplayed: {}
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                            }
-                            .clipped()
-                            VStack(spacing: 0) {
-                                fullscreenHeader(item: item, slot: slot)
-                                    .frame(height: 54)
-                                Spacer()
-                                Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
-                                    library.selectImage(at: index)
-                                } onReachedEnd: {
-                                    library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
-                                }
-                            }
-                        }
-                    }
-
-                    HStack {
-                        StepButton(systemName: "chevron.left") { library.stepImage(-1) }
-                            .disabled(library.selectedImageIndex == 0)
-                        Spacer()
-                        StepButton(systemName: "chevron.right") { library.stepImage(1) }
-                    }
-                    .padding(.horizontal, 24)
-                } else {
-                    ContentUnavailableView("没有可显示内容", systemImage: "photo")
-                }
-            }
-            .transition(.opacity)
-            .zIndex(20)
-            .onChange(of: library.selectedSlot?.id) { _, _ in
-                resetToken = UUID()
-            }
-            .onChange(of: library.isFullscreenViewerPresented) { _, isPresented in
-                if !isPresented {
-                    isChromeHidden = false
-                }
-            }
-            .onExitCommand {
-                library.isFullscreenViewerPresented = false
-            }
-        }
-    }
-
-    private func fullscreenHeader(item: GalleryItem, slot: ImageSlot) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text("#\(slot.displayIndex) / \(item.imageCount) 张")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                resetToken = UUID()
-            } label: {
-                Label("实际大小", systemImage: "1.magnifyingglass")
-            }
-
-            Button {
-                isChromeHidden = true
-            } label: {
-                Label("隐藏控制", systemImage: "rectangle.compress.vertical")
-            }
-            .help("隐藏顶部标题栏和底部缩略图栏")
-
-            Button {
-                library.isFullscreenViewerPresented = false
-            } label: {
-                Label("关闭", systemImage: "xmark")
-            }
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.ultraThinMaterial)
-    }
-
-    private func restoreChromeButton() -> some View {
-        VStack {
-            HStack {
-                Spacer()
-                Button {
-                    isChromeHidden = false
-                } label: {
-                    Label("显示控制", systemImage: "rectangle.expand.vertical")
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("恢复顶部标题栏和底部缩略图栏")
-                .padding(14)
-            }
-            Spacer()
-        }
-    }
+// Legacy overlay-based fullscreen. Superseded by macOS-native `NSWindow.toggleFullScreen`
+// driven from `WorkspaceShell`, which collapses the split view to detail-only and lets
+// the unified toolbar auto-hide. Kept as an empty stub to preserve external refs.
+struct FullscreenImageViewerOverlay: View {
+    var body: some View { EmptyView() }
 }
 
 struct ZoomableImageCanvas<Placeholder: View>: View {
@@ -1351,8 +1010,10 @@ private struct Filmstrip: View {
     let selectedIndex: Int
     let onSelect: (Int) -> Void
     let onReachedEnd: () -> Void
+
     @State private var viewportWidth: CGFloat = 0
-    @State private var contentOffsetX: CGFloat = 0
+    @State private var lastBatchStart: Int = -1
+    private let tilePitch: CGFloat = 82   // 72 缩略图 + 10 间距
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -1367,47 +1028,41 @@ private struct Filmstrip: View {
                                 SlotThumbnail(slot: slot)
                                 Text("#\(slot.displayIndex)")
                                     .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
-                                    .background(.black.opacity(0.5), in: Capsule())
+                                    .background(.regularMaterial, in: Capsule())
                                     .padding(5)
                             }
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(selectedIndex == index ? Color.accentColor : Color.white.opacity(0.15), lineWidth: selectedIndex == index ? 2 : 1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(selectedIndex == index ? Color.accentColor : Color.clear,
+                                            lineWidth: selectedIndex == index ? 2 : 0)
+                            )
                         }
                         .buttonStyle(.plain)
                         .id(index)
+                        .onAppear {
+                            // 当倒数第 4 张及以后任何一张露面，就续接下一页。
+                            // 推后到下一轮 runloop 避免在 view update 阶段写 @Published。
+                            if index >= slots.count - 4 {
+                                DispatchQueue.main.async { onReachedEnd() }
+                            }
+                        }
                     }
 
                     if library.prefetchPageURL != nil {
                         LoadingFilmstripTile()
+                            .onAppear {
+                                DispatchQueue.main.async { onReachedEnd() }
+                            }
                     }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(
-                    GeometryReader { proxy in
-                        let frame = proxy.frame(in: .named("FilmstripScroll"))
-                        Color.clear
-                            .onChange(of: frame.minX) { _, _ in
-                                contentOffsetX = -frame.minX
-                                if frame.width > viewportWidth,
-                                   frame.maxX - viewportWidth < 180 {
-                                    onReachedEnd()
-                                }
-                            }
-                            .onAppear {
-                                contentOffsetX = -frame.minX
-                            }
-                    }
-                )
             }
-            .coordinateSpace(name: "FilmstripScroll")
             .frame(height: 112)
-            .background(.ultraThinMaterial)
-            .overlay(alignment: .top) {
-                Divider().opacity(0.35)
-            }
+            .background(.bar)
             .background(
                 GeometryReader { proxy in
                     Color.clear
@@ -1416,41 +1071,23 @@ private struct Filmstrip: View {
                 }
             )
             .onChange(of: selectedIndex) { _, index in
-                guard slots.indices.contains(index),
-                      isIndexOutsideVisibleFilmstrip(index) else { return }
-                withAnimation(.snappy(duration: 0.2)) {
-                    scrollProxy.scrollTo(index, anchor: .leading)
+                guard slots.indices.contains(index) else { return }
+                // 只在选中的缩略图跨过整批可见窗口时才滚动，让用户能在一屏内连续切换。
+                let tilesPerBatch = max(Int((viewportWidth - 28) / tilePitch), 1)
+                let batchStart = (index / tilesPerBatch) * tilesPerBatch
+                guard batchStart != lastBatchStart else { return }
+                lastBatchStart = batchStart
+                withAnimation(.snappy(duration: 0.22)) {
+                    scrollProxy.scrollTo(batchStart, anchor: .leading)
                 }
             }
+            .onAppear {
+                guard slots.indices.contains(selectedIndex) else { return }
+                let tilesPerBatch = max(Int((viewportWidth - 28) / tilePitch), 1)
+                lastBatchStart = (selectedIndex / tilesPerBatch) * tilesPerBatch
+                scrollProxy.scrollTo(lastBatchStart, anchor: .leading)
+            }
         }
-    }
-
-    private func isIndexOutsideVisibleFilmstrip(_ index: Int) -> Bool {
-        let itemPitch: CGFloat = 82
-        let horizontalPadding: CGFloat = 14
-        let itemStart = horizontalPadding + CGFloat(index) * itemPitch
-        let itemEnd = itemStart + 72
-        let visibleStart = max(contentOffsetX, 0)
-        let visibleEnd = visibleStart + viewportWidth
-        return itemStart < visibleStart || itemEnd > visibleEnd
-    }
-}
-
-private struct CompactStatusIcon: View {
-    let title: String
-    let systemImage: String
-
-    init(_ title: String, systemImage: String) {
-        self.title = title
-        self.systemImage = systemImage
-    }
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 14, height: 14)
-            .help(title)
     }
 }
 
@@ -1464,8 +1101,7 @@ private struct LoadingFilmstripTile: View {
                 .foregroundStyle(.secondary)
         }
         .frame(width: 72, height: 96)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -1476,7 +1112,7 @@ private struct PosterWebImage: View {
     var body: some View {
         RemoteImageView(url: url, contentMode: contentMode, priority: .background) {
             Rectangle()
-                .fill(Color.white.opacity(url == nil ? 0.08 : 0.11))
+                .fill(.quaternary)
                 .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
         }
     }
@@ -1488,7 +1124,7 @@ private struct SlotThumbnail: View {
     var body: some View {
         RemoteImageView(url: slot.knownURL, contentMode: .fill, priority: .utility) {
             Rectangle()
-                .fill(slot.knownURL == nil ? Color.white.opacity(0.06) : Color.white.opacity(0.11))
+                .fill(.quaternary)
                 .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(.secondary))
         }
             .frame(width: 72, height: 96)
@@ -1504,7 +1140,7 @@ private struct KindBadge: View {
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(color.opacity(0.14), in: Capsule())
+            .background(.quaternary, in: Capsule())
             .foregroundStyle(color)
     }
 
@@ -1532,10 +1168,11 @@ struct StepButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 48, height: 70)
-                .background(.black.opacity(0.36), in: RoundedRectangle(cornerRadius: 8))
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 40, height: 40)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().stroke(.separator, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }

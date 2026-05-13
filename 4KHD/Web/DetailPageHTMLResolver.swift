@@ -72,14 +72,60 @@ enum DetailPageHTMLResolver {
     }
 
     private nonisolated static func pageLinks(in html: String, baseURL: URL) -> [URL] {
-        let pattern = #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["']"#
-        let explicitPages = matches(pattern: pattern, in: html)
+        // 4khd 的页导航是 WordPress page-link-box：
+        //   <li class="numpages current"><span>1</span></li>
+        //   <li class="numpages"><a class="page-numbers" href=".../N">N</a></li>
+        // 当画廊页数较多时，会出现 `1 2 3 ... 20` 这种省略号写法，锚点里只有首尾几页。
+        // 所以这里不直接用锚点列表，而是：
+        //   1) 找出所有锚点指向 + 当前页（li.current）+ baseURL 自身能读到的最大页号
+        //   2) 按 URL 模板 `<detail.html>/N` 把 1..max 全部生成出来
+        // 这样不论画廊有 5 页还是 50 页，中间也不会漏。
+        let anchorPattern = #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["']"#
+        // current 既可能挂在 li 上（4khd 现状），也可能挂在 span 上（其它 WP 主题），都兼容。
+        let currentLiPattern = #"<li[^>]+class=["'][^"']*current[^"']*["'][^>]*>\s*<span[^>]*>\s*([0-9,]+)\s*</span>"#
+        let currentSpanPattern = #"<span[^>]+class=["'][^"']*(?:page-numbers\s+current|current\s+page-numbers)[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#
+
+        let anchorURLs = matches(pattern: anchorPattern, in: html)
             .compactMap { decodeHTML($0) }
             .compactMap(URL.init(string:))
 
-        guard !explicitPages.isEmpty else { return [baseURL] }
-        let basePage = baseURL.trailingPageNumber == nil ? baseURL : baseURL.deletingLastPathComponent()
-        return [basePage] + explicitPages.filter { $0.isSameDetailPath(as: basePage) }
+        // 用字符串方式精确剥掉 baseURL 末尾的 `/N`，保证 page1 URL 和 detailURL 字面相等。
+        let basePage = stripTrailingPageSegment(from: baseURL)
+        let basePageString = basePage.absoluteString
+
+        let sameGalleryAnchors = anchorURLs.filter { $0.isSameDetailPath(as: basePage) }
+
+        var maxPageNumber = 1
+        for url in sameGalleryAnchors {
+            if let n = url.trailingPageNumber { maxPageNumber = max(maxPageNumber, n) }
+        }
+        for pattern in [currentLiPattern, currentSpanPattern] {
+            if let text = matches(pattern: pattern, in: html).first,
+               let n = Int(text.replacingOccurrences(of: ",", with: "")) {
+                maxPageNumber = max(maxPageNumber, n)
+            }
+        }
+        if let n = baseURL.trailingPageNumber {
+            maxPageNumber = max(maxPageNumber, n)
+        }
+
+        guard maxPageNumber >= 1 else { return [basePage] }
+
+        return (1...maxPageNumber).compactMap { pageNum -> URL? in
+            if pageNum == 1 { return basePage }
+            return URL(string: "\(basePageString)/\(pageNum)")
+        }
+    }
+
+    /// 如果 URL 形如 `.../foo.html/N`，把末尾 `/N` 整段剥掉；否则原样返回。
+    /// 用纯字符串处理，避开 `URL.deletingLastPathComponent()` 会引入尾斜杠的问题。
+    private nonisolated static func stripTrailingPageSegment(from url: URL) -> URL {
+        guard let pageNumber = url.trailingPageNumber else { return url }
+        let suffix = "/\(pageNumber)"
+        let raw = url.absoluteString
+        guard raw.hasSuffix(suffix) else { return url }
+        let stripped = String(raw.dropLast(suffix.count))
+        return URL(string: stripped) ?? url
     }
 
     private nonisolated static func matches(pattern: String, in text: String) -> [String] {

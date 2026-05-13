@@ -4,121 +4,123 @@ import UniformTypeIdentifiers
 
 struct LocalImageDetailPane: View {
     @EnvironmentObject private var localLibrary: LocalLibraryStore
+    @EnvironmentObject private var immersive: ImmersiveController
     @State private var resetToken = UUID()
     @State private var saveMessage = ""
-    private let headerHeight: CGFloat = 54
-    private let filmstripHeight: CGFloat = 112
 
     var body: some View {
-        if let folder = localLibrary.selectedFolder, let image = localLibrary.selectedImage {
-            ZStack {
-                ZStack {
-                    Color(red: 0.06, green: 0.06, blue: 0.065)
-
-                    GeometryReader { proxy in
-                        let maxPixelSize = max(proxy.size.width, proxy.size.height) * 2
-                        ZoomableImageCanvas(
-                            url: image.url,
-                            resetToken: resetToken,
-                            contentInsets: EdgeInsets(top: headerHeight, leading: 0, bottom: filmstripHeight, trailing: 0),
-                            localMaxPixelSize: maxPixelSize
-                        ) {
-                            DetailPlaceholder(kind: .loading)
-                        } onDisplayed: {}
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                    }
-                    .clipped()
-
-                    HStack {
-                        StepButton(systemName: "chevron.left") { localLibrary.stepImage(-1) }
-                            .disabled(localLibrary.selectedImageIndex == 0)
-                        Spacer()
-                        StepButton(systemName: "chevron.right") { localLibrary.stepImage(1) }
-                            .disabled(localLibrary.selectedImageIndex >= localLibrary.selectedImages.count - 1)
-                    }
-                    .padding(.horizontal, 18)
-                }
-
-                VStack(spacing: 0) {
-                    header(folder: folder, image: image)
-                        .frame(height: headerHeight)
-                    Spacer()
-                    LocalFilmstrip(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex) { index in
-                        localLibrary.selectImage(at: index)
-                    }
-                }
+        Group {
+            if let folder = localLibrary.selectedFolder, let image = localLibrary.selectedImage {
+                content(folder: folder, image: image)
+            } else {
+                ContentUnavailableView("没有可显示图片", systemImage: "photo")
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: image.id) { _, _ in
-                resetToken = UUID()
-                saveMessage = ""
-            }
-        } else {
-            ContentUnavailableView("没有可显示图片", systemImage: "photo")
         }
     }
 
-    private func header(folder: LocalFolderNode, image: LocalImageItem) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(folder.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text("\(localLibrary.selectedImageIndex + 1) / \(localLibrary.selectedImages.count) · \(image.title)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+    @ViewBuilder
+    private func content(folder: LocalFolderNode, image: LocalImageItem) -> some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            GeometryReader { proxy in
+                let maxPixelSize = max(proxy.size.width, proxy.size.height) * 2
+                ZoomableImageCanvas(
+                    url: image.url,
+                    resetToken: resetToken,
+                    contentInsets: EdgeInsets(),
+                    localMaxPixelSize: maxPixelSize
+                ) {
+                    DetailPlaceholder(kind: .loading)
+                } onDisplayed: {}
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+            .clipped()
 
-            Spacer()
+            HStack {
+                StepButton(systemName: "chevron.left") { localLibrary.stepImage(-1) }
+                    .disabled(localLibrary.selectedImageIndex == 0)
+                Spacer()
+                StepButton(systemName: "chevron.right") { localLibrary.stepImage(1) }
+                    .disabled(localLibrary.selectedImageIndex >= localLibrary.selectedImages.count - 1)
+            }
+            .padding(.horizontal, 18)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            LocalFilmstrip(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex) { index in
+                localLibrary.selectImage(at: index)
+            }
+        }
+        .navigationTitle(folder.title)
+        .navigationSubtitle("\(localLibrary.selectedImageIndex + 1) / \(localLibrary.selectedImages.count) · \(image.title)")
+        .toolbar { toolbarContent(image: image) }
+        .onExitCommand {
+            if immersive.isImmersive { immersive.toggle() }
+        }
+        .onChange(of: image.id) { _, _ in
+            resetToken = UUID()
+            saveMessage = ""
+        }
+    }
 
+    @ToolbarContentBuilder
+    private func toolbarContent(image: LocalImageItem) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                localLibrary.stepImage(-1)
+            } label: {
+                Label("上一张", systemImage: "chevron.left")
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command])
+            .disabled(localLibrary.selectedImageIndex == 0)
+
+            Button {
+                localLibrary.stepImage(1)
+            } label: {
+                Label("下一张", systemImage: "chevron.right")
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command])
+            .disabled(localLibrary.selectedImageIndex >= localLibrary.selectedImages.count - 1)
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
             if !saveMessage.isEmpty {
                 Text(saveMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            Button {
-                localLibrary.isFullscreenViewerPresented = true
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .frame(width: 22)
-            }
-            .help("全屏")
-
             Button {
                 resetToken = UUID()
             } label: {
-                Image(systemName: "1.magnifyingglass")
-                    .frame(width: 22)
+                Label("实际大小", systemImage: "1.magnifyingglass")
             }
+            .keyboardShortcut("0", modifiers: [.command])
             .help("实际大小")
+
+            Button {
+                immersive.toggle()
+            } label: {
+                Label("全屏", systemImage: immersive.isImmersive
+                      ? "arrow.down.right.and.arrow.up.left"
+                      : "arrow.up.left.and.arrow.down.right")
+            }
+            .help(immersive.isImmersive ? "退出大图模式" : "进入大图模式")
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([image.url])
             } label: {
-                Image(systemName: "finder")
-                    .frame(width: 22)
+                Label("Finder", systemImage: "folder")
             }
             .help("在 Finder 中显示")
 
             Button {
                 saveImage(image)
             } label: {
-                Image(systemName: "square.and.arrow.down")
-                    .frame(width: 22)
+                Label("保存", systemImage: "square.and.arrow.down")
             }
+            .keyboardShortcut("s", modifiers: [.command])
             .help("保存副本")
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider().opacity(0.35)
         }
     }
 
@@ -146,6 +148,10 @@ struct LocalFilmstrip: View {
     let selectedIndex: Int
     let onSelect: (Int) -> Void
 
+    @State private var viewportWidth: CGFloat = 0
+    @State private var lastBatchStart: Int = -1
+    private let tilePitch: CGFloat = 82
+
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal) {
@@ -159,13 +165,17 @@ struct LocalFilmstrip: View {
                                 LocalImageThumbnail(url: image.url)
                                 Text("#\(index + 1)")
                                     .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
-                                    .background(.black.opacity(0.5), in: Capsule())
+                                    .background(.regularMaterial, in: Capsule())
                                     .padding(5)
                             }
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(selectedIndex == index ? Color.accentColor : Color.white.opacity(0.15), lineWidth: selectedIndex == index ? 2 : 1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(selectedIndex == index ? Color.accentColor : Color.clear,
+                                            lineWidth: selectedIndex == index ? 2 : 0)
+                            )
                         }
                         .buttonStyle(.plain)
                         .id(index)
@@ -175,14 +185,22 @@ struct LocalFilmstrip: View {
                 .padding(.vertical, 10)
             }
             .frame(height: 112)
-            .background(.ultraThinMaterial)
-            .overlay(alignment: .top) {
-                Divider().opacity(0.35)
-            }
+            .background(.bar)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { viewportWidth = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, value in viewportWidth = value }
+                }
+            )
             .onChange(of: selectedIndex) { _, index in
                 guard images.indices.contains(index) else { return }
-                withAnimation(.snappy(duration: 0.2)) {
-                    scrollProxy.scrollTo(index, anchor: .center)
+                let tilesPerBatch = max(Int((viewportWidth - 28) / tilePitch), 1)
+                let batchStart = (index / tilesPerBatch) * tilesPerBatch
+                guard batchStart != lastBatchStart else { return }
+                lastBatchStart = batchStart
+                withAnimation(.snappy(duration: 0.22)) {
+                    scrollProxy.scrollTo(batchStart, anchor: .leading)
                 }
             }
         }
@@ -195,7 +213,7 @@ private struct LocalImageThumbnail: View {
     var body: some View {
         RemoteImageView(url: url, contentMode: .fill, priority: .utility, localMaxPixelSize: 220) {
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(.quaternary)
                 .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(.secondary))
         }
         .frame(width: 72, height: 96)

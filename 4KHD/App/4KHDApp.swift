@@ -7,14 +7,16 @@ struct FourKHDApp: App {
 
     var body: some Scene {
         WindowGroup {
-            GalleryWorkspaceView()
+            WorkspaceShell()
                 .environmentObject(library)
                 .environmentObject(localLibrary)
-                .frame(minWidth: 1180, minHeight: 760)
         }
         .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {}
+            SidebarCommands()
+            ToolbarCommands()
         }
     }
 }

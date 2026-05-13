@@ -1,89 +1,66 @@
 import AppKit
 import SwiftUI
 
-struct LocalFolderPane: View {
+/// 三段式中部内容栏 —— 显示当前所选本地目录里的所有图片，
+/// 完全用系统 `List` + 缩略图行，selection 由 `LocalLibraryStore.selectedImageIndex` 桥接。
+struct LocalImageContentList: View {
     @EnvironmentObject private var localLibrary: LocalLibraryStore
-    @State private var expandedFolderIDs: Set<String> = []
 
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("本地图库")
-                        .font(.headline)
-                    HStack(spacing: 6) {
-                        if localLibrary.isScanning {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                        Text(localLibrary.isScanning ? "扫描目录中" : "\(localLibrary.roots.count) 个根目录")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                Button {
-                    importRootFolder()
-                } label: {
-                    Image(systemName: "folder.badge.plus")
-                        .frame(width: 22)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("导入本地图片文件夹")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            if localLibrary.roots.isEmpty {
-                ContentUnavailableView("还没有本地目录", systemImage: "folder")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 6) {
-                        ForEach(localLibrary.roots) { root in
-                            LocalRootFolderRow(
-                                root: root,
-                                isExpanded: expandedFolderIDs.contains(root.tree.id),
-                                isSelected: localLibrary.selectedFolder?.id == root.tree.id
-                            ) {
-                                toggle(root.tree.id)
-                                localLibrary.selectFolder(root.tree)
-                            }
-                            .contextMenu {
-                                Button("移除目录") {
-                                    localLibrary.removeFolder(root.tree)
-                                }
-                            }
-
-                            if expandedFolderIDs.contains(root.tree.id) {
-                                LocalFolderTree(
-                                    folder: root.tree,
-                                    level: 1,
-                                    expandedFolderIDs: $expandedFolderIDs
-                                )
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
+    private var selectionBinding: Binding<LocalImageItem.ID?> {
+        Binding(
+            get: { localLibrary.selectedImage?.id },
+            set: { newValue in
+                guard let newValue,
+                      let index = localLibrary.selectedImages.firstIndex(where: { $0.id == newValue }) else { return }
+                // 避免在 view update 周期内直接写 @Published
+                DispatchQueue.main.async {
+                    localLibrary.selectImage(at: index)
                 }
             }
-        }
-        .onAppear {
-            if expandedFolderIDs.isEmpty {
-                expandedFolderIDs.formUnion(localLibrary.roots.map(\.tree.id))
-            }
-        }
+        )
     }
 
-    private func toggle(_ id: String) {
-        if expandedFolderIDs.contains(id) {
-            expandedFolderIDs.remove(id)
-        } else {
-            expandedFolderIDs.insert(id)
+    var body: some View {
+        Group {
+            if localLibrary.roots.isEmpty {
+                ContentUnavailableView {
+                    Label("还没有本地目录", systemImage: "folder")
+                } description: {
+                    Text("使用侧栏右上的 + 导入一个图片目录")
+                } actions: {
+                    Button("选择目录…") { importRootFolder() }
+                        .controlSize(.large)
+                }
+            } else if let folder = localLibrary.selectedFolder {
+                if folder.images.isEmpty {
+                    ContentUnavailableView("当前目录没有图片", systemImage: "photo.on.rectangle.angled")
+                } else {
+                    List(selection: selectionBinding) {
+                        ForEach(Array(folder.images.enumerated()), id: \.element.id) { index, image in
+                            LocalImageRow(image: image, index: index + 1)
+                                .tag(image.id)
+                        }
+                    }
+                    .listStyle(.inset)
+                    .navigationTitle(folder.title)
+                    .navigationSubtitle("\(folder.images.count) 张")
+                }
+            } else {
+                ContentUnavailableView("从侧栏选择目录", systemImage: "sidebar.left")
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    if let folder = localLibrary.selectedFolder {
+                        NSWorkspace.shared.activateFileViewerSelecting([folder.url])
+                    }
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .help("在 Finder 中显示")
+                .disabled(localLibrary.selectedFolder == nil)
+            }
         }
     }
 
@@ -95,155 +72,34 @@ struct LocalFolderPane: View {
         panel.canCreateDirectories = false
         panel.prompt = "导入"
         panel.message = "选择一个包含图片的文件夹"
-
         guard panel.runModal() == .OK, let folderURL = panel.url else { return }
         localLibrary.importRootFolder(folderURL)
-        expandedFolderIDs.insert(folderURL.standardizedFileURL.path)
     }
 }
 
-private struct LocalFolderTree: View {
-    @EnvironmentObject private var localLibrary: LocalLibraryStore
-
-    let folder: LocalFolderNode
-    let level: Int
-    @Binding var expandedFolderIDs: Set<String>
+private struct LocalImageRow: View {
+    let image: LocalImageItem
+    let index: Int
 
     var body: some View {
-        ForEach(folder.folders) { child in
-            LocalFolderRow(
-                folder: child,
-                level: level,
-                isExpanded: expandedFolderIDs.contains(child.id),
-                isSelected: localLibrary.selectedFolder?.id == child.id
-            ) {
-                toggle(child.id)
-                localLibrary.selectFolder(child)
+        HStack(spacing: 10) {
+            RemoteImageView(url: image.url, contentMode: .fill, priority: .utility, localMaxPixelSize: 160) {
+                Rectangle().fill(.quaternary)
+                    .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
             }
-            .contextMenu {
-                Button("移除目录") {
-                    localLibrary.removeFolder(child)
-                }
-            }
+            .frame(width: 56, height: 76)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
 
-            if expandedFolderIDs.contains(child.id) {
-                LocalFolderTree(folder: child, level: level + 1, expandedFolderIDs: $expandedFolderIDs)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(image.title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(2)
+                Text("#\(index)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
         }
-    }
-
-    private func toggle(_ id: String) {
-        if expandedFolderIDs.contains(id) {
-            expandedFolderIDs.remove(id)
-        } else {
-            expandedFolderIDs.insert(id)
-        }
-    }
-}
-
-private struct LocalRootFolderRow: View {
-    let root: LocalLibraryRoot
-    let isExpanded: Bool
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        LocalFolderRowContent(
-            title: root.title,
-            subtitle: "\(root.imageCount) 张 · \(root.url.path)",
-            coverURL: root.tree.directCoverURL,
-            isExpanded: isExpanded,
-            indent: 0,
-            isSelected: isSelected,
-            action: action
-        )
-    }
-}
-
-private struct LocalFolderRow: View {
-    let folder: LocalFolderNode
-    let level: Int
-    let isExpanded: Bool
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        LocalFolderRowContent(
-            title: folder.title,
-            subtitle: "\(folder.images.count) 张当前目录 · \(folder.imageCount) 张含子目录",
-            coverURL: folder.directCoverURL,
-            isExpanded: isExpanded,
-            indent: CGFloat(level) * 16,
-            isSelected: isSelected,
-            action: action
-        )
-    }
-}
-
-private struct LocalFolderRowContent: View {
-    let title: String
-    let subtitle: String
-    let coverURL: URL?
-    let isExpanded: Bool
-    let indent: CGFloat
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Color.clear.frame(width: indent, height: 1)
-
-                ZStack(alignment: .bottomTrailing) {
-                    folderThumbnail
-                        .frame(width: 46, height: 62)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                    Image(systemName: isExpanded ? "chevron.down.circle.fill" : "chevron.right.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white, Color.black.opacity(0.55))
-                        .padding(4)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.callout.weight(.semibold))
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var folderIconPlaceholder: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.08))
-            .overlay(
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-            )
-    }
-
-    @ViewBuilder
-    private var folderThumbnail: some View {
-        if let coverURL {
-            RemoteImageView(url: coverURL, contentMode: .fill, priority: .utility, localMaxPixelSize: 160) {
-                folderIconPlaceholder
-            }
-        } else {
-            folderIconPlaceholder
-        }
+        .padding(.vertical, 2)
     }
 }
