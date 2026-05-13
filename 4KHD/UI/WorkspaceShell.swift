@@ -70,6 +70,24 @@ final class ImmersiveController {
     }
 }
 
+@MainActor
+@Observable
+final class SidebarDisclosureState {
+    private var collapsedFolderIDs = Set<String>()
+
+    func isExpanded(_ folderID: String) -> Bool {
+        !collapsedFolderIDs.contains(folderID)
+    }
+
+    func setExpanded(_ isExpanded: Bool, for folderID: String) {
+        if isExpanded {
+            collapsedFolderIDs.remove(folderID)
+        } else {
+            collapsedFolderIDs.insert(folderID)
+        }
+    }
+}
+
 /// macOS 三段式工作区外壳。普通状态使用 `NavigationSplitView`；进入沉浸模式后切换
 /// 到一张 detail 占满窗口的布局，左缘鼠标触发条会把侧栏 / 中栏作为浮层滑出来。
 struct WorkspaceShell: View {
@@ -77,6 +95,7 @@ struct WorkspaceShell: View {
     @Environment(LocalLibraryStore.self) private var localLibrary
     // @State 持有 @Observable 子对象 —— SwiftUI 会复用同一实例。
     @State private var immersive = ImmersiveController()
+    @State private var sidebarDisclosure = SidebarDisclosureState()
 
     @SceneStorage("com.songziqiang.4khd.sidebarSelection")
     private var storedSelection: String = SidebarSelection.online(.latest).rawValue
@@ -120,6 +139,7 @@ struct WorkspaceShell: View {
             immersivePeekChrome
         }
         .environment(immersive)
+        .environment(sidebarDisclosure)
         .task {
             // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
             // 后续子页面解析走 URLSession 直拉也带得上同一张票。
@@ -302,10 +322,16 @@ struct WorkspaceSidebar: View {
 /// 侧栏中的递归本地目录项 —— 用系统 `DisclosureGroup` 表达层级。
 struct LocalFolderSidebarRow: View {
     @Environment(LocalLibraryStore.self) private var localLibrary
+    @Environment(SidebarDisclosureState.self) private var sidebarDisclosure
     let folder: LocalFolderNode
     let level: Int
 
-    @State private var isExpanded: Bool = true
+    private var isExpanded: Binding<Bool> {
+        Binding(
+            get: { sidebarDisclosure.isExpanded(folder.id) },
+            set: { sidebarDisclosure.setExpanded($0, for: folder.id) }
+        )
+    }
 
     private var leafLabel: some View {
         Label {
@@ -329,7 +355,7 @@ struct LocalFolderSidebarRow: View {
                     Button("移除目录") { localLibrary.removeFolder(folder) }
                 }
         } else {
-            DisclosureGroup(isExpanded: $isExpanded) {
+            DisclosureGroup(isExpanded: isExpanded) {
                 ForEach(folder.folders) { child in
                     LocalFolderSidebarRow(folder: child, level: level + 1)
                 }

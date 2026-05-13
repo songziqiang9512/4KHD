@@ -60,6 +60,8 @@ struct ImageDetailPane: View {
                     displayedImageURL = slot.knownURL
                     isDetailReady = true
                     detailFailed = false
+                } onBlankTap: {
+                    if immersive.isImmersive { immersive.set(false) }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
@@ -86,6 +88,11 @@ struct ImageDetailPane: View {
                     Spacer()
                 }
             }
+
+            KeyDownCatcher { event in
+                handleKeyDown(event)
+            }
+            .frame(width: 0, height: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -117,6 +124,23 @@ struct ImageDetailPane: View {
         }
         .onAppear {
             RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard event.hasBareKeyModifiers else { return false }
+        switch event.keyCode {
+        case 123:
+            library.stepImage(-1)
+            return true
+        case 124, 49:
+            library.stepImage(1)
+            return true
+        case 3:
+            immersive.toggle()
+            return true
+        default:
+            return false
         }
     }
 

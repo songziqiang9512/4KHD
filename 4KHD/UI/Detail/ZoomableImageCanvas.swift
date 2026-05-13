@@ -10,6 +10,7 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
     let localMaxPixelSize: CGFloat?
     @ViewBuilder let placeholder: () -> Placeholder
     let onDisplayed: () -> Void
+    let onBlankTap: () -> Void
 
     @State private var zoomScale: CGFloat = 1
     @State private var panOffset: CGSize = .zero
@@ -22,7 +23,8 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
         contentInsets: EdgeInsets,
         localMaxPixelSize: CGFloat? = nil,
         @ViewBuilder placeholder: @escaping () -> Placeholder,
-        onDisplayed: @escaping () -> Void
+        onDisplayed: @escaping () -> Void,
+        onBlankTap: @escaping () -> Void = {}
     ) {
         self.url = url
         self.resetToken = resetToken
@@ -30,6 +32,7 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
         self.localMaxPixelSize = localMaxPixelSize
         self.placeholder = placeholder
         self.onDisplayed = onDisplayed
+        self.onBlankTap = onBlankTap
     }
 
     var body: some View {
@@ -89,6 +92,14 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
                     .onEnded { _ in
                         panOffset = clampedPanOffset(panOffset, in: fitSize, imageSize: imageSize)
                         dragStartOffset = panOffset
+                    }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        if isBlankLocation(value.location, in: fitSize) {
+                            onBlankTap()
+                        }
                     }
             )
         }
@@ -176,6 +187,23 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
 
         let scale = min(containerSize.width / imageSize.width, containerSize.height / imageSize.height)
         return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+
+    private func isBlankLocation(_ location: CGPoint, in containerSize: CGSize) -> Bool {
+        guard imageSize != nil else { return false }
+        let fittedSize = fittedImageSize(in: containerSize, imageSize: imageSize)
+        let displayedSize = CGSize(width: fittedSize.width * zoomScale, height: fittedSize.height * zoomScale)
+        let center = CGPoint(
+            x: contentInsets.leading + containerSize.width / 2 + panOffset.width,
+            y: contentInsets.top + containerSize.height / 2 + panOffset.height
+        )
+        let imageFrame = CGRect(
+            x: center.x - displayedSize.width / 2,
+            y: center.y - displayedSize.height / 2,
+            width: displayedSize.width,
+            height: displayedSize.height
+        )
+        return !imageFrame.contains(location)
     }
 }
 

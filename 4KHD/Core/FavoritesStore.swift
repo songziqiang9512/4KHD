@@ -54,6 +54,7 @@ final class FavoritesStore {
                 DetailPageImageCache.shared.setPersistent(true, forDetailURL: detailURL)
             }
         }
+        DetailPageImageCache.shared.prune()
     }
 
     private func save() {

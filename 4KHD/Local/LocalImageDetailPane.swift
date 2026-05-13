@@ -32,7 +32,10 @@ struct LocalImageDetailPane: View {
                     localMaxPixelSize: maxPixelSize
                 ) {
                     DetailPlaceholder(kind: .loading)
-                } onDisplayed: {}
+                } onDisplayed: {
+                } onBlankTap: {
+                    if immersive.isImmersive { immersive.set(false) }
+                }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
             .clipped()
@@ -45,6 +48,11 @@ struct LocalImageDetailPane: View {
                     .disabled(localLibrary.selectedImageIndex >= localLibrary.selectedImages.count - 1)
             }
             .padding(.horizontal, 18)
+
+            KeyDownCatcher { event in
+                handleKeyDown(event)
+            }
+            .frame(width: 0, height: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -61,6 +69,23 @@ struct LocalImageDetailPane: View {
         .onChange(of: image.id) { _, _ in
             resetToken = UUID()
             saveMessage = ""
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard event.hasBareKeyModifiers else { return false }
+        switch event.keyCode {
+        case 123:
+            localLibrary.stepImage(-1)
+            return true
+        case 124, 49:
+            localLibrary.stepImage(1)
+            return true
+        case 3:
+            immersive.toggle()
+            return true
+        default:
+            return false
         }
     }
 

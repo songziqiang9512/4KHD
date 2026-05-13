@@ -14,6 +14,8 @@ final class DetailPageImageCache {
     private let lock = NSLock()
     private let cacheURL: URL
     private let expirationInterval: TimeInterval = 7 * 24 * 60 * 60
+    private let maxVolatileEntryCount = 500
+    private let maxPersistentEntryCount = 800
     private var storage: [String: Entry] = [:]
     private var cachedDetailPaths = Set<String>()
     private var didLoadFromDisk = false
@@ -35,7 +37,7 @@ final class DetailPageImageCache {
         }
         if !entry.isPersistent, Date().timeIntervalSince(entry.updatedAt) > expirationInterval {
             storage[key] = nil
-            cachedDetailPaths.remove(entry.pageURL.normalizedDetailPathKey)
+            rebuildCachedDetailPathsLocked()
             saveToDiskLocked()
             lock.unlock()
             return nil
@@ -57,6 +59,7 @@ final class DetailPageImageCache {
             isPersistent: existing?.isPersistent ?? false
         )
         cachedDetailPaths.insert(page.pageURL.normalizedDetailPathKey)
+        pruneEntriesLocked()
         saveToDiskLocked()
         lock.unlock()
     }
@@ -81,6 +84,16 @@ final class DetailPageImageCache {
             didChange = true
         }
         if didChange {
+            pruneEntriesLocked()
+            saveToDiskLocked()
+        }
+        lock.unlock()
+    }
+
+    func prune() {
+        lock.lock()
+        loadFromDiskIfNeededLocked()
+        if pruneEntriesLocked() {
             saveToDiskLocked()
         }
         lock.unlock()
@@ -97,18 +110,35 @@ final class DetailPageImageCache {
         }
         storage = decoded
         rebuildCachedDetailPathsLocked()
-        pruneExpiredEntriesLocked()
+        if pruneEntriesLocked() {
+            saveToDiskLocked()
+        }
     }
 
-    private func pruneExpiredEntriesLocked() {
+    @discardableResult
+    private func pruneEntriesLocked() -> Bool {
         let now = Date()
-        let originalCount = storage.count
+        let originalKeys = Set(storage.keys)
         storage = storage.filter { _, entry in
             entry.isPersistent || now.timeIntervalSince(entry.updatedAt) <= expirationInterval
         }
-        if storage.count != originalCount {
-            rebuildCachedDetailPathsLocked()
-            saveToDiskLocked()
+
+        trimEntriesLocked(isPersistent: false, maxCount: maxVolatileEntryCount)
+        trimEntriesLocked(isPersistent: true, maxCount: maxPersistentEntryCount)
+
+        let didChange = Set(storage.keys) != originalKeys
+        if didChange { rebuildCachedDetailPathsLocked() }
+        return didChange
+    }
+
+    private func trimEntriesLocked(isPersistent: Bool, maxCount: Int) {
+        let candidates = storage
+            .filter { $0.value.isPersistent == isPersistent }
+            .sorted { lhs, rhs in lhs.value.updatedAt > rhs.value.updatedAt }
+
+        guard candidates.count > maxCount else { return }
+        for (key, _) in candidates.dropFirst(maxCount) {
+            storage[key] = nil
         }
     }
 

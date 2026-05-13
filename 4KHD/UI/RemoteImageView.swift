@@ -6,6 +6,7 @@ struct RemoteImageView<Placeholder: View>: View {
     let url: URL?
     let contentMode: ContentMode
     let priority: TaskPriority
+    let remoteMaxPixelSize: CGFloat?
     let localMaxPixelSize: CGFloat?
     @ViewBuilder let placeholder: () -> Placeholder
     let onLoaded: () -> Void
@@ -18,6 +19,7 @@ struct RemoteImageView<Placeholder: View>: View {
         url: URL?,
         contentMode: ContentMode,
         priority: TaskPriority = .utility,
+        remoteMaxPixelSize: CGFloat? = nil,
         localMaxPixelSize: CGFloat? = nil,
         onLoaded: @escaping () -> Void = {},
         onImageLoaded: @escaping (NSImage) -> Void = { _ in },
@@ -26,6 +28,7 @@ struct RemoteImageView<Placeholder: View>: View {
         self.url = url
         self.contentMode = contentMode
         self.priority = priority
+        self.remoteMaxPixelSize = remoteMaxPixelSize
         self.localMaxPixelSize = localMaxPixelSize
         self.onLoaded = onLoaded
         self.onImageLoaded = onImageLoaded
@@ -58,7 +61,11 @@ struct RemoteImageView<Placeholder: View>: View {
                 }
                 return
             }
-            let request = RemoteImagePipeline.shared.request(for: url, priority: priority.nukePriority)
+            let request = RemoteImagePipeline.shared.request(
+                for: url,
+                priority: priority.nukePriority,
+                maxPixelSize: remoteMaxPixelSize
+            )
             imageTask = RemoteImagePipeline.shared.loadImage(with: request) { loadedImage in
                 guard loadedURL == url else { return }
                 image = loadedImage
@@ -84,6 +91,7 @@ final class RemoteImagePipeline {
     private init() {
         var configuration = ImagePipeline.Configuration()
         configuration.dataLoader = DataLoader(configuration: Self.urlSessionConfiguration)
+        configuration.imageCache = ImageCache(costLimit: 384 * 1024 * 1024, countLimit: 900)
         if let dataCache = try? DataCache(name: "com.songziqiang.4khd.images") {
             dataCache.sizeLimit = 1024 * 1024 * 1024
             configuration.dataCache = dataCache
@@ -103,7 +111,7 @@ final class RemoteImagePipeline {
         self.detailPrefetcher.priority = .low
     }
 
-    func request(for url: URL, priority: ImageRequest.Priority) -> ImageRequest {
+    func request(for url: URL, priority: ImageRequest.Priority, maxPixelSize: CGFloat? = nil) -> ImageRequest {
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.cachePolicy = .returnCacheDataElseLoad
@@ -114,7 +122,14 @@ final class RemoteImagePipeline {
         )
         request.setValue("image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
 
-        return ImageRequest(urlRequest: request, priority: priority)
+        let processors: [ImageProcessing]
+        if let maxPixelSize, maxPixelSize > 0 {
+            processors = [ImageProcessors.Resize(width: maxPixelSize, unit: .pixels, upscale: false)]
+        } else {
+            processors = []
+        }
+
+        return ImageRequest(urlRequest: request, processors: processors, priority: priority)
     }
 
     @discardableResult

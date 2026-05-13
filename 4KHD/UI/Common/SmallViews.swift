@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// 列表 / 详情通用的小组件集合：图集封面占位、内容类型徽标、步进按钮、缩略图占位等。
@@ -8,7 +9,7 @@ struct PosterWebImage: View {
     let contentMode: ContentMode
 
     var body: some View {
-        RemoteImageView(url: url, contentMode: contentMode, priority: .background) {
+        RemoteImageView(url: url, contentMode: contentMode, priority: .background, remoteMaxPixelSize: 180) {
             Rectangle()
                 .fill(.quaternary)
                 .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
@@ -20,7 +21,7 @@ struct SlotThumbnail: View {
     let slot: ImageSlot
 
     var body: some View {
-        RemoteImageView(url: slot.knownURL, contentMode: .fill, priority: .utility) {
+        RemoteImageView(url: slot.knownURL, contentMode: .fill, priority: .low, remoteMaxPixelSize: 220) {
             Rectangle()
                 .fill(.quaternary)
                 .overlay(Image(systemName: "photo").font(.caption).foregroundStyle(.secondary))
@@ -116,5 +117,49 @@ struct DetailPlaceholder: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+struct KeyDownCatcher: NSViewRepresentable {
+    let onKeyDown: (NSEvent) -> Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyCatcherView()
+        view.onKeyDown = onKeyDown
+        DispatchQueue.main.async {
+            view.window?.makeFirstResponder(view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let view = nsView as? KeyCatcherView else { return }
+        view.onKeyDown = onKeyDown
+        DispatchQueue.main.async {
+            if view.window?.firstResponder == nil {
+                view.window?.makeFirstResponder(view)
+            }
+        }
+    }
+
+    private final class KeyCatcherView: NSView {
+        var onKeyDown: (NSEvent) -> Bool = { _ in false }
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func keyDown(with event: NSEvent) {
+            if !onKeyDown(event) {
+                super.keyDown(with: event)
+            }
+        }
+    }
+}
+
+extension NSEvent {
+    var hasBareKeyModifiers: Bool {
+        modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting(.capsLock)
+            .isEmpty
     }
 }
