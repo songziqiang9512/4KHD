@@ -1,0 +1,215 @@
+import AppKit
+import Nuke
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// 线上图集详情面板：主图 + 工具栏 + 底部缩略图条。
+/// 通过 `LibraryStore` 读 slot 状态，通过 `ImmersiveController` 切换沉浸模式。
+struct ImageDetailPane: View {
+    @Environment(LibraryStore.self) private var library
+    @Environment(ImmersiveController.self) private var immersive
+
+    @State private var displayedImageURL: URL?
+    @State private var saveMessage = ""
+    @State private var isDetailReady = false
+    @State private var detailFailed = false
+    @State private var detailResetToken = UUID()
+    @State private var saveTask: ImageTask?
+
+    var body: some View {
+        Group {
+            if let item = library.selectedItem, let slot = library.selectedSlot {
+                content(item: item, slot: slot)
+            } else {
+                ContentUnavailableView("没有可显示内容", systemImage: "photo")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(item: GalleryItem, slot: ImageSlot) -> some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            GeometryReader { proxy in
+                DetailImageResolverView(
+                    pageURL: slot.pageURL,
+                    onResolvedPage: { page in
+                        Task { @MainActor in
+                            library.registerResolvedPage(page)
+                        }
+                    },
+                    onFailure: {
+                        detailFailed = true
+                        isDetailReady = true
+                    }
+                )
+                .frame(width: 1, height: 1)
+                .opacity(0.001)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
+                ZoomableImageCanvas(
+                    url: slot.knownURL,
+                    resetToken: detailResetToken,
+                    contentInsets: EdgeInsets()
+                ) {
+                    DetailPlaceholder(kind: detailFailed ? .failed : .loading)
+                } onDisplayed: {
+                    displayedImageURL = slot.knownURL
+                    isDetailReady = true
+                    detailFailed = false
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+            .clipped()
+
+            HStack {
+                StepButton(systemName: "chevron.left") { library.stepImage(-1) }
+                    .disabled(library.selectedImageIndex == 0)
+                Spacer()
+                StepButton(systemName: "chevron.right") { library.stepImage(1) }
+            }
+            .padding(.horizontal, 18)
+
+            VStack {
+                Spacer()
+                HStack {
+                    Text("\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(16)
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
+                library.selectImage(at: index)
+            } onReachedEnd: {
+                library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+            }
+        }
+        .navigationTitle(item.title)
+        .navigationSubtitle("\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))")
+        .toolbar { detailToolbar(item: item, slot: slot) }
+        .onExitCommand {
+            if immersive.isImmersive { immersive.toggle() }
+        }
+        .onChange(of: item.id) { _, _ in
+            displayedImageURL = nil
+            saveMessage = ""
+            isDetailReady = false
+            detailFailed = false
+            RemoteImagePipeline.shared.stopDetailPrefetching()
+        }
+        .onChange(of: slot.id) { _, _ in
+            displayedImageURL = nil
+            saveMessage = ""
+            isDetailReady = false
+            detailFailed = false
+            RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
+        }
+        .onAppear {
+            RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private func detailToolbar(item: GalleryItem, slot: ImageSlot) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                library.stepImage(-1)
+            } label: {
+                Label("上一张", systemImage: "chevron.left")
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command])
+            .disabled(library.selectedImageIndex == 0)
+
+            Button {
+                library.stepImage(1)
+            } label: {
+                Label("下一张", systemImage: "chevron.right")
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command])
+        }
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            if !saveMessage.isEmpty {
+                Text(saveMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                library.toggleFavorite(for: item)
+            } label: {
+                Label("收藏", systemImage: library.isFavorite(item) ? "bookmark.fill" : "bookmark")
+            }
+            .keyboardShortcut("d", modifiers: [.command])
+            .help(library.isFavorite(item) ? "取消收藏" : "收藏")
+
+            Button {
+                detailResetToken = UUID()
+            } label: {
+                Label("实际大小", systemImage: "1.magnifyingglass")
+            }
+            .keyboardShortcut("0", modifiers: [.command])
+            .help("实际大小")
+
+            Button {
+                immersive.toggle()
+            } label: {
+                Label("全屏", systemImage: immersive.isImmersive
+                      ? "arrow.down.right.and.arrow.up.left"
+                      : "arrow.up.left.and.arrow.down.right")
+            }
+            .help(immersive.isImmersive ? "退出大图模式" : "进入大图模式")
+
+            Button {
+                NSWorkspace.shared.open(item.detailURL)
+            } label: {
+                Label("原网页", systemImage: "safari")
+            }
+            .help("打开原网页")
+
+            Button {
+                saveCurrentImage(item: item, slot: slot)
+            } label: {
+                Label("保存", systemImage: "square.and.arrow.down")
+            }
+            .keyboardShortcut("s", modifiers: [.command])
+            .disabled(slot.knownURL == nil)
+            .help("保存")
+        }
+    }
+
+    private func saveCurrentImage(item: GalleryItem, slot: ImageSlot) {
+        guard let imageURL = slot.knownURL else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.image]
+        panel.nameFieldStringValue = "\(item.id)-\(slot.displayIndex).jpg"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+
+        saveMessage = "保存中"
+        saveTask?.cancel()
+        let request = RemoteImagePipeline.shared.request(for: imageURL, priority: .veryHigh)
+        saveTask = RemoteImagePipeline.shared.loadData(with: request) { data in
+            guard let data else {
+                saveMessage = "保存失败"
+                return
+            }
+            do {
+                try data.write(to: target, options: .atomic)
+                saveMessage = "已保存"
+            } catch {
+                saveMessage = "保存失败"
+            }
+        }
+    }
+}
