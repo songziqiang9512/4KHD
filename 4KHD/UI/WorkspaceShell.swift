@@ -27,6 +27,8 @@ final class ImmersiveController {
             withAnimation(.easeInOut(duration: 0.22)) {
                 isImmersive = true
                 peekRevealing = false
+                // 让 NavigationSplitView 把 sidebar + content 一起收掉，detail 占满。
+                columnVisibility = .detailOnly
             }
         } else {
             peekHideWorkItem?.cancel()
@@ -99,29 +101,7 @@ struct WorkspaceShell: View {
     var body: some View {
         // 在 body 内 shadow 一份 @Bindable，给需要 $... 写法的地方提供 binding。
         @Bindable var immersive = immersive
-        return Group {
-            if immersive.isImmersive {
-                immersiveBody
-            } else {
-                splitBody(columnVisibility: $immersive.columnVisibility)
-            }
-        }
-        .frame(minWidth: 1080, minHeight: 700)
-        .environment(immersive)
-        .task {
-            // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
-            // 后续子页面解析走 URLSession 直拉也带得上同一张票。
-            CookieBridge.shared.start()
-            apply(selection)
-            library.refreshFromNetwork()
-        }
-    }
-
-    // MARK: - 普通三段式
-
-    @ViewBuilder
-    private func splitBody(columnVisibility: Binding<NavigationSplitViewVisibility>) -> some View {
-        NavigationSplitView(columnVisibility: columnVisibility) {
+        return NavigationSplitView(columnVisibility: $immersive.columnVisibility) {
             WorkspaceSidebar(selection: selectionBinding)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } content: {
@@ -132,41 +112,62 @@ struct WorkspaceShell: View {
                 .navigationSplitViewColumnWidth(min: 560, ideal: 900)
         }
         .navigationSplitViewStyle(.balanced)
+        .frame(minWidth: 1080, minHeight: 700)
+        // 不再做 Group { if immersive ... else splitBody } 的整树切换 ——
+        // detail column 一直挂在同一颗 NavigationSplitView 上，沉浸只改 columnVisibility，
+        // 主图区的 @State / WKWebView / 缩放偏移都不会因为进出沉浸而被重建。
+        .overlay(alignment: .leading) {
+            immersivePeekChrome
+        }
+        .environment(immersive)
+        .task {
+            // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
+            // 后续子页面解析走 URLSession 直拉也带得上同一张票。
+            CookieBridge.shared.start()
+            apply(selection)
+            library.refreshFromNetwork()
+        }
     }
 
-    // MARK: - 沉浸（大图占满窗口）
-
-    private var immersiveBody: some View {
-        ZStack(alignment: .leading) {
-            detailColumn
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if immersive.peekRevealing {
-                HStack(spacing: 0) {
-                    WorkspaceSidebar(selection: selectionBinding)
-                        .frame(width: 240)
-                        .background(.bar)
-                    Divider()
-                    contentColumn
-                        .frame(width: 320)
-                        .background(.background)
-                    Divider()
-                }
-                .shadow(color: .black.opacity(0.25), radius: 12, x: 4, y: 0)
-                .transition(.move(edge: .leading))
-                .onHover { hovering in immersive.handleColumnHover(hovering) }
-            }
-
-            // 6pt 的隐形左缘触发条 —— 不在 peek 状态时才显示，避免压住浮层的命中区。
-            if !immersive.peekRevealing {
+    /// 沉浸态独有的两层 overlay：左缘 6pt 触发条 + 鼠标滑近时浮出的 sidebar/content 面板。
+    /// 浮层独立挂在最上面，不挤占 detail 列；离开沉浸时整层消失。
+    @ViewBuilder
+    private var immersivePeekChrome: some View {
+        if immersive.isImmersive {
+            ZStack(alignment: .leading) {
+                // 占位层撑开 ZStack 的尺寸，让浮层和触发条拿到正确的 maxHeight；
+                // 但必须关掉命中，否则会把整张窗口的点击都吞掉。
                 Color.clear
-                    .frame(width: 6)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        if hovering { immersive.revealColumns() }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+
+                if immersive.peekRevealing {
+                    HStack(spacing: 0) {
+                        WorkspaceSidebar(selection: selectionBinding)
+                            .frame(width: 240)
+                            .background(.bar)
+                        Divider()
+                        contentColumn
+                            .frame(width: 320)
+                            .background(.background)
+                        Divider()
                     }
+                    .frame(maxHeight: .infinity)
+                    .shadow(color: .black.opacity(0.25), radius: 12, x: 4, y: 0)
+                    .transition(.move(edge: .leading))
+                    .onHover { hovering in immersive.handleColumnHover(hovering) }
+                } else {
+                    // 6pt 隐形左缘触发条 —— 鼠标贴边时再把 peek 浮层吊出来。
+                    Color.clear
+                        .frame(width: 6, height: nil)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onHover { hovering in
+                            if hovering { immersive.revealColumns() }
+                        }
+                }
             }
+            .allowsHitTesting(true)
         }
     }
 
