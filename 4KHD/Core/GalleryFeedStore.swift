@@ -1,0 +1,288 @@
+import Foundation
+
+/// 线上 / 收藏列表 + 搜索 + 分页刷新。
+/// 不管图集内部的 slot / page resolution（那是 `GalleryDetailStore` 的事）。
+/// 选中变化时调用注入的 `onSelectionChanged` 通知协调者（`LibraryStore`），让 detail
+/// 自行 prepare。
+@MainActor
+@Observable
+final class GalleryFeedStore {
+    var section: GallerySection = .latest {
+        didSet {
+            guard section != oldValue else { return }
+            clearSearchState()
+            selectFirstItemIfNeeded(force: true)
+            refreshFromNetwork()
+        }
+    }
+    var selectedItemID: GalleryItem.ID?
+    var searchText = ""
+    private(set) var activeSearchQuery: String?
+    private(set) var visibleCount = 18
+    private(set) var isRefreshingList = false
+
+    @ObservationIgnored private var library = ApifyLibrary()
+    @ObservationIgnored private var searchItems: [GalleryItem] = []
+    @ObservationIgnored private var searchNextPageURL: URL?
+    @ObservationIgnored private var searchRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingSearchLoadMore = false
+    @ObservationIgnored private var listRefreshTasks: [GallerySection: Task<Void, Never>] = [:]
+    @ObservationIgnored private var listNextPageURLs: [GallerySection: URL] = [:]
+    @ObservationIgnored private var pendingListLoadMoreSections: Set<GallerySection> = []
+
+    /// 由 `LibraryStore` 注入；selectedItemID 改变时回调。
+    @ObservationIgnored var onSelectionChanged: (() -> Void)?
+
+    private let favoritesStore: FavoritesStore
+
+    init(favoritesStore: FavoritesStore) {
+        self.favoritesStore = favoritesStore
+    }
+
+    // MARK: - 派生
+
+    var allItems: [GalleryItem] {
+        if activeSearchQuery != nil { return searchItems }
+        if section == .favorites { return favoritesStore.galleryItems }
+        return library.items(in: section)
+    }
+
+    var visibleItems: [GalleryItem] {
+        Array(allItems.prefix(visibleCount))
+    }
+
+    var canLoadMoreList: Bool {
+        if visibleCount < allItems.count { return true }
+        if activeSearchQuery != nil { return searchNextPageURL != nil }
+        if section == .favorites { return false }
+        return listNextPageURLs[section] != nil
+    }
+
+    var selectedItem: GalleryItem? {
+        allItems.first { $0.id == selectedItemID } ?? allItems.first
+    }
+
+    // MARK: - 选择
+
+    func select(_ item: GalleryItem, force: Bool = false) {
+        if !force, selectedItemID == item.id { return }
+        selectedItemID = item.id
+        onSelectionChanged?()
+    }
+
+    func selectFirstItemIfNeeded(force: Bool) {
+        visibleCount = 18
+        guard let first = allItems.first else {
+            selectedItemID = nil
+            onSelectionChanged?()
+            return
+        }
+        if force || selectedItemID == nil {
+            selectedItemID = first.id
+            onSelectionChanged?()
+        }
+    }
+
+    // MARK: - 加载更多 / 刷新
+
+    func loadMoreListIfNeeded() {
+        if activeSearchQuery != nil {
+            loadMoreSearchIfNeeded()
+            return
+        }
+        guard section.isNetworkBacked else {
+            visibleCount = min(visibleCount + 18, allItems.count)
+            return
+        }
+        if visibleCount < allItems.count {
+            visibleCount = min(visibleCount + 18, allItems.count)
+            return
+        }
+        loadNextListPageIfNeeded()
+    }
+
+    func refreshFromNetwork() {
+        if activeSearchQuery != nil {
+            submitSearch()
+            return
+        }
+        guard section.isNetworkBacked else { return }
+        let currentSection = section
+        listRefreshTasks[currentSection]?.cancel()
+        isRefreshingList = true
+        listRefreshTasks[currentSection] = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolve(section: currentSection)
+                self?.applyNetworkPage(page, section: currentSection)
+            } catch {
+                self?.finishListRefresh(section: currentSection)
+            }
+        }
+    }
+
+    // MARK: - 搜索
+
+    func submitSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            clearSearch()
+            return
+        }
+        guard query != activeSearchQuery else { return }
+        activeSearchQuery = query
+        visibleCount = 18
+        selectedItemID = nil
+        searchItems = []
+        searchNextPageURL = nil
+        searchRefreshTask?.cancel()
+        listRefreshTasks.values.forEach { $0.cancel() }
+        listRefreshTasks.removeAll()
+        isRefreshingList = true
+        searchRefreshTask = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolveSearch(query: query)
+                self?.applySearchPage(page, replacing: true)
+            } catch {
+                self?.finishSearchRefresh()
+            }
+        }
+    }
+
+    func clearSearch() {
+        searchRefreshTask?.cancel()
+        searchRefreshTask = nil
+        clearSearchState()
+        isRefreshingList = false
+        selectFirstItemIfNeeded(force: true)
+    }
+
+    // MARK: - 内部
+
+    private func loadNextListPageIfNeeded() {
+        let currentSection = section
+        guard listRefreshTasks[currentSection] == nil else {
+            pendingListLoadMoreSections.insert(currentSection)
+            return
+        }
+        guard let nextPageURL = listNextPageURLs[currentSection] else { return }
+        isRefreshingList = true
+        listRefreshTasks[currentSection] = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolve(pageURL: nextPageURL, section: currentSection)
+                self?.appendNetworkPage(page, section: currentSection)
+            } catch {
+                self?.finishListRefresh(section: currentSection)
+            }
+        }
+    }
+
+    private func applyNetworkPage(_ page: SiteListPage, section: GallerySection) {
+        guard activeSearchQuery == nil else {
+            finishListRefresh(section: section)
+            return
+        }
+        let items = page.items
+        guard !items.isEmpty else {
+            finishListRefresh(section: section)
+            return
+        }
+        let oldSelectedID = selectedItemID
+
+        library = library.replacing(section: section, with: items)
+        listNextPageURLs[section] = page.nextPageURL
+        visibleCount = min(visibleCount, allItems.count)
+
+        let stillHasSelection = oldSelectedID.flatMap { id in
+            allItems.first { $0.id == id }
+        } != nil
+
+        if !stillHasSelection {
+            selectedItemID = allItems.first?.id
+        }
+        // 即便选中 ID 没变，item 对象可能被替换（新的 pageURLs 等），让 detail 重建。
+        onSelectionChanged?()
+
+        finishListRefresh(section: section)
+    }
+
+    private func appendNetworkPage(_ page: SiteListPage, section: GallerySection) {
+        guard !page.items.isEmpty else {
+            listNextPageURLs[section] = page.nextPageURL
+            finishListRefresh(section: section)
+            return
+        }
+        let oldCount = allItems.count
+        library = library.appending(section: section, items: page.items)
+        listNextPageURLs[section] = page.nextPageURL
+        if section == self.section {
+            visibleCount = min(max(visibleCount + 18, oldCount + 1), allItems.count)
+        }
+        finishListRefresh(section: section)
+    }
+
+    private func finishListRefresh(section: GallerySection) {
+        listRefreshTasks[section] = nil
+        if section == self.section {
+            isRefreshingList = false
+            if pendingListLoadMoreSections.remove(section) != nil {
+                loadMoreListIfNeeded()
+            }
+        }
+    }
+
+    private func loadMoreSearchIfNeeded() {
+        if visibleCount < allItems.count {
+            visibleCount = min(visibleCount + 18, allItems.count)
+            return
+        }
+        guard searchRefreshTask == nil else {
+            pendingSearchLoadMore = true
+            return
+        }
+        guard let nextPageURL = searchNextPageURL else { return }
+        isRefreshingList = true
+        searchRefreshTask = Task { [weak self] in
+            do {
+                let page = try await SiteListResolver.resolveSearch(pageURL: nextPageURL)
+                self?.applySearchPage(page, replacing: false)
+            } catch {
+                self?.finishSearchRefresh()
+            }
+        }
+    }
+
+    private func applySearchPage(_ page: SiteListPage, replacing: Bool) {
+        if replacing {
+            searchItems = page.items
+        } else {
+            let oldCount = searchItems.count
+            var existingIDs = Set(searchItems.map(\.id))
+            searchItems.append(contentsOf: page.items.filter { existingIDs.insert($0.id).inserted })
+            visibleCount = min(max(visibleCount + 18, oldCount + 1), allItems.count)
+        }
+        searchNextPageURL = page.nextPageURL
+
+        if replacing {
+            selectedItemID = searchItems.first?.id
+            onSelectionChanged?()
+        }
+        finishSearchRefresh()
+    }
+
+    private func finishSearchRefresh() {
+        searchRefreshTask = nil
+        isRefreshingList = false
+        if pendingSearchLoadMore {
+            pendingSearchLoadMore = false
+            loadMoreSearchIfNeeded()
+        }
+    }
+
+    private func clearSearchState() {
+        activeSearchQuery = nil
+        searchText = ""
+        searchItems = []
+        searchNextPageURL = nil
+        pendingSearchLoadMore = false
+    }
+}
