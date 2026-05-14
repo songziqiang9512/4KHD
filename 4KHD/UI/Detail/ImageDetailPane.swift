@@ -15,6 +15,7 @@ struct ImageDetailPane: View {
     @State private var detailFailed = false
     @State private var isFilmstripReady = false
     @State private var detailResetToken = UUID()
+    @State private var resolverRetryToken = UUID()
     @State private var saveTask: ImageTask?
 
     var body: some View {
@@ -36,6 +37,7 @@ struct ImageDetailPane: View {
             GeometryReader { proxy in
                 DetailImageResolverView(
                     pageURL: slot.pageURL,
+                    retryToken: resolverRetryToken,
                     onResolvedPage: { page in
                         Task { @MainActor in
                             library.registerResolvedPage(page)
@@ -58,7 +60,11 @@ struct ImageDetailPane: View {
                     resetToken: detailResetToken,
                     contentInsets: EdgeInsets()
                 ) {
-                    DetailPlaceholder(kind: detailFailed ? .failed : .loading)
+                    DetailPlaceholder(
+                        kind: detailFailed ? .failed : .loading,
+                        onRetry: detailFailed ? { retryCurrentPage() } : nil,
+                        onOpenOriginal: detailFailed ? { NSWorkspace.shared.open(slot.pageURL) } : nil
+                    )
                 } onDisplayed: {
                     displayedImageURL = slot.knownURL
                     isDetailReady = true
@@ -90,6 +96,10 @@ struct ImageDetailPane: View {
                         .background(.regularMaterial, in: Capsule())
                         .padding(16)
                     Spacer()
+                    if let status = detailStatusText {
+                        DetailStatusBadge(kind: status.kind, text: status.text)
+                            .padding(16)
+                    }
                 }
             }
 
@@ -120,6 +130,7 @@ struct ImageDetailPane: View {
             isDetailReady = false
             isFilmstripReady = false
             detailFailed = false
+            resolverRetryToken = UUID()
             RemoteImagePipeline.shared.stopDetailPrefetching()
         }
         .onChange(of: slot.id) { _, _ in
@@ -127,6 +138,7 @@ struct ImageDetailPane: View {
             saveMessage = ""
             isDetailReady = false
             detailFailed = false
+            resolverRetryToken = UUID()
             RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
         }
         .onAppear {
@@ -149,6 +161,12 @@ struct ImageDetailPane: View {
         }
     }
 
+    private func retryCurrentPage() {
+        detailFailed = false
+        isDetailReady = false
+        resolverRetryToken = UUID()
+    }
+
     @ToolbarContentBuilder
     private func detailToolbar(item: GalleryItem, slot: ImageSlot) -> some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
@@ -169,11 +187,6 @@ struct ImageDetailPane: View {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            if !saveMessage.isEmpty {
-                Text(saveMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Button {
                 library.toggleFavorite(for: item)
             } label: {
@@ -215,6 +228,28 @@ struct ImageDetailPane: View {
             .disabled(slot.knownURL == nil)
             .help("保存")
         }
+    }
+
+    private var detailStatusText: (kind: DetailStatusBadge.Kind, text: String)? {
+        if detailFailed {
+            return (.failed, "解析失败")
+        }
+        if saveMessage == "保存中" {
+            return (.saving, saveMessage)
+        }
+        if saveMessage == "已保存" {
+            return (.saved, saveMessage)
+        }
+        if saveMessage == "保存失败" {
+            return (.failed, saveMessage)
+        }
+        if library.prefetchPageURL != nil {
+            return (.prefetching, "预取下一页")
+        }
+        if !isDetailReady {
+            return (.resolving, "解析中")
+        }
+        return nil
     }
 
     private func saveCurrentImage(item: GalleryItem, slot: ImageSlot) {

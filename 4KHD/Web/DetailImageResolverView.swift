@@ -3,6 +3,7 @@ import WebKit
 
 struct DetailImageResolverView: NSViewRepresentable {
     let pageURL: URL
+    let retryToken: UUID
     let onResolvedPage: (ResolvedImagePage) -> Void
     let onFailure: (URL) -> Void
 
@@ -29,10 +30,15 @@ struct DetailImageResolverView: NSViewRepresentable {
         context.coordinator.onResolvedPage = onResolvedPage
         context.coordinator.onFailure = onFailure
 
-        guard context.coordinator.loadedPageURL != pageURL else { return }
+        let shouldRetryCurrentPage = context.coordinator.loadedPageURL == pageURL
+            && context.coordinator.retryToken != retryToken
+        guard context.coordinator.loadedPageURL != pageURL || shouldRetryCurrentPage else { return }
         context.coordinator.cancelCurrentWork(in: webView)
+        context.coordinator.retryToken = retryToken
 
-        if let cached = DetailPageImageCache.shared.urls(for: pageURL) {
+        if !shouldRetryCurrentPage,
+           let cached = DetailPageImageCache.shared.urls(for: pageURL) {
+            context.coordinator.loadedPageURL = pageURL
             onResolvedPage(cached)
             return
         }
@@ -43,6 +49,7 @@ struct DetailImageResolverView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var pageURL: URL?
         var loadedPageURL: URL?
+        var retryToken: UUID?
         var onResolvedPage: (ResolvedImagePage) -> Void = { _ in }
         var onFailure: (URL) -> Void = { _ in }
         private var generation = UUID()

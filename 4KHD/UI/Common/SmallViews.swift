@@ -98,6 +98,8 @@ struct DetailPlaceholder: View {
     }
 
     let kind: Kind
+    var onRetry: (() -> Void)? = nil
+    var onOpenOriginal: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -115,8 +117,54 @@ struct DetailPlaceholder: View {
                 Text("详情解析失败")
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    if let onRetry {
+                        Button("重试", action: onRetry)
+                    }
+                    if let onOpenOriginal {
+                        Button("打开原网页", action: onOpenOriginal)
+                    }
+                }
+                .buttonStyle(.bordered)
             }
         }
+    }
+}
+
+struct DetailStatusBadge: View {
+    enum Kind {
+        case resolving
+        case prefetching
+        case saving
+        case saved
+        case failed
+    }
+
+    let kind: Kind
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            switch kind {
+            case .resolving, .prefetching, .saving:
+                ProgressView()
+                    .controlSize(.small)
+            case .saved:
+                Image(systemName: "checkmark.circle.fill")
+                    .symbolRenderingMode(.hierarchical)
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.hierarchical)
+            }
+
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
     }
 }
 

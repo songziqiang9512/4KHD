@@ -50,6 +50,61 @@ struct GalleryRow: View {
     }
 }
 
+struct GalleryGridCard: View {
+    @Environment(LibraryStore.self) private var library
+    let item: GalleryItem
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 7) {
+                PosterWebImage(url: item.coverURL, contentMode: .fill)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(0.74, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        KindBadge(kind: item.kind)
+                        Text("\(item.imageCount)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(item.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 8) {
+                        Text("\(item.pageCount) 页")
+                        Spacer(minLength: 2)
+                        if library.isFavorite(item) {
+                            Image(systemName: "bookmark.fill")
+                        }
+                        if library.isCached(item) {
+                            Image(systemName: "externaldrive.fill")
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.accentColor : Color.primary.opacity(0.14), lineWidth: isSelected ? 1.5 : 0.5)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct FavoriteAuthorSectionHeader: View {
     let group: FavoriteAuthorGroup
     let isExpanded: Bool

@@ -85,6 +85,7 @@ final class FavoritesStore {
             return nil
         }
         let coverURL = favorite.coverURL.flatMap(URL.init(string:))
+        let pageURLs = Self.pageURLs(detailURL: detailURL, pageCount: favorite.pageCount)
         return GalleryItem(
             id: favorite.id,
             section: section,
@@ -96,8 +97,15 @@ final class FavoritesStore {
             coverURL: coverURL,
             imageCount: favorite.imageCount,
             pageCount: favorite.pageCount,
-            pageURLs: [detailURL],
+            pageURLs: pageURLs,
             sampleImageURLs: coverURL.map { [$0] } ?? []
         )
+    }
+
+    private static func pageURLs(detailURL: URL, pageCount: Int) -> [URL] {
+        let count = max(pageCount, 1)
+        return (1...count).map { pageNumber in
+            pageNumber == 1 ? detailURL : detailURL.appendingPathComponent("\(pageNumber)")
+        }
     }
 }

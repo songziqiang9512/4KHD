@@ -18,6 +18,7 @@ final class GalleryDetailStore {
     @ObservationIgnored private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
     @ObservationIgnored private var detailPageTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var pendingSelectionIndex: Int?
+    @ObservationIgnored private let prefetchDistance = 6
 
     // MARK: - 派生
 
@@ -96,7 +97,7 @@ final class GalleryDetailStore {
     }
 
     private func ensureNextDetailPageLoadedIfApproachingEnd(from index: Int) {
-        guard loadedImageSlots.count - index <= 6 else { return }
+        guard isApproachingLoadedEnd(from: index) else { return }
         ensureNextDetailPageLoaded(reason: .approachingLoadedEnd)
     }
 
@@ -135,9 +136,14 @@ final class GalleryDetailStore {
         chainLoadIfNeeded()
     }
 
-    /// 一页解析回来之后无脑尝试下一页 —— 链路自动接力。
+    /// 只在用户已经接近当前已加载尾部时接力，避免大图集在后台一路解析太远。
     private func chainLoadIfNeeded() {
+        guard isApproachingLoadedEnd(from: selectedImageIndex) else { return }
         ensureNextDetailPageLoaded(reason: .approachingLoadedEnd)
+    }
+
+    private func isApproachingLoadedEnd(from index: Int) -> Bool {
+        loadedImageSlots.count - index <= prefetchDistance
     }
 
     // MARK: - 内部

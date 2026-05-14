@@ -1,11 +1,17 @@
 import AppKit
 import SwiftUI
 
+private enum GalleryContentLayout: String {
+    case list
+    case grid
+}
+
 /// 三段式中部内容栏：当前 section 的图集列表（线上 / 收藏）+ 搜索 + 加载更多。
 /// 收藏 section 下额外按作者启发式聚合分组。
 struct GalleryContentList: View {
     @Environment(LibraryStore.self) private var library
     @AppStorage("com.songziqiang.4khd.favoriteAuthorOverrides.v1") private var favoriteAuthorOverridesJSON = "{}"
+    @AppStorage("com.songziqiang.4khd.contentLayout.v1") private var contentLayoutRaw = GalleryContentLayout.list.rawValue
     @State private var expandedFavoriteAuthorIDs = Set<String>()
 
     private var selectionBinding: Binding<GalleryItem.ID?> {
@@ -25,7 +31,52 @@ struct GalleryContentList: View {
     var body: some View {
         // shadow 一份 @Bindable 给 .searchable(text:) 用 $library.searchText
         @Bindable var library = library
-        return List(selection: selectionBinding) {
+        return Group {
+            if shouldUseGrid {
+                gridContent
+            } else {
+                listContent
+            }
+        }
+        .searchable(text: $library.searchText, placement: .toolbar, prompt: "搜索 4KHD")
+        .onSubmit(of: .search) { library.submitSearch() }
+        .onChange(of: library.searchText) { _, value in
+            if value.isEmpty && library.activeSearchQuery != nil { library.clearSearch() }
+        }
+        .navigationTitle(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
+        .navigationSubtitle("\(library.visibleItems.count) / \(library.allItems.count)")
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("显示方式", selection: $contentLayoutRaw) {
+                    Label("列表", systemImage: "list.bullet").tag(GalleryContentLayout.list.rawValue)
+                    Label("网格", systemImage: "square.grid.2x2").tag(GalleryContentLayout.grid.rawValue)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 92)
+                .disabled(shouldGroupFavorites)
+                .help(shouldGroupFavorites ? "收藏分组固定使用列表" : "切换列表 / 网格")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    library.refreshFromNetwork()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .keyboardShortcut("r", modifiers: [.command])
+                .help("刷新")
+                .disabled(library.isRefreshingList)
+            }
+        }
+        .onChange(of: library.section) { _, section in
+            if section != .favorites {
+                expandedFavoriteAuthorIDs.removeAll()
+            }
+        }
+    }
+
+    private var listContent: some View {
+        List(selection: selectionBinding) {
             if shouldGroupFavorites {
                 ForEach(favoriteAuthorGroups) { group in
                     Section {
@@ -58,14 +109,12 @@ struct GalleryContentList: View {
                     GalleryRow(item: item)
                         .tag(item.id)
                         .onAppear {
-                            if item.id == library.visibleItems.last?.id {
-                                library.loadMoreListIfNeeded()
-                            }
+                            loadMoreIfLastVisible(item)
                         }
                 }
             }
 
-            if library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty {
+            if shouldShowFooter {
                 ListFooterStatus()
                     .listRowSeparator(.hidden)
                     .onAppear {
@@ -74,36 +123,56 @@ struct GalleryContentList: View {
             }
         }
         .listStyle(.inset)
-        .searchable(text: $library.searchText, placement: .toolbar, prompt: "搜索 4KHD")
-        .onSubmit(of: .search) { library.submitSearch() }
-        .onChange(of: library.searchText) { _, value in
-            if value.isEmpty && library.activeSearchQuery != nil { library.clearSearch() }
-        }
-        .navigationTitle(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
-        .navigationSubtitle("\(library.visibleItems.count) / \(library.allItems.count)")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    library.refreshFromNetwork()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+    }
+
+    private var gridContent: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 12)], spacing: 12) {
+                ForEach(library.visibleItems) { item in
+                    GalleryGridCard(item: item, isSelected: library.selectedItemID == item.id) {
+                        library.select(item)
+                    }
+                    .onAppear {
+                        loadMoreIfLastVisible(item)
+                    }
                 }
-                .keyboardShortcut("r", modifiers: [.command])
-                .help("刷新")
-                .disabled(library.isRefreshingList)
+            }
+            .padding(12)
+
+            if shouldShowFooter {
+                ListFooterStatus()
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .onAppear {
+                        if library.canLoadMoreList { library.loadMoreListIfNeeded() }
+                    }
             }
         }
-        .onChange(of: library.section) { _, section in
-            if section != .favorites {
-                expandedFavoriteAuthorIDs.removeAll()
-            }
-        }
+        .background(.background)
     }
 
     // MARK: - 收藏分组
 
+    private var contentLayout: GalleryContentLayout {
+        GalleryContentLayout(rawValue: contentLayoutRaw) ?? .list
+    }
+
+    private var shouldUseGrid: Bool {
+        !shouldGroupFavorites && contentLayout == .grid
+    }
+
+    private var shouldShowFooter: Bool {
+        library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty
+    }
+
     private var shouldGroupFavorites: Bool {
         library.section == .favorites && library.activeSearchQuery == nil
+    }
+
+    private func loadMoreIfLastVisible(_ item: GalleryItem) {
+        if item.id == library.visibleItems.last?.id {
+            library.loadMoreListIfNeeded()
+        }
     }
 
     private var favoriteAuthorGroups: [FavoriteAuthorGroup] {

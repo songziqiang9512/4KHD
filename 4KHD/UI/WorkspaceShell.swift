@@ -272,9 +272,23 @@ struct WorkspaceSidebar: View {
             }
 
             Section("本地") {
-                if localLibrary.roots.isEmpty {
-                    Label("没有目录", systemImage: "folder.badge.questionmark")
-                        .foregroundStyle(.secondary)
+                if localLibrary.isScanning {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(localLibrary.roots.isEmpty ? "正在扫描目录" : "正在更新目录")
+                    }
+                    .foregroundStyle(.secondary)
+                }
+
+                if localLibrary.roots.isEmpty && !localLibrary.isScanning {
+                    Button {
+                        importRootFolder()
+                    } label: {
+                        Label("导入本地目录", systemImage: "folder.badge.plus")
+                    }
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
                 } else {
                     ForEach(localLibrary.roots) { root in
                         LocalFolderSidebarRow(folder: root.tree, level: 0)

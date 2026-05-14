@@ -12,6 +12,7 @@ final class DetailPageImageCache {
     }
 
     private let lock = NSLock()
+    private let saveQueue = DispatchQueue(label: "com.songziqiang.4khd.detail-page-cache-save", qos: .utility)
     private let cacheURL: URL
     private let expirationInterval: TimeInterval = 7 * 24 * 60 * 60
     private let maxVolatileEntryCount = 500
@@ -19,6 +20,7 @@ final class DetailPageImageCache {
     private var storage: [String: Entry] = [:]
     private var cachedDetailPaths = Set<String>()
     private var didLoadFromDisk = false
+    private var pendingSaveWorkItem: DispatchWorkItem?
 
     private init() {
         let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -38,7 +40,7 @@ final class DetailPageImageCache {
         if !entry.isPersistent, Date().timeIntervalSince(entry.updatedAt) > expirationInterval {
             storage[key] = nil
             rebuildCachedDetailPathsLocked()
-            saveToDiskLocked()
+            scheduleSaveLocked()
             lock.unlock()
             return nil
         }
@@ -60,7 +62,7 @@ final class DetailPageImageCache {
         )
         cachedDetailPaths.insert(page.pageURL.normalizedDetailPathKey)
         pruneEntriesLocked()
-        saveToDiskLocked()
+        scheduleSaveLocked()
         lock.unlock()
     }
 
@@ -85,7 +87,7 @@ final class DetailPageImageCache {
         }
         if didChange {
             pruneEntriesLocked()
-            saveToDiskLocked()
+            scheduleSaveLocked()
         }
         lock.unlock()
     }
@@ -94,7 +96,7 @@ final class DetailPageImageCache {
         lock.lock()
         loadFromDiskIfNeededLocked()
         if pruneEntriesLocked() {
-            saveToDiskLocked()
+            scheduleSaveLocked()
         }
         lock.unlock()
     }
@@ -111,7 +113,7 @@ final class DetailPageImageCache {
         storage = decoded
         rebuildCachedDetailPathsLocked()
         if pruneEntriesLocked() {
-            saveToDiskLocked()
+            scheduleSaveLocked()
         }
     }
 
@@ -146,10 +148,21 @@ final class DetailPageImageCache {
         cachedDetailPaths = Set(storage.values.map { $0.pageURL.normalizedDetailPathKey })
     }
 
-    private func saveToDiskLocked() {
+    private func scheduleSaveLocked() {
+        let snapshot = storage
+        let cacheURL = cacheURL
+        pendingSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            Self.save(snapshot, to: cacheURL)
+        }
+        pendingSaveWorkItem = workItem
+        saveQueue.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
+
+    private static func save(_ snapshot: [String: Entry], to cacheURL: URL) {
         do {
             try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(storage)
+            let data = try JSONEncoder().encode(snapshot)
             try data.write(to: cacheURL, options: .atomic)
         } catch {
         }

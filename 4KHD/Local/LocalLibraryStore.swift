@@ -121,11 +121,7 @@ final class LocalLibraryStore {
             guard let self else { return }
             let rootURLs = self.rootURLs
             let excluded = self.excludedFolderPathsByRootPath
-            let scannedRoots = await Task.detached(priority: .utility) {
-                rootURLs.compactMap { url in
-                    Self.scanRoot(at: url, excluding: excluded[url.path, default: []])
-                }
-            }.value
+            let scannedRoots = await Self.scanRoots(rootURLs, excluded: excluded)
 
             guard !Task.isCancelled else { return }
             self.roots = scannedRoots
@@ -193,6 +189,29 @@ final class LocalLibraryStore {
     private nonisolated static func scanRoot(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalLibraryRoot? {
         guard let tree = scanFolder(at: url, excluding: excludedFolderPaths), tree.imageCount > 0 else { return nil }
         return LocalLibraryRoot(url: url, tree: tree)
+    }
+
+    private nonisolated static func scanRoots(
+        _ urls: [URL],
+        excluded: [String: Set<String>]
+    ) async -> [LocalLibraryRoot] {
+        await withTaskGroup(of: (Int, LocalLibraryRoot?).self) { group in
+            for (index, url) in urls.enumerated() {
+                group.addTask(priority: .utility) {
+                    (index, scanRoot(at: url, excluding: excluded[url.path, default: []]))
+                }
+            }
+
+            var results: [(Int, LocalLibraryRoot)] = []
+            for await (index, root) in group {
+                if let root {
+                    results.append((index, root))
+                }
+            }
+            return results
+                .sorted { $0.0 < $1.0 }
+                .map(\.1)
+        }
     }
 
     private nonisolated static func scanFolder(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalFolderNode? {

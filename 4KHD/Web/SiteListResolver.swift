@@ -7,6 +7,15 @@ struct SiteListPage {
 
 enum SiteListResolver {
     private static let requestCoalescer = HTMLRequestCoalescer()
+    private static let listItemRegex = regex(#"<li[^>]+class=["'][^"']*wp-block-post[^"']*["'][\s\S]*?</li>"#)
+    private static let explicitNextRegex = regex(#"<link[^>]+rel=["']next["'][^>]+href=["']([^"']+)["']"#)
+    private static let nextLinkRegex = regex(#"<a[^>]+class=["'][^"']*(?:next|wp-block-query-pagination-next)[^"']*["'][^>]+href=["']([^"']+)["']"#)
+    private static let currentPageRegex = regex(#"<span[^>]+class=["'][^"']*page-numbers current[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#)
+    private static let queryPageRegex = regex(#"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>\s*([0-9,]+)\s*</a>"#)
+    private static let detailURLRegex = regex(#"<a[^>]+href=["']([^"']+/content/[^"']+\.html)["']"#)
+    private static let coverURLRegex = regex(#"<img[^>]+src=["']([^"']+)["']"#)
+    private static let titleRegex = regex(#"<h2[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)</a>"#)
+    private static let metadataRegex = regex(#"\[([^\]-]+)-(\d+)photos\]"#)
 
     static func resolve(section: GallerySection) async throws -> SiteListPage {
         guard let siteURL = section.siteURL else {
@@ -73,12 +82,8 @@ enum SiteListResolver {
     }
 
     private static func listItemHTML(in html: String) -> [String] {
-        let pattern = #"<li[^>]+class=["'][^"']*wp-block-post[^"']*["'][\s\S]*?</li>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return []
-        }
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        return regex.matches(in: html, range: range).compactMap { result in
+        return listItemRegex.matches(in: html, range: range).compactMap { result in
             guard let matchRange = Range(result.range, in: html) else { return nil }
             return String(html[matchRange])
         }
@@ -89,13 +94,13 @@ enum SiteListResolver {
             return latestNextPageURL(in: html)
         }
 
-        if let explicitNext = firstMatch(#"<link[^>]+rel=["']next["'][^>]+href=["']([^"']+)["']"#, in: html)
+        if let explicitNext = firstMatch(explicitNextRegex, in: html)
             .flatMap(decodeHTML)
             .flatMap({ URL(string: $0, relativeTo: baseURL)?.absoluteURL }) {
             return explicitNext
         }
 
-        if let nextLink = firstMatch(#"<a[^>]+class=["'][^"']*(?:next|wp-block-query-pagination-next)[^"']*["'][^>]+href=["']([^"']+)["']"#, in: html)
+        if let nextLink = firstMatch(nextLinkRegex, in: html)
             .flatMap(decodeHTML)
             .flatMap({ URL(string: $0, relativeTo: baseURL)?.absoluteURL }) {
             return nextLink
@@ -105,7 +110,7 @@ enum SiteListResolver {
     }
 
     private static func latestNextPageURL(in html: String) -> URL? {
-        let currentPage = firstMatch(#"<span[^>]+class=["'][^"']*page-numbers current[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#, in: html)
+        let currentPage = firstMatch(currentPageRegex, in: html)
             .flatMap { Int($0.replacingOccurrences(of: ",", with: "")) } ?? 1
         var components = URLComponents()
         components.scheme = "https"
@@ -116,14 +121,10 @@ enum SiteListResolver {
     }
 
     private static func queryPaginationNextPageURL(in html: String, baseURL: URL) -> URL? {
-        let currentPage = firstMatch(#"<span[^>]+class=["'][^"']*page-numbers current[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#, in: html)
+        let currentPage = firstMatch(currentPageRegex, in: html)
             .flatMap { Int($0.replacingOccurrences(of: ",", with: "")) } ?? 1
-        let pattern = #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>\s*([0-9,]+)\s*</a>"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return nil
-        }
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let candidates = regex.matches(in: html, range: range).compactMap { result -> (page: Int, url: URL)? in
+        let candidates = queryPageRegex.matches(in: html, range: range).compactMap { result -> (page: Int, url: URL)? in
             guard result.numberOfRanges > 2,
                   let hrefRange = Range(result.range(at: 1), in: html),
                   let pageRange = Range(result.range(at: 2), in: html),
@@ -139,15 +140,15 @@ enum SiteListResolver {
     }
 
     private static func makeItem(from html: String, section: GallerySection) -> GalleryItem? {
-        guard let detailURL = firstMatch(#"<a[^>]+href=["']([^"']+/content/[^"']+\.html)["']"#, in: html)
+        guard let detailURL = firstMatch(detailURLRegex, in: html)
             .flatMap(URL.init(string:)) else {
             return nil
         }
-        let coverURL = firstMatch(#"<img[^>]+src=["']([^"']+)["']"#, in: html)
+        let coverURL = firstMatch(coverURLRegex, in: html)
             .flatMap(decodeHTML)
             .flatMap(URL.init(string:))
             .map(GalleryImageURLNormalizer.normalized)
-        let rawTitle = firstMatch(#"<h2[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)</a>"#, in: html)
+        let rawTitle = firstMatch(titleRegex, in: html)
             .map(stripTags)
             .flatMap(decodeHTML)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? detailURL.deletingPathExtension().lastPathComponent
@@ -177,14 +178,12 @@ enum SiteListResolver {
     }
 
     private static func metadataFromTitle(_ rawTitle: String) -> (displayTitle: String, size: String?, imageCount: Int?) {
-        let pattern = #"\[([^\]-]+)-(\d+)photos\]"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: rawTitle, range: NSRange(rawTitle.startIndex..<rawTitle.endIndex, in: rawTitle)),
+        guard let match = metadataRegex.firstMatch(in: rawTitle, range: NSRange(rawTitle.startIndex..<rawTitle.endIndex, in: rawTitle)),
               let sizeRange = Range(match.range(at: 1), in: rawTitle),
               let countRange = Range(match.range(at: 2), in: rawTitle) else {
             return (rawTitle, nil, nil)
         }
-        let title = regex.stringByReplacingMatches(
+        let title = metadataRegex.stringByReplacingMatches(
             in: rawTitle,
             range: NSRange(rawTitle.startIndex..<rawTitle.endIndex, in: rawTitle),
             withTemplate: ""
@@ -192,10 +191,7 @@ enum SiteListResolver {
         return (title, String(rawTitle[sizeRange]), Int(rawTitle[countRange]))
     }
 
-    private static func firstMatch(_ pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return nil
-        }
+    private static func firstMatch(_ regex: NSRegularExpression, in text: String) -> String? {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = regex.firstMatch(in: text, range: range),
               match.numberOfRanges > 1,
@@ -203,6 +199,14 @@ enum SiteListResolver {
             return nil
         }
         return String(text[matchRange])
+    }
+
+    private static func regex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        } catch {
+            preconditionFailure("Invalid regex pattern: \(pattern)")
+        }
     }
 
     private nonisolated static func stripTags(_ value: String) -> String {
