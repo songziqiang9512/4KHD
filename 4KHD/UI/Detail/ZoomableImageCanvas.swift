@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// 详情主图区。支持双指捏合缩放（围绕鼠标位置）、拖拽 / 滚轮平移、`resetToken` 重置。
+/// 详情主图区。固定画布内自管缩放和平移，避免 ScrollView 内容尺寸与滚动位置竞争。
 /// 上层传入 `contentInsets` 给周围 chrome 让位；这里不直接显示标题或按钮。
 struct ZoomableImageCanvas<Placeholder: View>: View {
     let url: URL?
@@ -52,7 +52,7 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
                     onLoaded: onDisplayed,
                     onImageLoaded: { image in
                         imageSize = image.size
-                        panOffset = clampedPanOffset(panOffset, in: fitSize, imageSize: image.size)
+                        panOffset = clampedPanOffset(panOffset, scale: zoomScale, in: fitSize, imageSize: image.size)
                         dragStartOffset = panOffset
                     }
                 ) {
@@ -66,31 +66,33 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .contentShape(Rectangle())
             .overlay {
-                TrackpadPanView { delta in
+                TrackpadGestureView { delta in
                     guard zoomScale > 1 else { return }
                     let proposed = CGSize(
                         width: panOffset.width + delta.width,
                         height: panOffset.height + delta.height
                     )
-                    panOffset = clampedPanOffset(proposed, in: fitSize, imageSize: imageSize)
+                    panOffset = clampedPanOffset(proposed, scale: zoomScale, in: fitSize, imageSize: imageSize)
                     dragStartOffset = panOffset
                 } onMagnify: { magnification, location in
                     zoom(by: magnification, around: locationInContent(location, containerSize: proxy.size), in: fitSize)
                 } onMagnifyEnded: {
-                    settleZoom(in: fitSize)
+                    panOffset = clampedPanOffset(panOffset, scale: zoomScale, in: fitSize, imageSize: imageSize)
+                    dragStartOffset = panOffset
                 }
             }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
+                        guard zoomScale > 1 else { return }
                         let proposed = CGSize(
                             width: dragStartOffset.width + value.translation.width,
                             height: dragStartOffset.height + value.translation.height
                         )
-                        panOffset = clampedPanOffset(proposed, in: fitSize, imageSize: imageSize)
+                        panOffset = clampedPanOffset(proposed, scale: zoomScale, in: fitSize, imageSize: imageSize)
                     }
                     .onEnded { _ in
-                        panOffset = clampedPanOffset(panOffset, in: fitSize, imageSize: imageSize)
+                        panOffset = clampedPanOffset(panOffset, scale: zoomScale, in: fitSize, imageSize: imageSize)
                         dragStartOffset = panOffset
                     }
             )
@@ -106,14 +108,15 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
         .clipped()
         .onChange(of: url) { _, _ in resetView() }
         .onChange(of: resetToken) { _, _ in resetView() }
-        .animation(.snappy(duration: 0.18), value: zoomScale)
     }
 
     private func resetView() {
-        zoomScale = 1
-        panOffset = .zero
-        dragStartOffset = .zero
         imageSize = nil
+        dragStartOffset = .zero
+        withAnimation(.snappy(duration: 0.18)) {
+            zoomScale = 1
+            panOffset = .zero
+        }
     }
 
     private func contentSize(in containerSize: CGSize) -> CGSize {
@@ -132,7 +135,7 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
 
     private func zoom(by magnification: CGFloat, around location: CGPoint, in containerSize: CGSize) {
         let currentScale = zoomScale
-        let nextScale = min(max(currentScale * (1 + magnification), 0.65), 5)
+        let nextScale = min(max(currentScale * (1 + magnification), 1), 8)
         guard nextScale != currentScale else { return }
 
         let center = CGPoint(x: containerSize.width / 2, y: containerSize.height / 2)
@@ -146,30 +149,20 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
             height: relativePoint.height * (1 - scaleRatio) + panOffset.height * scaleRatio
         )
 
-        zoomScale = nextScale
-        panOffset = clampedPanOffset(proposedOffset, in: containerSize, imageSize: imageSize)
-        dragStartOffset = panOffset
-    }
-
-    private func settleZoom(in containerSize: CGSize) {
-        guard zoomScale < 1 else {
-            panOffset = clampedPanOffset(panOffset, in: containerSize, imageSize: imageSize)
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            zoomScale = nextScale
+            panOffset = clampedPanOffset(proposedOffset, scale: nextScale, in: containerSize, imageSize: imageSize)
             dragStartOffset = panOffset
-            return
         }
-
-        withAnimation(.snappy(duration: 0.2)) {
-            zoomScale = 1
-            panOffset = .zero
-        }
-        dragStartOffset = .zero
     }
 
-    private func clampedPanOffset(_ offset: CGSize, in containerSize: CGSize, imageSize: CGSize?) -> CGSize {
-        guard zoomScale > 1 else { return .zero }
+    private func clampedPanOffset(_ offset: CGSize, scale: CGFloat, in containerSize: CGSize, imageSize: CGSize?) -> CGSize {
+        guard scale > 1 else { return .zero }
         let fittedSize = fittedImageSize(in: containerSize, imageSize: imageSize)
-        let maxX = max((fittedSize.width * zoomScale - containerSize.width) / 2, 0)
-        let maxY = max((fittedSize.height * zoomScale - containerSize.height) / 2, 0)
+        let maxX = max((fittedSize.width * scale - containerSize.width) / 2, 0)
+        let maxY = max((fittedSize.height * scale - containerSize.height) / 2, 0)
         return CGSize(
             width: min(max(offset.width, -maxX), maxX),
             height: min(max(offset.height, -maxY), maxY)
@@ -207,25 +200,25 @@ struct ZoomableImageCanvas<Placeholder: View>: View {
     }
 }
 
-/// 用 `NSView` 拦截 trackpad 的滚轮和捏合手势 ——
-/// SwiftUI 的 `MagnifyGesture` 不会给捏合中心点，这里手动绕过去。
-private struct TrackpadPanView: NSViewRepresentable {
+/// 用 NSView 读取 trackpad 的增量 magnify / scrollWheel 事件，避免 SwiftUI MagnifyGesture
+/// 的绝对倍率和 ScrollView 几何回调互相影响。
+private struct TrackpadGestureView: NSViewRepresentable {
     let onPan: (CGSize) -> Void
     let onMagnify: (CGFloat, CGPoint) -> Void
     let onMagnifyEnded: () -> Void
 
     func makeNSView(context: Context) -> NSView {
-        ScrollCatcherView(onPan: onPan, onMagnify: onMagnify, onMagnifyEnded: onMagnifyEnded)
+        GestureCatcherView(onPan: onPan, onMagnify: onMagnify, onMagnifyEnded: onMagnifyEnded)
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        guard let catcher = nsView as? ScrollCatcherView else { return }
+        guard let catcher = nsView as? GestureCatcherView else { return }
         catcher.onPan = onPan
         catcher.onMagnify = onMagnify
         catcher.onMagnifyEnded = onMagnifyEnded
     }
 
-    private final class ScrollCatcherView: NSView {
+    private final class GestureCatcherView: NSView {
         var onPan: (CGSize) -> Void
         var onMagnify: (CGFloat, CGPoint) -> Void
         var onMagnifyEnded: () -> Void
