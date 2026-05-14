@@ -30,5 +30,5 @@ struct LocalImageItem: Identifiable, Hashable, Sendable {
     let url: URL
     let title: String
 
-    var id: String { url.path }
+    nonisolated var id: String { url.path }
 }
