@@ -33,7 +33,7 @@ struct ImageDetailPane: View {
     private func content(item: GalleryItem, slot: ImageSlot) -> some View {
         ZStack {
             Color.black
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: [.horizontal, .bottom])
 
             GeometryReader { proxy in
                 DetailImageResolverView(

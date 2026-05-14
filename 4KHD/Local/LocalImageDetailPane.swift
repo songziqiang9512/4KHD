@@ -23,7 +23,8 @@ struct LocalImageDetailPane: View {
     @ViewBuilder
     private func content(folder: LocalFolderNode, image: LocalImageItem) -> some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black
+                .ignoresSafeArea(edges: [.horizontal, .bottom])
 
             GeometryReader { proxy in
                 let maxPixelSize = max(proxy.size.width, proxy.size.height) * 2
