@@ -323,17 +323,15 @@ private struct ImmersiveWindowToolbarVisibilityController: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async {
-            context.coordinator.apply(to: view.window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
+        let view = WindowProbeView(frame: .zero)
+        view.onWindowChanged = { window in
+            context.coordinator.apply(to: window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            context.coordinator.apply(to: nsView.window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
-        }
+        context.coordinator.apply(to: nsView.window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -366,6 +364,15 @@ private struct ImmersiveWindowToolbarVisibilityController: NSViewRepresentable {
             if originalToolbarVisibility == nil {
                 originalToolbarVisibility = window.toolbar?.isVisible
             }
+        }
+    }
+
+    private final class WindowProbeView: NSView {
+        var onWindowChanged: ((NSWindow?) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChanged?(window)
         }
     }
 }
