@@ -99,8 +99,18 @@ final class LocalLibraryStore {
         selectImage(at: selectedImageIndex + delta)
     }
 
+    func refreshSelectedRoot() {
+        guard let root = selectedRoot else { return }
+        reloadRoot(root.url)
+    }
+
     private var firstFolder: LocalFolderNode? {
         roots.lazy.compactMap { Self.firstFolderWithImages(in: $0.tree) ?? $0.tree }.first
+    }
+
+    private var selectedRoot: LocalLibraryRoot? {
+        guard let selectedFolderID else { return roots.first }
+        return roots.first { Self.contains(folderID: selectedFolderID, in: $0.tree) }
     }
 
     func findFolder(id: LocalFolderNode.ID) -> LocalFolderNode? {

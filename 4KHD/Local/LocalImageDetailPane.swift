@@ -55,6 +55,17 @@ struct LocalImageDetailPane: View {
                 handleKeyDown(event)
             }
             .frame(width: 0, height: 0)
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    if let status = saveStatus {
+                        DetailStatusBadge(kind: status.kind, text: status.text)
+                            .padding(16)
+                    }
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -95,11 +106,6 @@ struct LocalImageDetailPane: View {
     @ToolbarContentBuilder
     private func toolbarContent(image: LocalImageItem) -> some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if !saveMessage.isEmpty {
-                Text(saveMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Button {
                 resetToken = UUID()
             } label: {
@@ -140,6 +146,16 @@ struct LocalImageDetailPane: View {
             .keyboardShortcut("s", modifiers: [.command])
             .help("保存副本")
         }
+    }
+
+    private var saveStatus: (kind: DetailStatusBadge.Kind, text: String)? {
+        if saveMessage == "已保存" {
+            return (.saved, saveMessage)
+        }
+        if saveMessage == "保存失败" {
+            return (.failed, saveMessage)
+        }
+        return nil
     }
 
     private func saveImage(_ image: LocalImageItem) {
@@ -220,6 +236,12 @@ struct LocalFilmstrip: View {
                 withAnimation(.snappy(duration: 0.22)) {
                     scrollProxy.scrollTo(batchStart, anchor: .leading)
                 }
+            }
+            .onAppear {
+                guard images.indices.contains(selectedIndex) else { return }
+                let tilesPerBatch = max(Int((viewportWidth - 28) / tilePitch), 1)
+                lastBatchStart = (selectedIndex / tilesPerBatch) * tilesPerBatch
+                scrollProxy.scrollTo(lastBatchStart, anchor: .leading)
             }
         }
     }
