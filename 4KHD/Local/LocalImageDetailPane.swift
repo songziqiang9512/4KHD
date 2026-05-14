@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct LocalImageDetailPane: View {
     @Environment(LocalLibraryStore.self) private var localLibrary
     @Environment(ImmersiveController.self) private var immersive
+    @AppStorage("com.songziqiang.4khd.showsFilmstrip.v1") private var showsFilmstrip = true
     @State private var resetToken = UUID()
     @State private var saveMessage = ""
     @State private var isFilmstripReady = false
@@ -58,7 +59,7 @@ struct LocalImageDetailPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if isFilmstripReady {
+            if showsFilmstrip && isFilmstripReady {
                 LocalFilmstrip(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex) { index in
                     localLibrary.selectImage(at: index)
                 }
@@ -94,24 +95,6 @@ struct LocalImageDetailPane: View {
 
     @ToolbarContentBuilder
     private func toolbarContent(image: LocalImageItem) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
-            Button {
-                localLibrary.stepImage(-1)
-            } label: {
-                Label("上一张", systemImage: "chevron.left")
-            }
-            .keyboardShortcut(.leftArrow, modifiers: [.command])
-            .disabled(localLibrary.selectedImageIndex == 0)
-
-            Button {
-                localLibrary.stepImage(1)
-            } label: {
-                Label("下一张", systemImage: "chevron.right")
-            }
-            .keyboardShortcut(.rightArrow, modifiers: [.command])
-            .disabled(localLibrary.selectedImageIndex >= localLibrary.selectedImages.count - 1)
-        }
-
         ToolbarItemGroup(placement: .primaryAction) {
             if !saveMessage.isEmpty {
                 Text(saveMessage)
@@ -134,6 +117,14 @@ struct LocalImageDetailPane: View {
                       : "arrow.up.left.and.arrow.down.right")
             }
             .help(immersive.isImmersive ? "退出大图模式" : "进入大图模式")
+
+            Button {
+                showsFilmstrip.toggle()
+            } label: {
+                Label(showsFilmstrip ? "隐藏缩略图" : "显示缩略图",
+                      systemImage: showsFilmstrip ? "rectangle.bottomthird.inset.filled" : "rectangle")
+            }
+            .help(showsFilmstrip ? "隐藏下方缩略图" : "显示下方缩略图")
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([image.url])
@@ -213,7 +204,7 @@ struct LocalFilmstrip: View {
                 .padding(.vertical, 10)
             }
             .frame(height: 112)
-            .background(.bar)
+            .background(.background)
             .background(
                 GeometryReader { proxy in
                     Color.clear

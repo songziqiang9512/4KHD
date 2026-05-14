@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct ImageDetailPane: View {
     @Environment(LibraryStore.self) private var library
     @Environment(ImmersiveController.self) private var immersive
+    @AppStorage("com.songziqiang.4khd.showsFilmstrip.v1") private var showsFilmstrip = true
 
     @State private var displayedImageURL: URL?
     @State private var saveMessage = ""
@@ -110,7 +111,7 @@ struct ImageDetailPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if isFilmstripReady {
+            if showsFilmstrip && isFilmstripReady {
                 Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
                     library.selectImage(at: index)
                 } onReachedEnd: {
@@ -169,23 +170,6 @@ struct ImageDetailPane: View {
 
     @ToolbarContentBuilder
     private func detailToolbar(item: GalleryItem, slot: ImageSlot) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
-            Button {
-                library.stepImage(-1)
-            } label: {
-                Label("上一张", systemImage: "chevron.left")
-            }
-            .keyboardShortcut(.leftArrow, modifiers: [.command])
-            .disabled(library.selectedImageIndex == 0)
-
-            Button {
-                library.stepImage(1)
-            } label: {
-                Label("下一张", systemImage: "chevron.right")
-            }
-            .keyboardShortcut(.rightArrow, modifiers: [.command])
-        }
-
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 library.toggleFavorite(for: item)
@@ -211,6 +195,14 @@ struct ImageDetailPane: View {
                       : "arrow.up.left.and.arrow.down.right")
             }
             .help(immersive.isImmersive ? "退出大图模式" : "进入大图模式")
+
+            Button {
+                showsFilmstrip.toggle()
+            } label: {
+                Label(showsFilmstrip ? "隐藏缩略图" : "显示缩略图",
+                      systemImage: showsFilmstrip ? "rectangle.bottomthird.inset.filled" : "rectangle")
+            }
+            .help(showsFilmstrip ? "隐藏下方缩略图" : "显示下方缩略图")
 
             Button {
                 NSWorkspace.shared.open(item.detailURL)

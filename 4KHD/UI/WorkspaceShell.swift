@@ -94,9 +94,11 @@ struct WorkspaceShell: View {
     @Environment(LibraryStore.self) private var library
     @Environment(LocalLibraryStore.self) private var localLibrary
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(OnlineCacheLimit.defaultsKey) private var onlineCacheLimitRaw = OnlineCacheLimit.gb1.rawValue
     // @State 持有 @Observable 子对象 —— SwiftUI 会复用同一实例。
     @State private var immersive = ImmersiveController()
     @State private var sidebarDisclosure = SidebarDisclosureState()
+    @State private var didBootstrap = false
 
     @SceneStorage("com.songziqiang.4khd.sidebarSelection")
     private var storedSelection: String = SidebarSelection.online(.latest).rawValue
@@ -121,27 +123,63 @@ struct WorkspaceShell: View {
     var body: some View {
         // 在 body 内 shadow 一份 @Bindable，给需要 $... 写法的地方提供 binding。
         @Bindable var immersive = immersive
-        return NavigationSplitView(columnVisibility: $immersive.columnVisibility) {
-            WorkspaceSidebar(selection: selectionBinding)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-        } content: {
-            contentColumn
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
-        } detail: {
-            detailColumn
-                .navigationSplitViewColumnWidth(min: 560, ideal: 900)
+        return Group {
+            if immersive.isImmersive {
+                detailColumn
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                NavigationSplitView(columnVisibility: $immersive.columnVisibility) {
+                    WorkspaceSidebar(selection: selectionBinding, importRootFolder: importRootFolder)
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+                } content: {
+                    contentColumn
+                        .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
+                } detail: {
+                    detailColumn
+                        .navigationSplitViewColumnWidth(min: 560, ideal: 900)
+                }
+                .navigationSplitViewStyle(.balanced)
+            }
         }
-        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 1080, minHeight: 700)
-        // 不再做 Group { if immersive ... else splitBody } 的整树切换 ——
-        // detail column 一直挂在同一颗 NavigationSplitView 上，沉浸只改 columnVisibility，
-        // 主图区的 @State / WKWebView / 缩放偏移都不会因为进出沉浸而被重建。
         .overlay(alignment: .leading) {
             immersivePeekChrome
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    ForEach(OnlineCacheLimit.allCases) { limit in
+                        Button {
+                            onlineCacheLimitRaw = limit.rawValue
+                            RemoteImagePipeline.shared.applyCacheLimit(limit)
+                        } label: {
+                            if selectedOnlineCacheLimit == limit {
+                                Label(limit.title, systemImage: "checkmark")
+                            } else {
+                                Text(limit.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("缓存容量", systemImage: "internaldrive")
+                }
+                .help("设置在线图片磁盘缓存容量")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    importRootFolder()
+                } label: {
+                    Label("导入目录", systemImage: "folder.badge.plus")
+                }
+                .help("导入本地图片文件夹")
+            }
         }
         .environment(immersive)
         .environment(sidebarDisclosure)
         .task {
+            guard !didBootstrap else { return }
+            didBootstrap = true
             // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
             // 后续子页面解析走 URLSession 直拉也带得上同一张票。
             CookieBridge.shared.start()
@@ -169,7 +207,7 @@ struct WorkspaceShell: View {
 
                 if immersive.peekRevealing {
                     HStack(spacing: 0) {
-                        WorkspaceSidebar(selection: selectionBinding)
+                        WorkspaceSidebar(selection: selectionBinding, importRootFolder: importRootFolder)
                             .frame(width: 240)
                             .background(.bar)
                         Divider()
@@ -231,6 +269,22 @@ struct WorkspaceShell: View {
             }
         }
     }
+
+    private var selectedOnlineCacheLimit: OnlineCacheLimit {
+        OnlineCacheLimit(rawValue: onlineCacheLimitRaw) ?? .gb1
+    }
+
+    private func importRootFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = "导入"
+        panel.message = "选择一个包含图片的文件夹"
+        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+        localLibrary.importRootFolder(folderURL)
+    }
 }
 
 // MARK: - Sidebar selection
@@ -264,9 +318,9 @@ enum SidebarSelection: Hashable {
 // MARK: - Sidebar
 
 struct WorkspaceSidebar: View {
-    @Environment(LibraryStore.self) private var library
     @Environment(LocalLibraryStore.self) private var localLibrary
     @Binding var selection: SidebarSelection?
+    let importRootFolder: () -> Void
 
     var body: some View {
         List(selection: $selection) {
@@ -282,6 +336,7 @@ struct WorkspaceSidebar: View {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
+                            .frame(width: 16, height: 16)
                         Text(localLibrary.roots.isEmpty ? "正在扫描目录" : "正在更新目录")
                     }
                     .foregroundStyle(.secondary)
@@ -304,16 +359,6 @@ struct WorkspaceSidebar: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("4KHD")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    importRootFolder()
-                } label: {
-                    Label("导入目录", systemImage: "folder.badge.plus")
-                }
-                .help("导入本地图片文件夹")
-            }
-        }
     }
 
     private func systemImage(for section: GallerySection) -> String {
@@ -324,18 +369,6 @@ struct WorkspaceSidebar: View {
         case .album: "photo.on.rectangle"
         case .favorites: "bookmark"
         }
-    }
-
-    private func importRootFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.prompt = "导入"
-        panel.message = "选择一个包含图片的文件夹"
-        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
-        localLibrary.importRootFolder(folderURL)
     }
 }
 

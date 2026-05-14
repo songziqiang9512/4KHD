@@ -53,8 +53,7 @@ struct GalleryContentList: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 92)
-                .disabled(shouldGroupFavorites)
-                .help(shouldGroupFavorites ? "收藏分组固定使用列表" : "切换列表 / 网格")
+                .help("切换列表 / 网格")
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -79,28 +78,26 @@ struct GalleryContentList: View {
         List(selection: selectionBinding) {
             if shouldGroupFavorites {
                 ForEach(favoriteAuthorGroups) { group in
-                    Section {
-                        if expandedFavoriteAuthorIDs.contains(group.id) {
-                            ForEach(group.items) { item in
-                                GalleryRow(item: item)
-                                    .tag(item.id)
-                                    .contextMenu { favoriteMoveMenu(for: item, currentGroup: group) }
-                            }
+                    FavoriteAuthorSectionHeader(
+                        group: group,
+                        isExpanded: expandedFavoriteAuthorIDs.contains(group.id)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { toggleFavoriteGroup(group.id) }
+                    .contextMenu {
+                        Button("重命名目录") { renameFavoriteGroup(group) }
+                    }
+                    .onAppear {
+                        if group.id == favoriteAuthorGroups.last?.id {
+                            library.loadMoreListIfNeeded()
                         }
-                    } header: {
-                        FavoriteAuthorSectionHeader(
-                            group: group,
-                            isExpanded: expandedFavoriteAuthorIDs.contains(group.id)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { toggleFavoriteGroup(group.id) }
-                        .contextMenu {
-                            Button("重命名目录") { renameFavoriteGroup(group) }
-                        }
-                        .onAppear {
-                            if group.id == favoriteAuthorGroups.last?.id {
-                                library.loadMoreListIfNeeded()
-                            }
+                    }
+
+                    if expandedFavoriteAuthorIDs.contains(group.id) {
+                        ForEach(group.items) { item in
+                            GalleryRow(item: item)
+                                .tag(item.id)
+                                .contextMenu { favoriteMoveMenu(for: item, currentGroup: group) }
                         }
                     }
                 }
@@ -158,7 +155,7 @@ struct GalleryContentList: View {
     }
 
     private var shouldUseGrid: Bool {
-        !shouldGroupFavorites && contentLayout == .grid
+        contentLayout == .grid
     }
 
     private var shouldShowFooter: Bool {

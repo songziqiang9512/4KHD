@@ -133,6 +133,7 @@ struct ListFooterStatus: View {
             if library.isRefreshingList {
                 ProgressView()
                     .controlSize(.small)
+                    .frame(width: 16, height: 16)
                 Text("加载下一页")
             } else if library.canLoadMoreList {
                 Image(systemName: "arrow.down")

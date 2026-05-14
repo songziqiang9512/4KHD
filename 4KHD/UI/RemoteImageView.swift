@@ -2,6 +2,43 @@ import Nuke
 import SwiftUI
 import ImageIO
 
+enum OnlineCacheLimit: String, CaseIterable, Identifiable {
+    case mb512
+    case gb1
+    case gb2
+    case gb4
+    case unlimited
+
+    static let defaultsKey = "com.songziqiang.4khd.onlineCacheLimit.v1"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mb512: "512 MB"
+        case .gb1: "1 GB"
+        case .gb2: "2 GB"
+        case .gb4: "4 GB"
+        case .unlimited: "无限制"
+        }
+    }
+
+    var byteLimit: Int {
+        switch self {
+        case .mb512: 512 * 1024 * 1024
+        case .gb1: 1024 * 1024 * 1024
+        case .gb2: 2 * 1024 * 1024 * 1024
+        case .gb4: 4 * 1024 * 1024 * 1024
+        case .unlimited: Int.max
+        }
+    }
+
+    static var current: OnlineCacheLimit {
+        let rawValue = UserDefaults.standard.string(forKey: defaultsKey) ?? OnlineCacheLimit.gb1.rawValue
+        return OnlineCacheLimit(rawValue: rawValue) ?? .gb1
+    }
+}
+
 struct RemoteImageView<Placeholder: View>: View {
     let url: URL?
     let contentMode: ContentMode
@@ -87,14 +124,22 @@ final class RemoteImagePipeline {
 
     private let pipeline: ImagePipeline
     private let detailPrefetcher: ImagePrefetcher
+    private let urlCache: URLCache
+    private let dataCache: DataCache?
 
     private init() {
+        let cacheLimit = OnlineCacheLimit.current.byteLimit
+        let urlCache = Self.makeURLCache(diskCapacity: cacheLimit)
         var configuration = ImagePipeline.Configuration()
-        configuration.dataLoader = DataLoader(configuration: Self.urlSessionConfiguration)
+        configuration.dataLoader = DataLoader(configuration: Self.urlSessionConfiguration(urlCache: urlCache))
         configuration.imageCache = ImageCache(costLimit: 384 * 1024 * 1024, countLimit: 900)
         if let dataCache = try? DataCache(name: "com.songziqiang.4khd.images") {
-            dataCache.sizeLimit = 1024 * 1024 * 1024
+            dataCache.sizeLimit = cacheLimit
             configuration.dataCache = dataCache
+            dataCache.sweep()
+            self.dataCache = dataCache
+        } else {
+            self.dataCache = nil
         }
         configuration.dataCacheOptions.storedItems = [.originalImageData]
         configuration.isDeduplicationEnabled = true
@@ -103,12 +148,21 @@ final class RemoteImagePipeline {
         configuration.imageDecodingQueue.maxConcurrentOperationCount = 2
         let pipeline = ImagePipeline(configuration: configuration)
         self.pipeline = pipeline
+        self.urlCache = urlCache
         self.detailPrefetcher = ImagePrefetcher(
             pipeline: pipeline,
             destination: .memoryCache,
             maxConcurrentRequestCount: 3
         )
         self.detailPrefetcher.priority = .low
+    }
+
+    func applyCacheLimit(_ limit: OnlineCacheLimit) {
+        let bytes = limit.byteLimit
+        dataCache?.sizeLimit = bytes
+        dataCache?.sweep()
+        urlCache.diskCapacity = bytes
+        urlCache.memoryCapacity = min(bytes / 4, 128 * 1024 * 1024)
     }
 
     func request(for url: URL, priority: ImageRequest.Priority, maxPixelSize: CGFloat? = nil) -> ImageRequest {
@@ -166,18 +220,22 @@ final class RemoteImagePipeline {
         detailPrefetcher.stopPrefetching()
     }
 
-    private static let urlSessionConfiguration: URLSessionConfiguration = {
-        let configuration = URLSessionConfiguration.default
-        configuration.urlCache = URLCache(
-            memoryCapacity: 128 * 1024 * 1024,
-            diskCapacity: 1024 * 1024 * 1024,
+    private static func makeURLCache(diskCapacity: Int) -> URLCache {
+        URLCache(
+            memoryCapacity: min(diskCapacity / 4, 128 * 1024 * 1024),
+            diskCapacity: diskCapacity,
             diskPath: "4KHDImageURLCache"
         )
+    }
+
+    private static func urlSessionConfiguration(urlCache: URLCache) -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.default
+        configuration.urlCache = urlCache
         configuration.requestCachePolicy = .returnCacheDataElseLoad
         configuration.timeoutIntervalForRequest = 30
         configuration.httpMaximumConnectionsPerHost = 6
         return configuration
-    }()
+    }
 }
 
 actor LocalImageCache {

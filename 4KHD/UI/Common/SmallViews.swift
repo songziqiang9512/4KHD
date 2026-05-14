@@ -82,6 +82,7 @@ struct LoadingFilmstripTile: View {
         VStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
+                .frame(width: 16, height: 16)
             Text("加载中")
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -107,6 +108,7 @@ struct DetailPlaceholder: View {
             case .loading:
                 ProgressView()
                     .controlSize(.large)
+                    .frame(width: 32, height: 32)
                 Text("加载中")
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -149,6 +151,7 @@ struct DetailStatusBadge: View {
             case .resolving, .prefetching, .saving:
                 ProgressView()
                     .controlSize(.small)
+                    .frame(width: 16, height: 16)
             case .saved:
                 Image(systemName: "checkmark.circle.fill")
                     .symbolRenderingMode(.hierarchical)

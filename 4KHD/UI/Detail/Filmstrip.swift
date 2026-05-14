@@ -61,7 +61,7 @@ struct Filmstrip: View {
                 .padding(.vertical, 10)
             }
             .frame(height: 112)
-            .background(.bar)
+            .background(.background)
             .background(
                 GeometryReader { proxy in
                     Color.clear
