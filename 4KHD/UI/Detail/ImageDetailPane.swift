@@ -243,11 +243,11 @@ struct ImageDetailPane: View {
         if saveMessage == "保存失败" {
             return (.failed, saveMessage)
         }
-        if library.prefetchPageURL != nil {
-            return (.prefetching, "预取下一页")
-        }
         if !isDetailReady {
             return (.resolving, "解析中")
+        }
+        if library.prefetchPageURL != nil {
+            return (.prefetching, "预取下一页")
         }
         return nil
     }

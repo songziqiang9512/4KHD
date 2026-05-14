@@ -14,6 +14,7 @@ final class GalleryDetailStore {
 
     @ObservationIgnored private var currentItem: GalleryItem?
     @ObservationIgnored private var itemPageCursors: [GalleryItem.ID: Int] = [:]
+    @ObservationIgnored private var requestedDetailPageIndexByURL: [URL: (itemID: GalleryItem.ID, cursor: Int)] = [:]
     @ObservationIgnored private var resolvedPageURLs: [GalleryItem.ID: [URL]] = [:]
     @ObservationIgnored private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
     @ObservationIgnored private var detailPageTasks: [String: Task<Void, Never>] = [:]
@@ -45,6 +46,7 @@ final class GalleryDetailStore {
         prefetchPageURL = nil
         selectedImageIndex = 0
         loadedImageSlots = []
+        requestedDetailPageIndexByURL.removeAll()
         guard let item else { return }
         itemPageCursors[item.id] = min(pageURLs(for: item).count, 1)
         requestedDetailPageURLs[item.id] = Set(pageURLs(for: item).prefix(1))
@@ -90,6 +92,7 @@ final class GalleryDetailStore {
             // 已发过请求还没回，视为在路上。
             return true
         }
+        requestedDetailPageIndexByURL[pageURL] = (item.id, cursor)
         itemPageCursors[item.id] = cursor + 1
         prefetchPageURL = pageURL
         resolveDetailPage(pageURL)
@@ -111,6 +114,7 @@ final class GalleryDetailStore {
         if prefetchPageURL == page.pageURL {
             prefetchPageURL = nil
         }
+        requestedDetailPageIndexByURL[page.pageURL] = nil
         detailPageTasks[page.pageURL.absoluteString] = nil
 
         if let firstIndex = loadedImageSlots.firstIndex(where: { $0.pageURL == page.pageURL }),
@@ -208,7 +212,10 @@ final class GalleryDetailStore {
             prefetchPageURL = nil
         }
         // 失败时清掉 requested set 里这条，让链路在合适时机能再次考虑它；
-        // cursor 不回滚 —— 不死磕，但 chainLoad 会继续往后接力。
+        // cursor 回滚到失败页，避免后续直接跳过这一页。
+        if let request = requestedDetailPageIndexByURL.removeValue(forKey: pageURL) {
+            itemPageCursors[request.itemID] = min(itemPageCursors[request.itemID, default: request.cursor], request.cursor)
+        }
         for itemID in requestedDetailPageURLs.keys {
             requestedDetailPageURLs[itemID]?.remove(pageURL)
         }

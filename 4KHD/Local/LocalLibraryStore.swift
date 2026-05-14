@@ -187,6 +187,7 @@ final class LocalLibraryStore {
     }
 
     private nonisolated static func scanRoot(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalLibraryRoot? {
+        guard !Task.isCancelled else { return nil }
         guard let tree = scanFolder(at: url, excluding: excludedFolderPaths), tree.imageCount > 0 else { return nil }
         return LocalLibraryRoot(url: url, tree: tree)
     }
@@ -198,7 +199,8 @@ final class LocalLibraryStore {
         await withTaskGroup(of: (Int, LocalLibraryRoot?).self) { group in
             for (index, url) in urls.enumerated() {
                 group.addTask(priority: .utility) {
-                    (index, scanRoot(at: url, excluding: excluded[url.path, default: []]))
+                    guard !Task.isCancelled else { return (index, nil) }
+                    return (index, scanRoot(at: url, excluding: excluded[url.path, default: []]))
                 }
             }
 
@@ -215,6 +217,7 @@ final class LocalLibraryStore {
     }
 
     private nonisolated static func scanFolder(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalFolderNode? {
+        guard !Task.isCancelled else { return nil }
         let standardizedURL = url.standardizedFileURL
         guard !excludedFolderPaths.contains(standardizedURL.path) else { return nil }
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .contentTypeKey]
@@ -230,6 +233,7 @@ final class LocalLibraryStore {
         var images: [LocalImageItem] = []
 
         for child in children {
+            if Task.isCancelled { return nil }
             guard let values = try? child.resourceValues(forKeys: keys) else { continue }
             if values.isDirectory == true {
                 if let folder = scanFolder(at: child, excluding: excludedFolderPaths), folder.imageCount > 0 {

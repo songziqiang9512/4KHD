@@ -93,6 +93,7 @@ final class SidebarDisclosureState {
 struct WorkspaceShell: View {
     @Environment(LibraryStore.self) private var library
     @Environment(LocalLibraryStore.self) private var localLibrary
+    @Environment(\.scenePhase) private var scenePhase
     // @State 持有 @Observable 子对象 —— SwiftUI 会复用同一实例。
     @State private var immersive = ImmersiveController()
     @State private var sidebarDisclosure = SidebarDisclosureState()
@@ -146,6 +147,11 @@ struct WorkspaceShell: View {
             CookieBridge.shared.start()
             apply(selection)
             library.refreshFromNetwork()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                DetailPageImageCache.shared.flush()
+            }
         }
     }
 

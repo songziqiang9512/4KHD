@@ -101,6 +101,20 @@ final class DetailPageImageCache {
         lock.unlock()
     }
 
+    func flush() {
+        lock.lock()
+        loadFromDiskIfNeededLocked()
+        let snapshot = storage
+        let cacheURL = cacheURL
+        pendingSaveWorkItem?.cancel()
+        pendingSaveWorkItem = nil
+        lock.unlock()
+
+        saveQueue.sync {
+            Self.save(snapshot, to: cacheURL)
+        }
+    }
+
     private func loadFromDiskIfNeededLocked() {
         guard !didLoadFromDisk else { return }
         didLoadFromDisk = true
