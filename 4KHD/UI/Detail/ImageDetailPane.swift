@@ -71,8 +71,6 @@ struct ImageDetailPane: View {
                     isDetailReady = true
                     isFilmstripReady = true
                     detailFailed = false
-                } onBlankTap: {
-                    if immersive.isImmersive { immersive.set(false) }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }

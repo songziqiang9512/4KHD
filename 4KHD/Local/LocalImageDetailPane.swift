@@ -37,8 +37,6 @@ struct LocalImageDetailPane: View {
                     DetailPlaceholder(kind: .loading)
                 } onDisplayed: {
                     isFilmstripReady = true
-                } onBlankTap: {
-                    if immersive.isImmersive { immersive.set(false) }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }

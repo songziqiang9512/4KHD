@@ -12,6 +12,7 @@ final class ImmersiveController {
     var isImmersive: Bool = false
     var columnVisibility: NavigationSplitViewVisibility = .all
     var peekRevealing: Bool = false
+    var isToolbarVisible: Bool = true
 
     @ObservationIgnored private var nonImmersiveVisibility: NavigationSplitViewVisibility = .all
     @ObservationIgnored private var peekHideWorkItem: DispatchWorkItem?
@@ -27,6 +28,7 @@ final class ImmersiveController {
             withAnimation(.easeInOut(duration: 0.22)) {
                 isImmersive = true
                 peekRevealing = false
+                isToolbarVisible = false
                 // 让 NavigationSplitView 把 sidebar + content 一起收掉，detail 占满。
                 columnVisibility = .detailOnly
             }
@@ -35,6 +37,7 @@ final class ImmersiveController {
             withAnimation(.easeInOut(duration: 0.22)) {
                 isImmersive = false
                 peekRevealing = false
+                isToolbarVisible = true
                 columnVisibility = nonImmersiveVisibility
             }
         }
@@ -67,6 +70,21 @@ final class ImmersiveController {
         }
         peekHideWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    func handleToolbarPointer(isNearTop: Bool) {
+        guard isImmersive else { return }
+        if isNearTop {
+            withAnimation(.easeInOut(duration: 0.14)) {
+                isToolbarVisible = true
+            }
+            return
+        }
+
+        guard isToolbarVisible else { return }
+        withAnimation(.easeInOut(duration: 0.14)) {
+            isToolbarVisible = false
+        }
     }
 }
 
@@ -144,6 +162,15 @@ struct WorkspaceShell: View {
         .frame(minWidth: 1080, minHeight: 700)
         .overlay(alignment: .leading) {
             immersivePeekChrome
+        }
+        .background {
+            ZStack {
+                ImmersiveToolbarMouseTracker(immersive: immersive)
+                ImmersiveWindowToolbarVisibilityController(
+                    isImmersive: immersive.isImmersive,
+                    isToolbarVisible: immersive.isToolbarVisible
+                )
+            }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -284,6 +311,121 @@ struct WorkspaceShell: View {
         panel.message = "选择一个包含图片的文件夹"
         guard panel.runModal() == .OK, let folderURL = panel.url else { return }
         localLibrary.importRootFolder(folderURL)
+    }
+}
+
+private struct ImmersiveWindowToolbarVisibilityController: NSViewRepresentable {
+    let isImmersive: Bool
+    let isToolbarVisible: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            context.coordinator.apply(to: view.window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            context.coordinator.apply(to: nsView.window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
+        }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.restore()
+    }
+
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var originalToolbarVisibility: Bool?
+
+        func apply(to window: NSWindow?, isImmersive: Bool, isToolbarVisible: Bool) {
+            guard let window else { return }
+            captureOriginalStateIfNeeded(window)
+            self.window = window
+
+            let shouldShowChrome = !isImmersive || isToolbarVisible
+            if window.toolbar?.isVisible != shouldShowChrome {
+                window.toolbar?.isVisible = shouldShowChrome
+            }
+        }
+
+        func restore() {
+            guard let window else { return }
+            if let originalToolbarVisibility {
+                window.toolbar?.isVisible = originalToolbarVisibility
+            }
+        }
+
+        private func captureOriginalStateIfNeeded(_ window: NSWindow) {
+            if originalToolbarVisibility == nil {
+                originalToolbarVisibility = window.toolbar?.isVisible
+            }
+        }
+    }
+}
+
+private struct ImmersiveToolbarMouseTracker: NSViewRepresentable {
+    let immersive: ImmersiveController
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(immersive: immersive)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.install()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.immersive = immersive
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.uninstall()
+    }
+
+    final class Coordinator {
+        var immersive: ImmersiveController
+        private var monitor: Any?
+        private let revealDistanceFromTop: CGFloat = 72
+
+        init(immersive: ImmersiveController) {
+            self.immersive = immersive
+        }
+
+        deinit {
+            uninstall()
+        }
+
+        func install() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        func uninstall() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard immersive.isImmersive,
+                  let window = event.window ?? NSApp.keyWindow,
+                  window.isKeyWindow else { return }
+
+            let topDistance = max(window.frame.height - event.locationInWindow.y, 0)
+            immersive.handleToolbarPointer(isNearTop: topDistance <= revealDistanceFromTop)
+        }
     }
 }
 
