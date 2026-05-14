@@ -4,7 +4,7 @@ import WebKit
 struct DetailImageResolverView: NSViewRepresentable {
     let pageURL: URL
     let onResolvedPage: (ResolvedImagePage) -> Void
-    let onFailure: () -> Void
+    let onFailure: (URL) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -44,7 +44,7 @@ struct DetailImageResolverView: NSViewRepresentable {
         var pageURL: URL?
         var loadedPageURL: URL?
         var onResolvedPage: (ResolvedImagePage) -> Void = { _ in }
-        var onFailure: () -> Void = {}
+        var onFailure: (URL) -> Void = { _ in }
         private var generation = UUID()
         private var htmlResolutionTask: Task<Void, Never>?
         private var extractionTask: Task<Void, Never>?
@@ -104,11 +104,11 @@ struct DetailImageResolverView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            onFailure()
+            if let pageURL { onFailure(pageURL) }
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            onFailure()
+            if let pageURL { onFailure(pageURL) }
         }
 
         private func extractImages(from webView: WKWebView, generation: UUID) {
@@ -124,7 +124,7 @@ struct DetailImageResolverView: NSViewRepresentable {
                 let pageURLs = (payload?["pageURLs"] as? [String] ?? []).compactMap(URL.init(string:))
 
                 guard sourceURL?.isSameDetailPath(as: pageURL) != false, !imageURLs.isEmpty else {
-                    self.onFailure()
+                    self.onFailure(pageURL)
                     return
                 }
 

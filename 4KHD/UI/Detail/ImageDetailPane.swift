@@ -13,6 +13,7 @@ struct ImageDetailPane: View {
     @State private var saveMessage = ""
     @State private var isDetailReady = false
     @State private var detailFailed = false
+    @State private var isFilmstripReady = false
     @State private var detailResetToken = UUID()
     @State private var saveTask: ImageTask?
 
@@ -40,9 +41,11 @@ struct ImageDetailPane: View {
                             library.registerResolvedPage(page)
                         }
                     },
-                    onFailure: {
+                    onFailure: { failedPageURL in
+                        guard failedPageURL == slot.pageURL else { return }
                         detailFailed = true
                         isDetailReady = true
+                        isFilmstripReady = true
                     }
                 )
                 .frame(width: 1, height: 1)
@@ -59,6 +62,7 @@ struct ImageDetailPane: View {
                 } onDisplayed: {
                     displayedImageURL = slot.knownURL
                     isDetailReady = true
+                    isFilmstripReady = true
                     detailFailed = false
                 } onBlankTap: {
                     if immersive.isImmersive { immersive.set(false) }
@@ -96,10 +100,12 @@ struct ImageDetailPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
-                library.selectImage(at: index)
-            } onReachedEnd: {
-                library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+            if isFilmstripReady {
+                Filmstrip(slots: library.loadedImageSlots, selectedIndex: library.selectedImageIndex) { index in
+                    library.selectImage(at: index)
+                } onReachedEnd: {
+                    library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
+                }
             }
         }
         .navigationTitle(item.title)
@@ -112,6 +118,7 @@ struct ImageDetailPane: View {
             displayedImageURL = nil
             saveMessage = ""
             isDetailReady = false
+            isFilmstripReady = false
             detailFailed = false
             RemoteImagePipeline.shared.stopDetailPrefetching()
         }
@@ -128,19 +135,17 @@ struct ImageDetailPane: View {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
-        guard event.hasBareKeyModifiers else { return false }
-        switch event.keyCode {
-        case 123:
+        guard let command = DetailKeyCommand(event: event) else { return false }
+        switch command {
+        case .previous:
             library.stepImage(-1)
             return true
-        case 124, 49:
+        case .next:
             library.stepImage(1)
             return true
-        case 3:
+        case .toggleImmersive:
             immersive.toggle()
             return true
-        default:
-            return false
         }
     }
 

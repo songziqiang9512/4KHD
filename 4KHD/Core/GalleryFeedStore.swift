@@ -30,8 +30,8 @@ final class GalleryFeedStore {
     @ObservationIgnored private var listNextPageURLs: [GallerySection: URL] = [:]
     @ObservationIgnored private var pendingListLoadMoreSections: Set<GallerySection> = []
 
-    /// 由 `LibraryStore` 注入；selectedItemID 改变时回调。
-    @ObservationIgnored var onSelectionChanged: (() -> Void)?
+    /// 由 `LibraryStore` 注入；feed 负责把当前选中 item 快照传出去，避免协调者再回读派生状态。
+    @ObservationIgnored var onSelectionChanged: ((GalleryItem?) -> Void)?
 
     private let favoritesStore: FavoritesStore
 
@@ -59,7 +59,8 @@ final class GalleryFeedStore {
     }
 
     var selectedItem: GalleryItem? {
-        allItems.first { $0.id == selectedItemID } ?? allItems.first
+        guard let selectedItemID else { return nil }
+        return allItems.first { $0.id == selectedItemID }
     }
 
     // MARK: - 选择
@@ -67,19 +68,19 @@ final class GalleryFeedStore {
     func select(_ item: GalleryItem, force: Bool = false) {
         if !force, selectedItemID == item.id { return }
         selectedItemID = item.id
-        onSelectionChanged?()
+        notifySelectionChanged()
     }
 
     func selectFirstItemIfNeeded(force: Bool) {
         visibleCount = 18
         guard let first = allItems.first else {
             selectedItemID = nil
-            onSelectionChanged?()
+            notifySelectionChanged()
             return
         }
-        if force || selectedItemID == nil {
+        if force || selectedItem == nil {
             selectedItemID = first.id
-            onSelectionChanged?()
+            notifySelectionChanged()
         }
     }
 
@@ -200,7 +201,7 @@ final class GalleryFeedStore {
             selectedItemID = allItems.first?.id
         }
         // 即便选中 ID 没变，item 对象可能被替换（新的 pageURLs 等），让 detail 重建。
-        onSelectionChanged?()
+        notifySelectionChanged()
 
         finishListRefresh(section: section)
     }
@@ -264,9 +265,13 @@ final class GalleryFeedStore {
 
         if replacing {
             selectedItemID = searchItems.first?.id
-            onSelectionChanged?()
+            notifySelectionChanged()
         }
         finishSearchRefresh()
+    }
+
+    private func notifySelectionChanged() {
+        onSelectionChanged?(selectedItem)
     }
 
     private func finishSearchRefresh() {

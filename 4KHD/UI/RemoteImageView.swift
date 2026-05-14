@@ -242,10 +242,12 @@ private extension TaskPriority {
             .veryHigh
         case .medium:
             .high
-        case .low, .utility:
+        case .utility:
             .normal
-        case .background:
+        case .low:
             .low
+        case .background:
+            .veryLow
         default:
             .normal
         }

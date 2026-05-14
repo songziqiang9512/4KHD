@@ -16,6 +16,7 @@ final class CookieBridge: NSObject {
     static let shared = CookieBridge()
 
     private let webKitStore: WKHTTPCookieStore
+    private let cookieSyncQueue = DispatchQueue(label: "com.songziqiang.4khd.cookie-sync", qos: .utility)
     private var didStart = false
 
     override private init() {
@@ -37,18 +38,26 @@ final class CookieBridge: NSObject {
 
     /// 把 WKWebsiteDataStore 当前所有 cookie 同步到 HTTPCookieStorage.shared。
     func syncFromWebKit() {
+        let cookieSyncQueue = cookieSyncQueue
         webKitStore.getAllCookies { cookies in
-            for cookie in cookies {
-                HTTPCookieStorage.shared.setCookie(cookie)
+            cookieSyncQueue.async {
+                for cookie in cookies {
+                    HTTPCookieStorage.shared.setCookie(cookie)
+                }
             }
         }
     }
 
     /// 把 HTTPCookieStorage.shared 当前所有 cookie 同步到 WKWebsiteDataStore。
     func syncToWebKit() {
-        let cookies = HTTPCookieStorage.shared.cookies ?? []
-        for cookie in cookies {
-            webKitStore.setCookie(cookie)
+        let webKitStore = webKitStore
+        cookieSyncQueue.async {
+            let cookies = HTTPCookieStorage.shared.cookies ?? []
+            DispatchQueue.main.async {
+                for cookie in cookies {
+                    webKitStore.setCookie(cookie)
+                }
+            }
         }
     }
 }

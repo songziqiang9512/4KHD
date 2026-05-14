@@ -7,6 +7,7 @@ struct LocalImageDetailPane: View {
     @Environment(ImmersiveController.self) private var immersive
     @State private var resetToken = UUID()
     @State private var saveMessage = ""
+    @State private var isFilmstripReady = false
 
     var body: some View {
         Group {
@@ -33,6 +34,7 @@ struct LocalImageDetailPane: View {
                 ) {
                     DetailPlaceholder(kind: .loading)
                 } onDisplayed: {
+                    isFilmstripReady = true
                 } onBlankTap: {
                     if immersive.isImmersive { immersive.set(false) }
                 }
@@ -56,8 +58,10 @@ struct LocalImageDetailPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            LocalFilmstrip(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex) { index in
-                localLibrary.selectImage(at: index)
+            if isFilmstripReady {
+                LocalFilmstrip(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex) { index in
+                    localLibrary.selectImage(at: index)
+                }
             }
         }
         .navigationTitle(folder.title)
@@ -69,23 +73,22 @@ struct LocalImageDetailPane: View {
         .onChange(of: image.id) { _, _ in
             resetToken = UUID()
             saveMessage = ""
+            isFilmstripReady = false
         }
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
-        guard event.hasBareKeyModifiers else { return false }
-        switch event.keyCode {
-        case 123:
+        guard let command = DetailKeyCommand(event: event) else { return false }
+        switch command {
+        case .previous:
             localLibrary.stepImage(-1)
             return true
-        case 124, 49:
+        case .next:
             localLibrary.stepImage(1)
             return true
-        case 3:
+        case .toggleImmersive:
             immersive.toggle()
             return true
-        default:
-            return false
         }
     }
 

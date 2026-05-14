@@ -155,6 +155,26 @@ struct KeyDownCatcher: NSViewRepresentable {
     }
 }
 
+enum DetailKeyCommand {
+    case previous
+    case next
+    case toggleImmersive
+
+    init?(event: NSEvent) {
+        guard event.hasBareKeyModifiers else { return nil }
+        switch event.keyCode {
+        case 123:
+            self = .previous
+        case 124, 49:
+            self = .next
+        case 3:
+            self = .toggleImmersive
+        default:
+            return nil
+        }
+    }
+}
+
 extension NSEvent {
     var hasBareKeyModifiers: Bool {
         modifierFlags

@@ -1,12 +1,16 @@
 import Foundation
 
 enum DetailPageHTMLResolver {
+    private static let requestCoalescer = DetailHTMLRequestCoalescer()
+
     static func resolve(pageURL: URL) async throws -> ResolvedImagePage {
         if let cached = DetailPageImageCache.shared.urls(for: pageURL) {
             return cached
         }
 
-        let html = try await fetchHTML(pageURL)
+        let html = try await requestCoalescer.value(for: pageURL) {
+            try await fetchHTML(pageURL)
+        }
         try Task.checkCancellation()
 
         let page = try parse(html: html, pageURL: pageURL)
@@ -160,5 +164,25 @@ enum DetailPageHTMLResolver {
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&#038;", with: "&")
             .removingPercentEncoding ?? value
+    }
+}
+
+private actor DetailHTMLRequestCoalescer {
+    private var tasks: [URL: Task<String, Error>] = [:]
+
+    func value(for url: URL, operation: @escaping @Sendable () async throws -> String) async throws -> String {
+        if let task = tasks[url] {
+            return try await task.value
+        }
+
+        let task = Task {
+            try await operation()
+        }
+        tasks[url] = task
+
+        defer {
+            tasks[url] = nil
+        }
+        return try await task.value
     }
 }

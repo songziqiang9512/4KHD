@@ -17,13 +17,14 @@ final class LibraryStore {
         self.feed = feed
         self.detail = detail
 
-        // Feed 选中变化时，让 detail 重建 slot —— 取当前 selectedItem 真正的对象（item 可能被 refresh 替换了 pageURLs）。
-        feed.onSelectionChanged = { [weak feed, weak detail] in
-            detail?.prepare(for: feed?.selectedItem)
+        // Feed 选中变化时，让 detail 使用 feed 当时发出的 item 快照重建 slot。
+        // 不在这里回读 `feed.selectedItem`，避免列表替换 / 选择修正期间读到回退状态。
+        feed.onSelectionChanged = { [weak detail] item in
+            detail?.prepare(for: item)
         }
 
-        // 启动时 detail 先跟上一次 feed 选中的（init 阶段就有 .latest section 的初始空选择）。
-        detail.prepare(for: feed.selectedItem)
+        // 启动时明确选中当前列表第一项。后续网络刷新即便 selectedItemID 不变，
+        // feed 也会把替换后的 item 快照发给 detail。
         feed.selectFirstItemIfNeeded(force: true)
     }
 
