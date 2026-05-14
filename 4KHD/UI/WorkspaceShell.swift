@@ -148,10 +148,10 @@ struct WorkspaceShell: View {
             } else {
                 NavigationSplitView(columnVisibility: $immersive.columnVisibility) {
                     WorkspaceSidebar(selection: selectionBinding, importRootFolder: importRootFolder)
-                        .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
                 } content: {
                     contentColumn
-                        .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
+                        .navigationSplitViewColumnWidth(min: 280, ideal: 420, max: 760)
                 } detail: {
                     detailColumn
                         .navigationSplitViewColumnWidth(min: 560, ideal: 900)

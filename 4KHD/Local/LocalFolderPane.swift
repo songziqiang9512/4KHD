@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 private enum LocalContentLayout: String {
@@ -6,20 +7,32 @@ private enum LocalContentLayout: String {
     case grid
 }
 
-private enum LocalImageSort: String, CaseIterable, Identifiable {
+private enum LocalImageSortField: String, CaseIterable, Identifiable {
     case name
-    case modifiedNewest
-    case modifiedOldest
-    case sizeLargest
+    case modifiedDate
+    case fileSize
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .name: "文件名"
-        case .modifiedNewest: "最新修改"
-        case .modifiedOldest: "最早修改"
-        case .sizeLargest: "文件大小"
+        case .modifiedDate: "修改时间"
+        case .fileSize: "文件大小"
+        }
+    }
+}
+
+private enum LocalImageSortDirection: String, CaseIterable, Identifiable {
+    case ascending
+    case descending
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ascending: "正序"
+        case .descending: "逆序"
         }
     }
 }
@@ -27,6 +40,8 @@ private enum LocalImageSort: String, CaseIterable, Identifiable {
 private struct LocalImageMetadata: Sendable {
     let fileSize: Int64?
     let modifiedDate: Date?
+    let pixelWidth: Int?
+    let pixelHeight: Int?
 }
 
 /// 三段式中部内容栏 —— 显示当前所选本地目录里的所有图片，
@@ -34,7 +49,8 @@ private struct LocalImageMetadata: Sendable {
 struct LocalImageContentList: View {
     @Environment(LocalLibraryStore.self) private var localLibrary
     @AppStorage("com.songziqiang.4khd.localContentLayout.v1") private var contentLayoutRaw = LocalContentLayout.grid.rawValue
-    @AppStorage("com.songziqiang.4khd.localImageSort.v1") private var imageSortRaw = LocalImageSort.name.rawValue
+    @AppStorage("com.songziqiang.4khd.localImageSortField.v1") private var imageSortFieldRaw = LocalImageSortField.name.rawValue
+    @AppStorage("com.songziqiang.4khd.localImageSortDirection.v1") private var imageSortDirectionRaw = LocalImageSortDirection.ascending.rawValue
     @State private var searchText = ""
     @State private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
 
@@ -97,14 +113,29 @@ struct LocalImageContentList: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    ForEach(LocalImageSort.allCases) { sort in
+                    Text("排序方式")
+                    ForEach(LocalImageSortField.allCases) { field in
                         Button {
-                            imageSortRaw = sort.rawValue
+                            imageSortFieldRaw = field.rawValue
                         } label: {
-                            if imageSort == sort {
-                                Label(sort.title, systemImage: "checkmark")
+                            if imageSortField == field {
+                                Label(field.title, systemImage: "checkmark")
                             } else {
-                                Text(sort.title)
+                                Text(field.title)
+                            }
+                        }
+                    }
+
+                    Divider()
+                    Text("顺序")
+                    ForEach(LocalImageSortDirection.allCases) { direction in
+                        Button {
+                            imageSortDirectionRaw = direction.rawValue
+                        } label: {
+                            if imageSortDirection == direction {
+                                Label(direction.title, systemImage: "checkmark")
+                            } else {
+                                Text(direction.title)
                             }
                         }
                     }
@@ -123,18 +154,6 @@ struct LocalImageContentList: View {
                 .help("刷新本地目录")
                 .disabled(localLibrary.selectedFolder == nil || localLibrary.isScanning)
             }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    if let folder = localLibrary.selectedFolder {
-                        NSWorkspace.shared.activateFileViewerSelecting([folder.url])
-                    }
-                } label: {
-                    Image(systemName: "folder")
-                }
-                .help("在 Finder 中显示")
-                .disabled(localLibrary.selectedFolder == nil)
-            }
         }
     }
 
@@ -146,7 +165,6 @@ struct LocalImageContentList: View {
                 ForEach(filteredImagesWithOriginalIndex, id: \.image.id) { item in
                     LocalImageRow(
                         image: item.image,
-                        index: item.originalIndex + 1,
                         metadata: metadataByImageID[item.image.id]
                     )
                         .tag(item.image.id)
@@ -156,11 +174,10 @@ struct LocalImageContentList: View {
             .listStyle(.inset)
         case .grid:
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 136, maximum: 136), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 12)], spacing: 12) {
                     ForEach(filteredImagesWithOriginalIndex, id: \.image.id) { item in
                         LocalImageGridCard(
                             image: item.image,
-                            index: item.originalIndex + 1,
                             metadata: metadataByImageID[item.image.id],
                             isSelected: localLibrary.selectedImage?.id == item.image.id
                         ) {
@@ -179,8 +196,12 @@ struct LocalImageContentList: View {
         LocalContentLayout(rawValue: contentLayoutRaw) ?? .grid
     }
 
-    private var imageSort: LocalImageSort {
-        LocalImageSort(rawValue: imageSortRaw) ?? .name
+    private var imageSortField: LocalImageSortField {
+        LocalImageSortField(rawValue: imageSortFieldRaw) ?? .name
+    }
+
+    private var imageSortDirection: LocalImageSortDirection {
+        LocalImageSortDirection(rawValue: imageSortDirectionRaw) ?? .ascending
     }
 
     private var filteredImages: [LocalImageItem] {
@@ -215,24 +236,37 @@ struct LocalImageContentList: View {
     }
 
     private func compare(_ lhs: LocalImageItem, _ rhs: LocalImageItem) -> ComparisonResult {
-        switch imageSort {
+        let result: ComparisonResult
+        switch imageSortField {
         case .name:
-            return lhs.title.localizedStandardCompare(rhs.title)
-        case .modifiedNewest:
-            let lhsDate = metadataByImageID[lhs.id]?.modifiedDate ?? .distantPast
-            let rhsDate = metadataByImageID[rhs.id]?.modifiedDate ?? .distantPast
-            if lhsDate != rhsDate { return lhsDate > rhsDate ? .orderedAscending : .orderedDescending }
-            return lhs.title.localizedStandardCompare(rhs.title)
-        case .modifiedOldest:
+            result = lhs.title.localizedStandardCompare(rhs.title)
+        case .modifiedDate:
             let lhsDate = metadataByImageID[lhs.id]?.modifiedDate ?? .distantFuture
             let rhsDate = metadataByImageID[rhs.id]?.modifiedDate ?? .distantFuture
-            if lhsDate != rhsDate { return lhsDate < rhsDate ? .orderedAscending : .orderedDescending }
-            return lhs.title.localizedStandardCompare(rhs.title)
-        case .sizeLargest:
+            if lhsDate != rhsDate {
+                result = lhsDate < rhsDate ? .orderedAscending : .orderedDescending
+            } else {
+                result = lhs.title.localizedStandardCompare(rhs.title)
+            }
+        case .fileSize:
             let lhsSize = metadataByImageID[lhs.id]?.fileSize ?? 0
             let rhsSize = metadataByImageID[rhs.id]?.fileSize ?? 0
-            if lhsSize != rhsSize { return lhsSize > rhsSize ? .orderedAscending : .orderedDescending }
-            return lhs.title.localizedStandardCompare(rhs.title)
+            if lhsSize != rhsSize {
+                result = lhsSize < rhsSize ? .orderedAscending : .orderedDescending
+            } else {
+                result = lhs.title.localizedStandardCompare(rhs.title)
+            }
+        }
+
+        switch imageSortDirection {
+        case .ascending:
+            return result
+        case .descending:
+            switch result {
+            case .orderedAscending: return .orderedDescending
+            case .orderedDescending: return .orderedAscending
+            case .orderedSame: return .orderedSame
+            }
         }
     }
 
@@ -257,9 +291,12 @@ struct LocalImageContentList: View {
             for image in images {
                 guard !Task.isCancelled else { return result }
                 let values = try? image.url.resourceValues(forKeys: keys)
+                let pixelSize = pixelSize(for: image.url)
                 result[image.id] = LocalImageMetadata(
                     fileSize: values?.fileSize.map(Int64.init),
-                    modifiedDate: values?.contentModificationDate
+                    modifiedDate: values?.contentModificationDate,
+                    pixelWidth: pixelSize?.width,
+                    pixelHeight: pixelSize?.height
                 )
             }
             return result
@@ -284,7 +321,6 @@ struct LocalImageContentList: View {
 
 private struct LocalImageRow: View {
     let image: LocalImageItem
-    let index: Int
     let metadata: LocalImageMetadata?
 
     var body: some View {
@@ -299,12 +335,16 @@ private struct LocalImageRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(image.title)
                     .font(.callout.weight(.medium))
-                    .lineLimit(2)
-                Text("#\(index)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                if let metadataText {
-                    Text(metadataText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let resolutionText {
+                    Text(resolutionText)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                if let secondaryMetadataText {
+                    Text(secondaryMetadataText)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
@@ -315,55 +355,70 @@ private struct LocalImageRow: View {
         .padding(.vertical, 2)
     }
 
-    private var metadataText: String? {
-        formattedMetadata(metadata)
+    private var resolutionText: String? {
+        formattedResolution(metadata)
+    }
+
+    private var secondaryMetadataText: String? {
+        formattedSecondaryMetadata(metadata)
     }
 }
 
 private struct LocalImageGridCard: View {
     let image: LocalImageItem
-    let index: Int
     let metadata: LocalImageMetadata?
     let isSelected: Bool
     let onSelect: () -> Void
 
-    private let cardWidth: CGFloat = 136
-    private let thumbnailHeight: CGFloat = 160
-
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 7) {
-                RemoteImageView(url: image.url, contentMode: .fill, priority: .utility, localMaxPixelSize: 220) {
-                    Rectangle()
-                        .fill(.quaternary)
-                        .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
-                }
-                .frame(width: cardWidth - 14, height: thumbnailHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            GeometryReader { proxy in
+                let contentWidth = max(proxy.size.width - 14, 0)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(image.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                        .multilineTextAlignment(.leading)
-                        .frame(height: 34, alignment: .topLeading)
-
-                    Text("#\(index)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    if let metadataText {
-                        Text(metadataText)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                VStack(alignment: .leading, spacing: 7) {
+                    RemoteImageView(url: image.url, contentMode: .fill, priority: .utility, localMaxPixelSize: 220) {
+                        Rectangle()
+                            .fill(.quaternary)
+                            .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
                     }
+                    .frame(width: contentWidth)
+                    .aspectRatio(0.74, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(image.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(width: contentWidth, alignment: .leading)
+                            .clipped()
+
+                        if let resolutionText {
+                            Text(resolutionText)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .frame(width: contentWidth, alignment: .leading)
+                                .clipped()
+                        }
+
+                        if let secondaryMetadataText {
+                            Text(secondaryMetadataText)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(width: contentWidth, alignment: .leading)
+                                .clipped()
+                        }
+                    }
+                    .frame(width: contentWidth, alignment: .leading)
                 }
-                .frame(width: cardWidth - 14, alignment: .leading)
+                .padding(7)
+                .frame(width: proxy.size.width, alignment: .topLeading)
             }
-            .padding(7)
-            .frame(width: cardWidth, height: 252, alignment: .topLeading)
+            .aspectRatio(0.58, contentMode: .fit)
             .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -374,12 +429,24 @@ private struct LocalImageGridCard: View {
         .buttonStyle(.plain)
     }
 
-    private var metadataText: String? {
-        formattedMetadata(metadata)
+    private var resolutionText: String? {
+        formattedResolution(metadata)
+    }
+
+    private var secondaryMetadataText: String? {
+        formattedSecondaryMetadata(metadata)
     }
 }
 
-private func formattedMetadata(_ metadata: LocalImageMetadata?) -> String? {
+private func formattedResolution(_ metadata: LocalImageMetadata?) -> String? {
+    guard let metadata else { return nil }
+    guard let pixelWidth = metadata.pixelWidth, let pixelHeight = metadata.pixelHeight else {
+        return nil
+    }
+    return "\(pixelWidth)×\(pixelHeight)"
+}
+
+private func formattedSecondaryMetadata(_ metadata: LocalImageMetadata?) -> String? {
     guard let metadata else { return nil }
     var parts: [String] = []
     if let fileSize = metadata.fileSize {
@@ -389,4 +456,16 @@ private func formattedMetadata(_ metadata: LocalImageMetadata?) -> String? {
         parts.append(modifiedDate.formatted(date: .numeric, time: .omitted))
     }
     return parts.isEmpty ? nil : parts.joined(separator: " · ")
+}
+
+nonisolated private func pixelSize(for url: URL) -> (width: Int, height: Int)? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+        return nil
+    }
+
+    let width = properties[kCGImagePropertyPixelWidth] as? Int
+    let height = properties[kCGImagePropertyPixelHeight] as? Int
+    guard let width, let height else { return nil }
+    return (width, height)
 }
