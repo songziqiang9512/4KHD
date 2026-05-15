@@ -38,7 +38,38 @@ jobs:
           echo "tag=build-$version" >> "$GITHUB_OUTPUT"
           script/update_version.sh
 
+      - name: Import Developer ID certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/developer_id_certificate.p12"
+          keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$P12_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
+
       - name: Build app
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           source script/version.env
@@ -47,21 +78,78 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
             build
 
-      - name: Package app
-        id: package
+      - name: Sign and verify app
+        id: sign
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
           set -euo pipefail
           source script/version.env
           app_path="build/DerivedData/Build/Products/Release/$APP_NAME.app"
-          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}.zip"
           if [[ ! -d "$app_path" ]]; then
             echo "App bundle not found: $app_path" >&2
             exit 1
           fi
+
+          while IFS= read -r nested; do
+            codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$nested"
+          done < <(
+            find "$app_path/Contents" \
+              \( -name '*.framework' -o -name '*.dylib' -o -name '*.xpc' -o -name '*.appex' -o -name '*.app' \) \
+              -print 2>/dev/null
+          )
+
+          if [[ -d "$app_path/Contents/MacOS" ]]; then
+            while IFS= read -r executable; do
+              codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$executable"
+            done < <(find "$app_path/Contents/MacOS" -type f -perm -111 -print)
+          fi
+
+          codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$app_path"
+          codesign --verify --strict --deep --verbose=4 "$app_path"
+          echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
+
+      - name: Package for notarization
+        id: package
+        run: |
+          set -euo pipefail
+          source script/version.env
+          app_path="${{ steps.sign.outputs.app_path }}"
+          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}-notarization.zip"
           mkdir -p build
+          ditto -c -k --keepParent "$app_path" "$zip_path"
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "${{ steps.package.outputs.zip_path }}" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Staple and package final app
+        id: final_package
+        run: |
+          set -euo pipefail
+          source script/version.env
+          app_path="${{ steps.sign.outputs.app_path }}"
+          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}.zip"
+          xcrun stapler staple "$app_path"
+          xcrun stapler validate "$app_path"
+          spctl --assess --type execute --verbose=4 "$app_path"
           ditto -c -k --keepParent "$app_path" "$zip_path"
           echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
 
@@ -69,7 +157,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 4KHD-${{ steps.version.outputs.version }}
-          path: ${{ steps.package.outputs.zip_path }}
+          path: ${{ steps.final_package.outputs.zip_path }}
           if-no-files-found: error
 
       - name: Generate release notes
@@ -100,7 +188,7 @@ jobs:
           set -euo pipefail
           tag="${{ steps.version.outputs.tag }}"
           version="${{ steps.version.outputs.version }}"
-          zip_path="${{ steps.package.outputs.zip_path }}"
+          zip_path="${{ steps.final_package.outputs.zip_path }}"
           notes_file="${{ steps.notes.outputs.notes_file }}"
 
           git tag -f "$tag" "$GITHUB_SHA"
