@@ -107,6 +107,10 @@ private struct LocalImageGridCard: View {
                 .onEnded { _ in isPressing = false }
         )
         .contextMenu {
+            Button("设置为桌面壁纸") {
+                LocalDesktopWallpaperSetter.setDesktopWallpaper(image.url)
+            }
+            Divider()
             Button("快速预览") {
                 onQuickLook()
             }

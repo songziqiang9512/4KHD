@@ -296,6 +296,10 @@ struct LocalImageContentList: View {
 
     @ViewBuilder
     private func imageContextMenu(for image: LocalImageItem) -> some View {
+        Button("设置为桌面壁纸") {
+            LocalDesktopWallpaperSetter.setDesktopWallpaper(image.url)
+        }
+        Divider()
         Button("在 Finder 中显示") {
             NSWorkspace.shared.activateFileViewerSelecting([image.url])
         }
