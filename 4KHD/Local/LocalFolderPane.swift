@@ -199,7 +199,7 @@ struct LocalImageContentList: View {
                 LocalQuickLookController.shared.open(url: image.url)
             } onShowInfo: { image in
                 requestGridFocus()
-                infoImage = image
+                toggleInfo(for: image)
             }
             .background(.background)
             .overlay {
@@ -303,7 +303,7 @@ struct LocalImageContentList: View {
             LocalQuickLookController.shared.open(url: image.url)
         }
         Button("详细信息") {
-            infoImage = image
+            toggleInfo(for: image)
         }
         Button("复制路径") {
             NSPasteboard.general.clearContents()
@@ -340,6 +340,14 @@ struct LocalImageContentList: View {
 
     private func requestGridFocus() {
         gridHasKeyboardControl = true
+    }
+
+    private func toggleInfo(for image: LocalImageItem) {
+        if infoImage?.id == image.id {
+            infoImage = nil
+        } else {
+            infoImage = image
+        }
     }
 
     private func loadMetadata(for images: [LocalImageItem]) async {

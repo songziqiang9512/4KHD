@@ -168,7 +168,7 @@ struct LocalImageDetailPane: View {
             .help("快速预览")
 
             Button {
-                infoImage = image
+                toggleInfo(for: image)
             } label: {
                 Label("详细信息", systemImage: "info.circle")
             }
@@ -220,6 +220,14 @@ struct LocalImageDetailPane: View {
     private var inspectedMetadata: LocalImageMetadata? {
         guard let infoImage else { return nil }
         return metadataByImageID[infoImage.id]
+    }
+
+    private func toggleInfo(for image: LocalImageItem) {
+        if infoImage?.id == image.id {
+            infoImage = nil
+        } else {
+            infoImage = image
+        }
     }
 
     private func saveImage(_ image: LocalImageItem) {
