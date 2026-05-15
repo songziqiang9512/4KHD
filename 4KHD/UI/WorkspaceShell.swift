@@ -508,11 +508,6 @@ struct WorkspaceSidebar: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("4KHD")
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                NotificationCenter.default.post(name: .localImageGridKeyboardControlDidEnd, object: nil)
-            }
-        )
     }
 
     private func systemImage(for section: GallerySection) -> String {
@@ -524,10 +519,6 @@ struct WorkspaceSidebar: View {
         case .favorites: "bookmark"
         }
     }
-}
-
-extension Notification.Name {
-    static let localImageGridKeyboardControlDidEnd = Notification.Name("localImageGridKeyboardControlDidEnd")
 }
 
 /// 侧栏中的递归本地目录项 —— 用系统 `DisclosureGroup` 表达层级。

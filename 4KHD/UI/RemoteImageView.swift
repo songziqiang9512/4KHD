@@ -242,30 +242,37 @@ actor LocalImageCache {
     static let shared = LocalImageCache()
 
     private let cache = NSCache<NSString, NSImage>()
+    private var inFlight: [String: Task<NSImage?, Never>] = [:]
     private var failedSignatures = Set<String>()
 
     private init() {
-        cache.countLimit = 320
-        cache.totalCostLimit = 384 * 1024 * 1024
+        cache.countLimit = 700
+        cache.totalCostLimit = 640 * 1024 * 1024
     }
 
     func image(for url: URL, maxPixelSize: CGFloat?) async -> NSImage? {
-        let key = "\(url.path)#\(Int(maxPixelSize ?? 0))" as NSString
-        if let cached = cache.object(forKey: key) {
+        let key = "\(url.path)#\(Int(maxPixelSize ?? 0))"
+        if let cached = cache.object(forKey: key as NSString) {
             return cached
         }
         let signature = failureSignature(for: url)
         if let signature, failedSignatures.contains(signature) {
             return nil
         }
+        if let task = inFlight[key] {
+            return await task.value
+        }
 
-        let loaded = await Task.detached(priority: .utility) {
+        let task = Task.detached(priority: .utility) {
             loadImage(at: url, maxPixelSize: maxPixelSize)
-        }.value
+        }
+        inFlight[key] = task
+        let loaded = await task.value
+        inFlight[key] = nil
 
         if let loaded {
             if let signature { failedSignatures.remove(signature) }
-            cache.setObject(loaded, forKey: key, cost: loaded.cacheCost)
+            cache.setObject(loaded, forKey: key as NSString, cost: loaded.cacheCost)
         } else if let signature {
             failedSignatures.insert(signature)
         }

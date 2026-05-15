@@ -46,8 +46,6 @@ struct LocalImageContentList: View {
     @State private var searchText = ""
     @State private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
     @State private var infoImage: LocalImageItem?
-    @State private var gridScrollRequestID = 0
-    @State private var gridHasKeyboardControl = false
 
     private var selectionBinding: Binding<LocalImageItem.ID?> {
         Binding(
@@ -104,9 +102,6 @@ struct LocalImageContentList: View {
                 metadata: inspectedMetadata,
                 onDismiss: { infoImage = nil }
             )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .localImageGridKeyboardControlDidEnd)) { _ in
-            gridHasKeyboardControl = false
         }
         .onChange(of: localLibrary.selectedImage?.id) { _, _ in
             guard infoImage != nil else { return }
@@ -188,26 +183,16 @@ struct LocalImageContentList: View {
             LocalImageWaterfallGrid(
                 items: filteredImagesWithOriginalIndex,
                 metadataByImageID: metadataByImageID,
-                selectedImageID: localLibrary.selectedImage?.id,
-                scrollRequestID: gridScrollRequestID,
-                onRequestFocus: requestGridFocus
+                selectedImageID: localLibrary.selectedImage?.id
             ) { index in
-                requestGridFocus()
                 localLibrary.selectImage(at: index)
             } onQuickLook: { image in
-                requestGridFocus()
                 LocalQuickLookController.shared.open(url: image.url)
             } onShowInfo: { image in
-                requestGridFocus()
                 toggleInfo(for: image)
             }
             .background(.background)
-            .overlay {
-                LocalImageGridKeyboardMonitor(isActive: gridHasKeyboardControl) { event in
-                    handleKeyDown(event)
-                }
-                .frame(width: 0, height: 0)
-            }
+            .ignoresSafeArea(.container, edges: .top)
         }
     }
 
@@ -316,34 +301,6 @@ struct LocalImageContentList: View {
         Button("打开文件") {
             NSWorkspace.shared.open(image.url)
         }
-    }
-
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
-        guard event.hasBareKeyModifiers else { return false }
-        switch event.keyCode {
-        case 123, 126:
-            localLibrary.stepImage(-1)
-            gridScrollRequestID += 1
-            LocalQuickLookController.shared.syncVisible(url: localLibrary.selectedImage?.url)
-            return true
-        case 124, 125:
-            localLibrary.stepImage(1)
-            gridScrollRequestID += 1
-            LocalQuickLookController.shared.syncVisible(url: localLibrary.selectedImage?.url)
-            return true
-        case 49:
-            if let image = localLibrary.selectedImage {
-                LocalQuickLookController.shared.open(url: image.url)
-                return true
-            }
-            return false
-        default:
-            return false
-        }
-    }
-
-    private func requestGridFocus() {
-        gridHasKeyboardControl = true
     }
 
     private func toggleInfo(for image: LocalImageItem) {
