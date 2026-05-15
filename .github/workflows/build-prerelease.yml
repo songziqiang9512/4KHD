@@ -1,0 +1,121 @@
+name: Build Prerelease
+
+on:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: build-prerelease-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show Xcode environment
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="$(script/resolve_version.sh)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=build-$version" >> "$GITHUB_OUTPUT"
+          script/update_version.sh
+
+      - name: Build app
+        run: |
+          set -euo pipefail
+          source script/version.env
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package app
+        id: package
+        run: |
+          set -euo pipefail
+          source script/version.env
+          app_path="build/DerivedData/Build/Products/Release/$APP_NAME.app"
+          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}.zip"
+          if [[ ! -d "$app_path" ]]; then
+            echo "App bundle not found: $app_path" >&2
+            exit 1
+          fi
+          mkdir -p build
+          ditto -c -k --keepParent "$app_path" "$zip_path"
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 4KHD-${{ steps.version.outputs.version }}
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          current_tag="${{ steps.version.outputs.tag }}"
+          previous_tag="$(git tag --list 'build-*' --sort=-creatordate | grep -v "^${current_tag}$" | head -n 1 || true)"
+          notes_file="build/release-notes.md"
+          mkdir -p build
+          {
+            echo "Prerelease ${{ steps.version.outputs.version }}"
+            echo
+            if [[ -n "$previous_tag" ]]; then
+              echo "Changes since $previous_tag:"
+              git log --pretty=format:'- %s (%h)' "$previous_tag"..HEAD
+            else
+              echo "Changes:"
+              git log --pretty=format:'- %s (%h)' HEAD
+            fi
+          } > "$notes_file"
+          echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          version="${{ steps.version.outputs.version }}"
+          zip_path="${{ steps.package.outputs.zip_path }}"
+          notes_file="${{ steps.notes.outputs.notes_file }}"
+
+          git tag -f "$tag" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$tag"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --title "$version" \
+              --notes-file "$notes_file" \
+              --prerelease
+            gh release upload "$tag" "$zip_path" --clobber
+          else
+            gh release create "$tag" "$zip_path" \
+              --title "$version" \
+              --notes-file "$notes_file" \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi

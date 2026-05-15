@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+version="$(script/update_version.sh --next)"
+git add 4KHD.xcodeproj/project.pbxproj script/version.env
+
+echo "Updated app version to $version"
