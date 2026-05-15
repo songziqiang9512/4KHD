@@ -18,12 +18,16 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Ensure scripts are executable
+        run: chmod +x script/*.sh
 
       - name: Show Xcode environment
         run: |
@@ -33,9 +37,12 @@ jobs:
       - name: Resolve version
         id: version
         run: |
+          source script/version.env
           version="$(script/resolve_version.sh)"
+          short_sha="${GITHUB_SHA::7}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=build-$version" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$APP_NAME-$version-$short_sha.dmg" >> "$GITHUB_OUTPUT"
           script/update_version.sh
 
       - name: Validate signing secrets
@@ -90,13 +97,15 @@ jobs:
             -t cert \
             -f pkcs12 \
             -k "$keychain_path"
-          security list-keychain -d user -s "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
             -s \
             -k "$KEYCHAIN_PASSWORD" \
             "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
           security find-identity -v -p codesigning "$keychain_path"
+          echo "SIGNING_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
 
       - name: Build app
         env:
@@ -114,10 +123,10 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH --timestamp --options runtime" \
             build
 
-      - name: Sign and verify app
+      - name: Sign app bundle
         id: sign
         env:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
@@ -130,66 +139,71 @@ jobs:
             exit 1
           fi
 
-          while IFS= read -r nested; do
-            codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$nested"
-          done < <(
-            find "$app_path/Contents" \
-              \( -name '*.framework' -o -name '*.dylib' -o -name '*.xpc' -o -name '*.appex' -o -name '*.app' \) \
-              -print 2>/dev/null
-          )
-
-          if [[ -d "$app_path/Contents/MacOS" ]]; then
-            while IFS= read -r executable; do
-              codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$executable"
-            done < <(find "$app_path/Contents/MacOS" -type f -perm -111 -print)
-          fi
-
-          codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$app_path"
-          codesign --verify --strict --deep --verbose=4 "$app_path"
+          script/sign_release_app.sh "$app_path" "$DEVELOPER_ID_APPLICATION" "$SIGNING_KEYCHAIN_PATH"
           echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
 
-      - name: Package for notarization
-        id: package
-        run: |
-          set -euo pipefail
-          source script/version.env
-          app_path="${{ steps.sign.outputs.app_path }}"
-          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}-notarization.zip"
-          mkdir -p build
-          ditto -c -k --keepParent "$app_path" "$zip_path"
-          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
-
-      - name: Notarize app
+      - name: Notarize app bundle
+        id: notarize_app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          xcrun notarytool submit "${{ steps.package.outputs.zip_path }}" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+          source script/version.env
+          app_path="${{ steps.sign.outputs.app_path }}"
+          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}-app-notarization.zip"
+          mkdir -p build
+          ditto -c -k --keepParent "$app_path" "$zip_path"
+          script/notarize_with_log.sh "$zip_path" build/notary-app-submit.json build/notary-app-log.json
 
-      - name: Staple and package final app
+      - name: Staple notarized app bundle
+        run: |
+          set -euo pipefail
+          app_path="${{ steps.sign.outputs.app_path }}"
+          xcrun stapler staple "$app_path"
+          xcrun stapler validate "$app_path"
+          spctl --assess --type execute --verbose=4 "$app_path"
+
+      - name: Create signed DMG
         id: final_package
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
           set -euo pipefail
           source script/version.env
           app_path="${{ steps.sign.outputs.app_path }}"
-          zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}.zip"
-          xcrun stapler staple "$app_path"
-          xcrun stapler validate "$app_path"
-          spctl --assess --type execute --verbose=4 "$app_path"
-          ditto -c -k --keepParent "$app_path" "$zip_path"
-          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          dmg_path="build/${{ steps.version.outputs.artifact_name }}"
+          script/create_dmg.sh "$app_path" "$dmg_path" "$APP_NAME"
+          codesign --force --timestamp --sign "$DEVELOPER_ID_APPLICATION" --keychain "$SIGNING_KEYCHAIN_PATH" "$dmg_path"
+          codesign --verify --verbose=4 "$dmg_path"
+          echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize and staple DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          dmg_path="${{ steps.final_package.outputs.dmg_path }}"
+          script/notarize_with_log.sh "$dmg_path" build/notary-dmg-submit.json build/notary-dmg-log.json
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+          spctl -a -vvv --type open --context context:primary-signature "$dmg_path"
+          source script/version.env
+          EXPECT_SIGNED_RELEASE=1 EXPECT_NOTARIZED_DMG=1 script/verify_packaged_dmg.sh "$dmg_path" "$APP_NAME"
+          shasum -a 256 "$dmg_path" | awk '{print $1 "  " $2}' > "${dmg_path}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: 4KHD-${{ steps.version.outputs.version }}
-          path: ${{ steps.final_package.outputs.zip_path }}
+          path: |
+            ${{ steps.final_package.outputs.dmg_path }}
+            ${{ steps.final_package.outputs.dmg_path }}.sha256
+            build/notary-app-submit.json
+            build/notary-dmg-submit.json
           if-no-files-found: error
 
       - name: Generate release notes
@@ -220,22 +234,26 @@ jobs:
           set -euo pipefail
           tag="${{ steps.version.outputs.tag }}"
           version="${{ steps.version.outputs.version }}"
-          zip_path="${{ steps.final_package.outputs.zip_path }}"
+          dmg_path="${{ steps.final_package.outputs.dmg_path }}"
           notes_file="${{ steps.notes.outputs.notes_file }}"
-
-          git tag -f "$tag" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$tag"
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" \
               --title "$version" \
               --notes-file "$notes_file" \
               --prerelease
-            gh release upload "$tag" "$zip_path" --clobber
+            gh release upload "$tag" "$dmg_path" "${dmg_path}.sha256" --clobber
           else
-            gh release create "$tag" "$zip_path" \
+            gh release create "$tag" "$dmg_path" "${dmg_path}.sha256" \
               --title "$version" \
               --notes-file "$notes_file" \
               --prerelease \
               --target "$GITHUB_SHA"
+          fi
+
+      - name: Clean up signing credentials
+        if: always()
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN_PATH:-}" && -f "${SIGNING_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN_PATH" >/dev/null 2>&1 || true
           fi
