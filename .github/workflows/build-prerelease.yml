@@ -38,6 +38,38 @@ jobs:
           echo "tag=build-$version" >> "$GITHUB_OUTPUT"
           script/update_version.sh
 
+      - name: Validate signing secrets
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            BUILD_CERTIFICATE_BASE64 \
+            P12_PASSWORD \
+            KEYCHAIN_PASSWORD \
+            DEVELOPER_ID_APPLICATION \
+            APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD \
+            APPLE_TEAM_ID
+          do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'Missing required GitHub Secrets:\n' >&2
+            printf '  - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
       - name: Import Developer ID certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
