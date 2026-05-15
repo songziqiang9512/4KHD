@@ -1,5 +1,4 @@
 import AppKit
-import ImageIO
 import SwiftUI
 
 private enum LocalContentLayout: String {
@@ -37,13 +36,6 @@ private enum LocalImageSortDirection: String, CaseIterable, Identifiable {
     }
 }
 
-private struct LocalImageMetadata: Sendable {
-    let fileSize: Int64?
-    let modifiedDate: Date?
-    let pixelWidth: Int?
-    let pixelHeight: Int?
-}
-
 /// 三段式中部内容栏 —— 显示当前所选本地目录里的所有图片，
 /// selection 由 `LocalLibraryStore.selectedImageIndex` 桥接。
 struct LocalImageContentList: View {
@@ -53,6 +45,9 @@ struct LocalImageContentList: View {
     @AppStorage("com.songziqiang.4khd.localImageSortDirection.v1") private var imageSortDirectionRaw = LocalImageSortDirection.ascending.rawValue
     @State private var searchText = ""
     @State private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
+    @State private var infoImage: LocalImageItem?
+    @State private var gridScrollRequestID = 0
+    @State private var gridHasKeyboardControl = false
 
     private var selectionBinding: Binding<LocalImageItem.ID?> {
         Binding(
@@ -99,6 +94,23 @@ struct LocalImageContentList: View {
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索本地图片")
         .task(id: localLibrary.selectedFolder?.id) {
             await loadMetadata(for: localLibrary.selectedImages)
+        }
+        .task(id: localLibrary.selectedFolder?.id) {
+            await monitorFileAvailability()
+        }
+        .overlay(alignment: .topTrailing) {
+            LocalImageInspectorOverlay(
+                image: infoImage,
+                metadata: inspectedMetadata,
+                onDismiss: { infoImage = nil }
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .localImageGridKeyboardControlDidEnd)) { _ in
+            gridHasKeyboardControl = false
+        }
+        .onChange(of: localLibrary.selectedImage?.id) { _, _ in
+            guard infoImage != nil else { return }
+            infoImage = localLibrary.selectedImage
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -176,11 +188,26 @@ struct LocalImageContentList: View {
             LocalImageWaterfallGrid(
                 items: filteredImagesWithOriginalIndex,
                 metadataByImageID: metadataByImageID,
-                selectedImageID: localLibrary.selectedImage?.id
+                selectedImageID: localLibrary.selectedImage?.id,
+                scrollRequestID: gridScrollRequestID,
+                onRequestFocus: requestGridFocus
             ) { index in
+                requestGridFocus()
                 localLibrary.selectImage(at: index)
+            } onQuickLook: { image in
+                requestGridFocus()
+                LocalQuickLookController.shared.open(url: image.url)
+            } onShowInfo: { image in
+                requestGridFocus()
+                infoImage = image
             }
             .background(.background)
+            .overlay {
+                LocalImageGridKeyboardMonitor(isActive: gridHasKeyboardControl) { event in
+                    handleKeyDown(event)
+                }
+                .frame(width: 0, height: 0)
+            }
         }
     }
 
@@ -194,6 +221,11 @@ struct LocalImageContentList: View {
 
     private var imageSortDirection: LocalImageSortDirection {
         LocalImageSortDirection(rawValue: imageSortDirectionRaw) ?? .ascending
+    }
+
+    private var inspectedMetadata: LocalImageMetadata? {
+        guard let infoImage else { return nil }
+        return metadataByImageID[infoImage.id]
     }
 
     private var filteredImages: [LocalImageItem] {
@@ -267,6 +299,12 @@ struct LocalImageContentList: View {
         Button("在 Finder 中显示") {
             NSWorkspace.shared.activateFileViewerSelecting([image.url])
         }
+        Button("快速预览") {
+            LocalQuickLookController.shared.open(url: image.url)
+        }
+        Button("详细信息") {
+            infoImage = image
+        }
         Button("复制路径") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(image.url.path, forType: .string)
@@ -274,6 +312,34 @@ struct LocalImageContentList: View {
         Button("打开文件") {
             NSWorkspace.shared.open(image.url)
         }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard event.hasBareKeyModifiers else { return false }
+        switch event.keyCode {
+        case 123, 126:
+            localLibrary.stepImage(-1)
+            gridScrollRequestID += 1
+            LocalQuickLookController.shared.syncVisible(url: localLibrary.selectedImage?.url)
+            return true
+        case 124, 125:
+            localLibrary.stepImage(1)
+            gridScrollRequestID += 1
+            LocalQuickLookController.shared.syncVisible(url: localLibrary.selectedImage?.url)
+            return true
+        case 49:
+            if let image = localLibrary.selectedImage {
+                LocalQuickLookController.shared.open(url: image.url)
+                return true
+            }
+            return false
+        default:
+            return false
+        }
+    }
+
+    private func requestGridFocus() {
+        gridHasKeyboardControl = true
     }
 
     private func loadMetadata(for images: [LocalImageItem]) async {
@@ -288,7 +354,8 @@ struct LocalImageContentList: View {
                     fileSize: values?.fileSize.map(Int64.init),
                     modifiedDate: values?.contentModificationDate,
                     pixelWidth: pixelSize?.width,
-                    pixelHeight: pixelSize?.height
+                    pixelHeight: pixelSize?.height,
+                    fileExists: FileManager.default.fileExists(atPath: image.url.path)
                 )
             }
             return result
@@ -296,6 +363,31 @@ struct LocalImageContentList: View {
 
         guard !Task.isCancelled else { return }
         metadataByImageID = metadata
+    }
+
+    private func monitorFileAvailability() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            let images = localLibrary.selectedImages
+            let availability = await Task.detached(priority: .utility) {
+                Dictionary(uniqueKeysWithValues: images.map { image in
+                    (image.id, FileManager.default.fileExists(atPath: image.url.path))
+                })
+            }.value
+
+            guard !Task.isCancelled else { return }
+            for (id, fileExists) in availability {
+                guard let metadata = metadataByImageID[id], metadata.fileExists != fileExists else { continue }
+                metadataByImageID[id] = LocalImageMetadata(
+                    fileSize: metadata.fileSize,
+                    modifiedDate: metadata.modifiedDate,
+                    pixelWidth: metadata.pixelWidth,
+                    pixelHeight: metadata.pixelHeight,
+                    fileExists: fileExists
+                )
+            }
+        }
     }
 
     private func importRootFolder() {
@@ -309,254 +401,4 @@ struct LocalImageContentList: View {
         guard panel.runModal() == .OK, let folderURL = panel.url else { return }
         localLibrary.importRootFolder(folderURL)
     }
-}
-
-private struct LocalImageRow: View {
-    let image: LocalImageItem
-    let metadata: LocalImageMetadata?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            RemoteImageView(url: image.url, contentMode: .fill, priority: .utility, localMaxPixelSize: 160) {
-                Rectangle().fill(.quaternary)
-                    .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
-            }
-            .frame(width: 56, height: 76)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(image.title)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let resolutionText {
-                    Text(resolutionText)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                if let secondaryMetadataText {
-                    Text(secondaryMetadataText)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var resolutionText: String? {
-        formattedResolution(metadata)
-    }
-
-    private var secondaryMetadataText: String? {
-        formattedSecondaryMetadata(metadata)
-    }
-}
-
-private struct LocalImageGridCard: View {
-    let image: LocalImageItem
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    @State private var isHovering = false
-    @State private var isPressing = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            RemoteImageView(url: image.url, contentMode: .fill, priority: .utility, localMaxPixelSize: 420) {
-                Rectangle()
-                    .fill(.quaternary)
-                    .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(selectionOverlay)
-            .contentShape(RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-        .scaleEffect(cardScale)
-        .animation(.timingCurve(0.22, 0.86, 0.26, 1.0, duration: isHovering ? 0.30 : 0.34), value: isHovering)
-        .animation(.timingCurve(0.22, 0.86, 0.26, 1.0, duration: isPressing ? 0.08 : 0.12), value: isPressing)
-        .onHover { hovering in
-            isHovering = hovering
-            if !hovering { isPressing = false }
-        }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in isPressing = true }
-                .onEnded { _ in isPressing = false }
-        )
-        .contextMenu { localImageContextMenu(for: image) }
-        .zIndex(isHovering || isSelected ? 1 : 0)
-    }
-
-    private var cardScale: CGFloat {
-        if isPressing { return 0.96 }
-        return isHovering ? 1.05 : 1
-    }
-
-    @ViewBuilder
-    private var selectionOverlay: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(
-                isSelected ? Color.accentColor : hoverStrokeColor,
-                lineWidth: isSelected ? 2 : 1
-            )
-    }
-
-    private var hoverStrokeColor: Color {
-        isHovering ? .primary.opacity(0.65) : .primary.opacity(0.16)
-    }
-}
-
-private struct LocalImageWaterfallGrid: View {
-    let items: [(originalIndex: Int, image: LocalImageItem)]
-    let metadataByImageID: [LocalImageItem.ID: LocalImageMetadata]
-    let selectedImageID: LocalImageItem.ID?
-    let onSelect: (Int) -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            let layout = LocalWaterfallLayout.compute(
-                items: items,
-                metadataByImageID: metadataByImageID,
-                availableWidth: proxy.size.width
-            )
-
-            ScrollView {
-                ZStack(alignment: .topLeading) {
-                    ForEach(layout.items) { positioned in
-                        let item = items[positioned.index]
-                        LocalImageGridCard(
-                            image: item.image,
-                            isSelected: selectedImageID == item.image.id
-                        ) {
-                            onSelect(item.originalIndex)
-                        }
-                        .frame(width: positioned.frame.width, height: positioned.frame.height)
-                        .position(x: positioned.frame.midX, y: positioned.frame.midY)
-                    }
-                }
-                .frame(width: proxy.size.width, height: layout.contentHeight, alignment: .topLeading)
-            }
-        }
-    }
-}
-
-private struct LocalWaterfallPosition: Identifiable {
-    let id: LocalImageItem.ID
-    let index: Int
-    let frame: CGRect
-}
-
-private struct LocalWaterfallLayoutResult {
-    let items: [LocalWaterfallPosition]
-    let contentHeight: CGFloat
-}
-
-private enum LocalWaterfallLayout {
-    static func compute(
-        items: [(originalIndex: Int, image: LocalImageItem)],
-        metadataByImageID: [LocalImageItem.ID: LocalImageMetadata],
-        availableWidth: CGFloat
-    ) -> LocalWaterfallLayoutResult {
-        let inset: CGFloat = 12
-        let baseSpacing: CGFloat = 10
-        let horizontalSpacing: CGFloat = 8
-        let contentWidth = max(0, availableWidth - inset * 2)
-        let columns = columnCount(for: contentWidth)
-        let estimatedColumnWidth = max(60, (contentWidth - horizontalSpacing * CGFloat(columns - 1)) / CGFloat(columns))
-        let hoverScale: CGFloat = 1.05
-        let hoverSpacing = estimatedColumnWidth * (hoverScale - 1)
-        let columnSpacing = max(horizontalSpacing, hoverSpacing)
-        let rowSpacing = max(baseSpacing, hoverSpacing)
-        let columnWidth = max(60, (contentWidth - columnSpacing * CGFloat(columns - 1)) / CGFloat(columns))
-        var columnHeights = [CGFloat](repeating: inset, count: columns)
-        var positions: [LocalWaterfallPosition] = []
-
-        for index in items.indices {
-            let image = items[index].image
-            let column = columnHeights.indices.min { columnHeights[$0] < columnHeights[$1] } ?? 0
-            let x = inset + CGFloat(column) * (columnWidth + columnSpacing)
-            let y = columnHeights[column]
-            let ratio = aspectRatio(for: metadataByImageID[image.id])
-            let height = columnWidth / ratio
-            let frame = CGRect(x: x, y: y, width: columnWidth, height: height)
-            positions.append(LocalWaterfallPosition(id: image.id, index: index, frame: frame))
-            columnHeights[column] += height + rowSpacing
-        }
-
-        let contentHeight = max((columnHeights.max() ?? inset) + inset - rowSpacing, inset * 2)
-        return LocalWaterfallLayoutResult(items: positions, contentHeight: contentHeight)
-    }
-
-    private static func columnCount(for width: CGFloat) -> Int {
-        if width >= 1_200 { return 6 }
-        if width >= 900 { return 5 }
-        if width >= 600 { return 4 }
-        if width >= 360 { return 3 }
-        if width >= 180 { return 2 }
-        return 1
-    }
-
-    private static func aspectRatio(for metadata: LocalImageMetadata?) -> CGFloat {
-        guard let width = metadata?.pixelWidth,
-              let height = metadata?.pixelHeight,
-              width > 0,
-              height > 0 else {
-            return 16.0 / 9.0
-        }
-
-        let ratio = CGFloat(width) / CGFloat(height)
-        return max(0.25, min(3.0, ratio))
-    }
-}
-
-@ViewBuilder
-private func localImageContextMenu(for image: LocalImageItem) -> some View {
-    Button("在 Finder 中显示") {
-        NSWorkspace.shared.activateFileViewerSelecting([image.url])
-    }
-    Button("复制路径") {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(image.url.path, forType: .string)
-    }
-    Button("打开文件") {
-        NSWorkspace.shared.open(image.url)
-    }
-}
-
-private func formattedResolution(_ metadata: LocalImageMetadata?) -> String? {
-    guard let metadata else { return nil }
-    guard let pixelWidth = metadata.pixelWidth, let pixelHeight = metadata.pixelHeight else {
-        return nil
-    }
-    return "\(pixelWidth)×\(pixelHeight)"
-}
-
-private func formattedSecondaryMetadata(_ metadata: LocalImageMetadata?) -> String? {
-    guard let metadata else { return nil }
-    var parts: [String] = []
-    if let fileSize = metadata.fileSize {
-        parts.append(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))
-    }
-    if let modifiedDate = metadata.modifiedDate {
-        parts.append(modifiedDate.formatted(date: .numeric, time: .omitted))
-    }
-    return parts.isEmpty ? nil : parts.joined(separator: " · ")
-}
-
-nonisolated private func pixelSize(for url: URL) -> (width: Int, height: Int)? {
-    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
-        return nil
-    }
-
-    let width = properties[kCGImagePropertyPixelWidth] as? Int
-    let height = properties[kCGImagePropertyPixelHeight] as? Int
-    guard let width, let height else { return nil }
-    return (width, height)
 }

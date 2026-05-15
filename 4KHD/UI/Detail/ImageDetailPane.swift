@@ -154,6 +154,9 @@ struct ImageDetailPane: View {
         case .next:
             library.stepImage(1)
             return true
+        case .quickLook:
+            library.stepImage(1)
+            return true
         case .toggleImmersive:
             immersive.toggle()
             return true

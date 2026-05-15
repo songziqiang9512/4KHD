@@ -242,6 +242,7 @@ actor LocalImageCache {
     static let shared = LocalImageCache()
 
     private let cache = NSCache<NSString, NSImage>()
+    private var failedSignatures = Set<String>()
 
     private init() {
         cache.countLimit = 320
@@ -253,15 +254,29 @@ actor LocalImageCache {
         if let cached = cache.object(forKey: key) {
             return cached
         }
+        let signature = failureSignature(for: url)
+        if let signature, failedSignatures.contains(signature) {
+            return nil
+        }
 
         let loaded = await Task.detached(priority: .utility) {
             loadImage(at: url, maxPixelSize: maxPixelSize)
         }.value
 
         if let loaded {
+            if let signature { failedSignatures.remove(signature) }
             cache.setObject(loaded, forKey: key, cost: loaded.cacheCost)
+        } else if let signature {
+            failedSignatures.insert(signature)
         }
         return loaded
+    }
+
+    private nonisolated func failureSignature(for url: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        let size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+        let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(url.path)|\(size)|\(Int64(modifiedAt))"
     }
 }
 

@@ -9,6 +9,8 @@ struct LocalImageDetailPane: View {
     @State private var resetToken = UUID()
     @State private var saveMessage = ""
     @State private var isFilmstripReady = false
+    @State private var infoImage: LocalImageItem?
+    @State private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
 
     var body: some View {
         Group {
@@ -78,6 +80,16 @@ struct LocalImageDetailPane: View {
         .navigationTitle(folder.title)
         .navigationSubtitle("\(localLibrary.selectedImageIndex + 1) / \(localLibrary.selectedImages.count) · \(image.title)")
         .toolbar { toolbarContent(image: image) }
+        .overlay(alignment: .topTrailing) {
+            LocalImageInspectorOverlay(
+                image: infoImage,
+                metadata: inspectedMetadata,
+                onDismiss: { infoImage = nil }
+            )
+        }
+        .task(id: folder.id) {
+            await loadMetadata(for: localLibrary.selectedImages)
+        }
         .onExitCommand {
             if immersive.isImmersive { immersive.toggle() }
         }
@@ -85,6 +97,10 @@ struct LocalImageDetailPane: View {
             resetToken = UUID()
             saveMessage = ""
             isFilmstripReady = false
+            LocalQuickLookController.shared.syncVisible(url: image.url)
+            if infoImage != nil {
+                infoImage = image
+            }
         }
     }
 
@@ -97,6 +113,12 @@ struct LocalImageDetailPane: View {
         case .next:
             localLibrary.stepImage(1)
             return true
+        case .quickLook:
+            if let image = localLibrary.selectedImage {
+                LocalQuickLookController.shared.open(url: image.url)
+                return true
+            }
+            return false
         case .toggleImmersive:
             immersive.toggle()
             return true
@@ -139,6 +161,20 @@ struct LocalImageDetailPane: View {
             .help("在 Finder 中显示")
 
             Button {
+                LocalQuickLookController.shared.open(url: image.url)
+            } label: {
+                Label("快速预览", systemImage: "eye")
+            }
+            .help("快速预览")
+
+            Button {
+                infoImage = image
+            } label: {
+                Label("详细信息", systemImage: "info.circle")
+            }
+            .help("详细信息")
+
+            Button {
                 saveImage(image)
             } label: {
                 Label("保存", systemImage: "square.and.arrow.down")
@@ -146,6 +182,29 @@ struct LocalImageDetailPane: View {
             .keyboardShortcut("s", modifiers: [.command])
             .help("保存副本")
         }
+    }
+
+    private func loadMetadata(for images: [LocalImageItem]) async {
+        let metadata = await Task.detached(priority: .utility) {
+            var result: [LocalImageItem.ID: LocalImageMetadata] = [:]
+            let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey]
+            for image in images {
+                guard !Task.isCancelled else { return result }
+                let values = try? image.url.resourceValues(forKeys: keys)
+                let pixelSize = pixelSize(for: image.url)
+                result[image.id] = LocalImageMetadata(
+                    fileSize: values?.fileSize.map(Int64.init),
+                    modifiedDate: values?.contentModificationDate,
+                    pixelWidth: pixelSize?.width,
+                    pixelHeight: pixelSize?.height,
+                    fileExists: FileManager.default.fileExists(atPath: image.url.path)
+                )
+            }
+            return result
+        }.value
+
+        guard !Task.isCancelled else { return }
+        metadataByImageID = metadata
     }
 
     private var saveStatus: (kind: DetailStatusBadge.Kind, text: String)? {
@@ -156,6 +215,11 @@ struct LocalImageDetailPane: View {
             return (.failed, saveMessage)
         }
         return nil
+    }
+
+    private var inspectedMetadata: LocalImageMetadata? {
+        guard let infoImage else { return nil }
+        return metadataByImageID[infoImage.id]
     }
 
     private func saveImage(_ image: LocalImageItem) {

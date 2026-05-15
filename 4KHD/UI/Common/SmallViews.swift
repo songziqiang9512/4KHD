@@ -209,6 +209,7 @@ struct KeyDownCatcher: NSViewRepresentable {
 enum DetailKeyCommand {
     case previous
     case next
+    case quickLook
     case toggleImmersive
 
     init?(event: NSEvent) {
@@ -216,8 +217,10 @@ enum DetailKeyCommand {
         switch event.keyCode {
         case 123:
             self = .previous
-        case 124, 49:
+        case 124:
             self = .next
+        case 49:
+            self = .quickLook
         case 3:
             self = .toggleImmersive
         default:
@@ -229,8 +232,7 @@ enum DetailKeyCommand {
 extension NSEvent {
     var hasBareKeyModifiers: Bool {
         modifierFlags
-            .intersection(.deviceIndependentFlagsMask)
-            .subtracting(.capsLock)
+            .intersection([.command, .option, .control, .shift])
             .isEmpty
     }
 }
