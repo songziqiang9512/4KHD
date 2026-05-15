@@ -86,6 +86,7 @@ private struct LocalImageInspectorCard: View {
         .padding(18)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(LocalInspectorGlassPanel(cornerRadius: 22, style: .regular))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
@@ -108,6 +109,9 @@ private struct LocalInspectorGlassPanel: NSViewRepresentable {
         nsView.cornerRadius = cornerRadius
         nsView.style = style
         nsView.tintColor = LocalInspectorGlassPalette.baseTint(for: nsView)
+        nsView.layer?.cornerRadius = cornerRadius
+        nsView.layer?.cornerCurve = .continuous
+        nsView.layer?.masksToBounds = true
         nsView.layer?.backgroundColor = LocalInspectorGlassPalette.innerFill(for: nsView).cgColor
     }
 }
