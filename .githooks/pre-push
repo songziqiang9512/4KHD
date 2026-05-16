@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${SKIP_VERSION_PREPUSH:-0}" == "1" ]]; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+current_branch="$(git symbolic-ref --quiet --short HEAD || true)"
+if [[ -z "$current_branch" ]]; then
+  exit 0
+fi
+
+if git rev-parse --verify --quiet "@{upstream}" >/dev/null; then
+  ahead_count="$(git rev-list --count "@{upstream}..HEAD")"
+else
+  ahead_count=1
+fi
+
+if [[ "$ahead_count" == "0" ]]; then
+  exit 0
+fi
+
+project_file="4KHD.xcodeproj/project.pbxproj"
+version="$(script/update_version.sh --next)"
+
+if git diff --quiet -- "$project_file"; then
+  exit 0
+fi
+
+git add "$project_file"
+git commit -m "Bump version to $version" >/dev/null
+
+echo "Created version bump commit for $version." >&2
+echo "Push was stopped so the new version commit can be included cleanly." >&2
+echo "Run git push again, or use script/push_with_version.sh for one-step push." >&2
+exit 1

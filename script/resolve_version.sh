@@ -6,8 +6,8 @@ usage() {
 Usage:
   script/resolve_version.sh [--next] [--offset N]
 
-Computes the app version from Git history.
---next      Include the commit that is about to be created by pre-commit.
+Computes the app version from the latest build-* release tag.
+--next      Advance one release beyond the latest released version.
 --offset N  Test helper: compute BASE_VERSION + N patch-style increments.
 EOF
 }
@@ -43,32 +43,56 @@ done
 
 IFS='.' read -r base_major base_minor base_patch <<< "$BASE_VERSION"
 
+increment_version() {
+  local version="$1"
+  local major minor patch
+  IFS='.' read -r major minor patch <<< "$version"
+  patch=$((patch + 1))
+  if (( patch >= 10 )); then
+    patch=0
+    minor=$((minor + 1))
+  fi
+  if (( minor >= 10 )); then
+    minor=0
+    major=$((major + 1))
+  fi
+  printf '%d.%d.%d\n' "$major" "$minor" "$patch"
+}
+
 if [[ -n "$offset_override" ]]; then
+  version="$BASE_VERSION"
   offset="$offset_override"
+  if ! [[ "$offset" =~ ^[0-9]+$ ]]; then
+    echo "Offset must be a non-negative integer: $offset" >&2
+    exit 2
+  fi
+  while (( offset > 0 )); do
+    version="$(increment_version "$version")"
+    offset=$((offset - 1))
+  done
+  printf '%s\n' "$version"
+  exit 0
+fi
+
+latest_tag="$(git tag --list 'build-*' --sort=-version:refname | head -n 1 || true)"
+if [[ -z "$latest_tag" ]]; then
+  latest_tag="$(
+    git ls-remote --tags origin 'build-*' 2>/dev/null \
+      | awk -F'/' '{print $3}' \
+      | sort -V -r \
+      | head -n 1 \
+      || true
+  )"
+fi
+
+if [[ -n "$latest_tag" ]]; then
+  version="${latest_tag#build-}"
 else
-  if ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
-    echo "Base commit not found: $BASE_COMMIT" >&2
-    exit 1
-  fi
-  offset="$(git rev-list --count "${BASE_COMMIT}..HEAD")"
-  if [[ "$next" == true ]]; then
-    offset=$((offset + 1))
-  fi
+  version="$BASE_VERSION"
 fi
 
-if ! [[ "$offset" =~ ^[0-9]+$ ]]; then
-  echo "Offset must be a non-negative integer: $offset" >&2
-  exit 2
+if [[ "$next" == true ]]; then
+  version="$(increment_version "$version")"
 fi
 
-total_patch=$((base_patch + offset))
-major=$base_major
-minor=$base_minor
-patch=$total_patch
-
-minor=$((minor + patch / 10))
-patch=$((patch % 10))
-major=$((major + minor / 10))
-minor=$((minor % 10))
-
-printf '%d.%d.%d\n' "$major" "$minor" "$patch"
+printf '%s\n' "$version"
