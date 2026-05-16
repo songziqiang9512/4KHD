@@ -112,8 +112,10 @@ struct WorkspaceShell: View {
     @Environment(WorkspaceAppContext.self) private var appContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(OnlineCacheLimit.defaultsKey) private var onlineCacheLimitRaw = OnlineCacheLimit.gb1.rawValue
+    @AppStorage("com.songziqiang.4khd.detailPanePresented.v1") private var detailPanePresentedRaw = true
     // @State 持有 @Observable 子对象 —— SwiftUI 会复用同一实例。
     @State private var immersive = ImmersiveController()
+    @State private var detailPane = WorkspaceDetailPaneController()
     @State private var sidebarDisclosure = SidebarDisclosureState()
     @State private var didBootstrap = false
 
@@ -154,7 +156,11 @@ struct WorkspaceShell: View {
                         .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
                 } content: {
                     contentColumn
-                        .navigationSplitViewColumnWidth(min: 280, ideal: 420, max: 760)
+                        .navigationSplitViewColumnWidth(
+                            min: 280,
+                            ideal: detailPane.preferredContentIdealWidth,
+                            max: detailPane.preferredContentMaxWidth
+                        )
                 } detail: {
                     detailColumn
                         .navigationSplitViewColumnWidth(min: 560, ideal: 900)
@@ -176,6 +182,10 @@ struct WorkspaceShell: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                WorkspaceToolbarSearchGroup(route: selection)
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     ForEach(OnlineCacheLimit.allCases) { limit in
@@ -206,10 +216,13 @@ struct WorkspaceShell: View {
             }
         }
         .environment(immersive)
+        .environment(detailPane)
         .environment(sidebarDisclosure)
         .task {
             guard !didBootstrap else { return }
             didBootstrap = true
+            detailPane.setPresented(detailPanePresentedRaw)
+            applyDetailPaneVisibility()
             // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
             // 后续子页面解析走 URLSession 直拉也带得上同一张票。
             CookieBridge.shared.start()
@@ -223,6 +236,15 @@ struct WorkspaceShell: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 DetailPageImageCache.shared.flush()
+            }
+        }
+        .onChange(of: detailPane.isPresented) { _, isPresented in
+            detailPanePresentedRaw = isPresented
+            applyDetailPaneVisibility()
+        }
+        .onChange(of: immersive.isImmersive) { _, isImmersive in
+            if !isImmersive {
+                applyDetailPaneVisibility()
             }
         }
     }
@@ -281,6 +303,13 @@ struct WorkspaceShell: View {
 
     private func apply(_ selection: WorkspaceRoute) {
         appContext.moduleRegistry.apply(selection)
+    }
+
+    private func applyDetailPaneVisibility() {
+        guard !immersive.isImmersive else { return }
+        withAnimation(.easeInOut(duration: 0.22)) {
+            immersive.columnVisibility = detailPane.isPresented ? .all : .doubleColumn
+        }
     }
 
     private var selectedOnlineCacheLimit: OnlineCacheLimit {

@@ -4,25 +4,56 @@ enum WorkspaceAppAssembly {
     @MainActor
     static func makeAppContext() -> WorkspaceAppContext {
         let fourKHDGalleryStore = FourKHDGalleryStore()
+        let galleryPreferences = GalleryContentPreferences()
+        let galleryDetailInteraction = GalleryDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
+        let localPreferences = LocalLibraryContentPreferences()
+        let localDetailInteraction = LocalDetailInteractionController()
+        let localInspector = LocalImageInspectorController()
+        let filmstripVisibility = FilmstripVisibilityController()
+        let importRootFolderAction = {
+            guard let folderURL = LocalLibraryImportService.chooseFolder() else { return }
+            localLibraryStore.importRootFolder(folderURL)
+        }
         let moduleRegistry = makeModuleRegistry(
             fourKHDGalleryStore: fourKHDGalleryStore,
-            localLibraryStore: localLibraryStore
+            galleryPreferences: galleryPreferences,
+            galleryDetailInteraction: galleryDetailInteraction,
+            localLibraryStore: localLibraryStore,
+            localPreferences: localPreferences,
+            localDetailInteraction: localDetailInteraction,
+            localInspector: localInspector,
+            filmstripVisibility: filmstripVisibility
+        )
+        let toolbarContext = WorkspaceToolbarContext(
+            galleryStore: fourKHDGalleryStore,
+            galleryPreferences: galleryPreferences,
+            galleryDetailInteraction: galleryDetailInteraction,
+            localLibraryStore: localLibraryStore,
+            localPreferences: localPreferences,
+            localDetailInteraction: localDetailInteraction,
+            localInspector: localInspector,
+            filmstripVisibility: filmstripVisibility,
+            importRootFolderAction: importRootFolderAction
         )
 
         return WorkspaceAppContext(
             moduleRegistry: moduleRegistry,
-            importRootFolderAction: {
-                guard let folderURL = LocalLibraryImportService.chooseFolder() else { return }
-                localLibraryStore.importRootFolder(folderURL)
-            }
+            toolbarContext: toolbarContext,
+            importRootFolderAction: importRootFolderAction
         )
     }
 
     @MainActor
     private static func makeModuleRegistry(
         fourKHDGalleryStore: FourKHDGalleryStore,
-        localLibraryStore: LocalLibraryStore
+        galleryPreferences: GalleryContentPreferences,
+        galleryDetailInteraction: GalleryDetailInteractionController,
+        localLibraryStore: LocalLibraryStore,
+        localPreferences: LocalLibraryContentPreferences,
+        localDetailInteraction: LocalDetailInteractionController,
+        localInspector: LocalImageInspectorController,
+        filmstripVisibility: FilmstripVisibilityController
     ) -> WorkspaceModuleRegistry {
         return WorkspaceModuleRegistry(
             modules: [
@@ -42,12 +73,15 @@ enum WorkspaceAppAssembly {
                         AnyView(
                             GalleryContentList()
                                 .environment(fourKHDGalleryStore)
+                                .environment(galleryPreferences)
                         )
                     },
                     makeDetailView: {
                         AnyView(
                             ImageDetailPane()
                                 .environment(fourKHDGalleryStore)
+                                .environment(galleryDetailInteraction)
+                                .environment(filmstripVisibility)
                         )
                     },
                     normalizeRoute: { route in
@@ -85,12 +119,17 @@ enum WorkspaceAppAssembly {
                         AnyView(
                             LocalImageContentList()
                                 .environment(localLibraryStore)
+                                .environment(localPreferences)
+                                .environment(localInspector)
                         )
                     },
                     makeDetailView: {
                         AnyView(
                             LocalImageDetailPane()
                                 .environment(localLibraryStore)
+                                .environment(localDetailInteraction)
+                                .environment(localInspector)
+                                .environment(filmstripVisibility)
                         )
                     },
                     normalizeRoute: { route in

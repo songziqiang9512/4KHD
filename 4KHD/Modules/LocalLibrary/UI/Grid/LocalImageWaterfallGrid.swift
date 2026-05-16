@@ -5,6 +5,8 @@ struct LocalImageWaterfallGrid: NSViewRepresentable {
     let items: [(originalIndex: Int, image: LocalImageItem)]
     let metadataByImageID: [LocalImageItem.ID: LocalImageMetadata]
     let selectedImageID: LocalImageItem.ID?
+    let preferredColumnCount: Int?
+    let preferredCardMinimumWidth: CGFloat
     let onSelect: (Int) -> Void
     let onQuickLook: (LocalImageItem) -> Void
     let onShowInfo: (LocalImageItem) -> Void
@@ -24,7 +26,9 @@ struct LocalImageWaterfallGrid: NSViewRepresentable {
         nsView.update(
             items: items,
             metadataByImageID: metadataByImageID,
-            selectedImageID: selectedImageID
+            selectedImageID: selectedImageID,
+            preferredColumnCount: preferredColumnCount,
+            preferredCardMinimumWidth: preferredCardMinimumWidth
         )
     }
 }

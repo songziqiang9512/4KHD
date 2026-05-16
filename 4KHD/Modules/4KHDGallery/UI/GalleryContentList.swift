@@ -1,17 +1,13 @@
 import AppKit
 import SwiftUI
 
-private enum GalleryContentLayout: String {
-    case list
-    case grid
-}
-
 /// 三段式中部内容栏：当前 section 的图集列表（线上 / 收藏）+ 搜索 + 加载更多。
 /// 收藏 section 下额外按作者启发式聚合分组。
 struct GalleryContentList: View {
     @Environment(FourKHDGalleryStore.self) private var library
+    @Environment(GalleryContentPreferences.self) private var preferences
+    @Environment(WorkspaceDetailPaneController.self) private var detailPane
     @AppStorage("com.songziqiang.4khd.favoriteAuthorOverrides.v1") private var favoriteAuthorOverridesJSON = "{}"
-    @AppStorage("com.songziqiang.4khd.contentLayout.v1") private var contentLayoutRaw = GalleryContentLayout.list.rawValue
     @State private var expandedFavoriteAuthorIDs = Set<String>()
 
     private var selectionBinding: Binding<GalleryItem.ID?> {
@@ -29,8 +25,6 @@ struct GalleryContentList: View {
     }
 
     var body: some View {
-        // shadow 一份 @Bindable 给 .searchable(text:) 用 $library.searchText
-        @Bindable var library = library
         return Group {
             if shouldUseGrid {
                 gridContent
@@ -38,35 +32,8 @@ struct GalleryContentList: View {
                 listContent
             }
         }
-        .searchable(text: $library.searchText, placement: .toolbar, prompt: "搜索 4KHD")
-        .onSubmit(of: .search) { library.submitSearch() }
-        .onChange(of: library.searchText) { _, value in
-            if value.isEmpty && library.activeSearchQuery != nil { library.clearSearch() }
-        }
         .navigationTitle(library.activeSearchQuery.map { "搜索：\($0)" } ?? library.section.title)
         .navigationSubtitle("\(library.visibleItems.count) / \(library.allItems.count)")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("显示方式", selection: $contentLayoutRaw) {
-                    Label("列表", systemImage: "list.bullet").tag(GalleryContentLayout.list.rawValue)
-                    Label("网格", systemImage: "square.grid.2x2").tag(GalleryContentLayout.grid.rawValue)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 92)
-                .help("切换列表 / 网格")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    library.refreshFromNetwork()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .keyboardShortcut("r", modifiers: [.command])
-                .help("刷新")
-                .disabled(library.isRefreshingList)
-            }
-        }
         .onChange(of: library.section) { _, section in
             if section != .favorites {
                 expandedFavoriteAuthorIDs.removeAll()
@@ -123,8 +90,9 @@ struct GalleryContentList: View {
     }
 
     private var gridContent: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 12)], spacing: 12) {
+        let columns = gridColumns
+        return ScrollView {
+            LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(library.visibleItems) { item in
                     GalleryGridCard(item: item, isSelected: library.selectedItemID == item.id) {
                         library.select(item)
@@ -148,10 +116,27 @@ struct GalleryContentList: View {
         .background(.background)
     }
 
+    private var gridColumns: [GridItem] {
+        if let limit = detailPane.gridColumnLimit {
+            let maximum = detailPane.preferredGridCardMaximumWidth ?? .infinity
+            return Array(
+                repeating: GridItem(
+                    .flexible(
+                        minimum: detailPane.preferredGridCardMinimumWidth,
+                        maximum: maximum
+                    ),
+                    spacing: 12
+                ),
+                count: limit
+            )
+        }
+        return [GridItem(.adaptive(minimum: detailPane.preferredGridCardMinimumWidth), spacing: 12)]
+    }
+
     // MARK: - 收藏分组
 
     private var contentLayout: GalleryContentLayout {
-        GalleryContentLayout(rawValue: contentLayoutRaw) ?? .list
+        preferences.layout
     }
 
     private var shouldUseGrid: Bool {

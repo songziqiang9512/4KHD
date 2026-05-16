@@ -6,6 +6,8 @@ final class LocalImageGridLayout: NSCollectionViewLayout {
     var sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
     var minAspectRatio: CGFloat = 0.25
     var maxAspectRatio: CGFloat = 3.0
+    var preferredColumnCount: Int?
+    var preferredCardMinimumWidth: CGFloat = 136
     var aspectRatioProvider: ((IndexPath) -> CGFloat)?
 
     private var cache: [NSCollectionViewLayoutAttributes] = []
@@ -71,12 +73,12 @@ final class LocalImageGridLayout: NSCollectionViewLayout {
     }
 
     private func columnCount(for width: CGFloat) -> Int {
-        if width >= 1_200 { return 6 }
-        if width >= 900 { return 5 }
-        if width >= 600 { return 4 }
-        if width >= 360 { return 3 }
-        if width >= 180 { return 2 }
-        return 1
+        if let preferredColumnCount {
+            return max(preferredColumnCount, 1)
+        }
+        let safeWidth = max(width, preferredCardMinimumWidth)
+        let estimated = Int((safeWidth + columnSpacing) / (preferredCardMinimumWidth + columnSpacing))
+        return max(estimated, 1)
     }
 
     private func clampedAspectRatio(for indexPath: IndexPath) -> CGFloat {

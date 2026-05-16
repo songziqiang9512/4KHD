@@ -84,7 +84,9 @@ final class LocalImageGridContainerView: NSView {
     func update(
         items: [(originalIndex: Int, image: LocalImageItem)],
         metadataByImageID: [LocalImageItem.ID: LocalImageMetadata],
-        selectedImageID: LocalImageItem.ID?
+        selectedImageID: LocalImageItem.ID?,
+        preferredColumnCount: Int?,
+        preferredCardMinimumWidth: CGFloat
     ) {
         let newEntries = items.map { item in
             Entry(
@@ -95,15 +97,19 @@ final class LocalImageGridContainerView: NSView {
         }
         let ids = newEntries.map(\.image.id)
         let metadataChanged = hasMetadataChanges(newEntries)
+        let columnPreferenceChanged = waterfallLayout.preferredColumnCount != preferredColumnCount
+        let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
         entries = newEntries
         self.selectedImageID = selectedImageID
+        waterfallLayout.preferredColumnCount = preferredColumnCount
+        waterfallLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
 
         if ids != lastAppliedIDs {
             lastAppliedIDs = ids
             collectionView.reloadData()
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
-        } else if metadataChanged {
+        } else if metadataChanged || columnPreferenceChanged || cardWidthPreferenceChanged {
             collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()

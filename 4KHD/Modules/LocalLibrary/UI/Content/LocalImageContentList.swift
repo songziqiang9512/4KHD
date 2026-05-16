@@ -1,49 +1,12 @@
 import AppKit
 import SwiftUI
 
-private enum LocalContentLayout: String {
-    case list
-    case grid
-}
-
-private enum LocalImageSortField: String, CaseIterable, Identifiable {
-    case name
-    case modifiedDate
-    case fileSize
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .name: "文件名"
-        case .modifiedDate: "修改时间"
-        case .fileSize: "文件大小"
-        }
-    }
-}
-
-private enum LocalImageSortDirection: String, CaseIterable, Identifiable {
-    case ascending
-    case descending
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .ascending: "正序"
-        case .descending: "逆序"
-        }
-    }
-}
-
 /// 三段式中部内容栏 —— 显示当前所选本地目录里的所有图片，
 /// selection 由 `LocalLibraryStore.selectedImageIndex` 桥接。
 struct LocalImageContentList: View {
     @Environment(LocalLibraryStore.self) private var localLibrary
-    @AppStorage("com.songziqiang.4khd.localContentLayout.v1") private var contentLayoutRaw = LocalContentLayout.grid.rawValue
-    @AppStorage("com.songziqiang.4khd.localImageSortField.v1") private var imageSortFieldRaw = LocalImageSortField.name.rawValue
-    @AppStorage("com.songziqiang.4khd.localImageSortDirection.v1") private var imageSortDirectionRaw = LocalImageSortDirection.ascending.rawValue
-    @State private var searchText = ""
+    @Environment(LocalLibraryContentPreferences.self) private var preferences
+    @Environment(WorkspaceDetailPaneController.self) private var detailPane
     @State private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
     @State private var infoImage: LocalImageItem?
 
@@ -77,7 +40,7 @@ struct LocalImageContentList: View {
                     ContentUnavailableView("当前目录没有图片", systemImage: "photo.on.rectangle.angled")
                         .navigationTitle(folder.title)
                 } else if filteredImages.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    ContentUnavailableView.search(text: preferences.searchText)
                         .navigationTitle(folder.title)
                         .navigationSubtitle("0 / \(folder.images.count) 张")
                 } else {
@@ -89,7 +52,6 @@ struct LocalImageContentList: View {
                 ContentUnavailableView("从侧栏选择目录", systemImage: "sidebar.left")
             }
         }
-        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索本地图片")
         .task(id: localLibrary.selectedFolder?.id) {
             await loadMetadata(for: localLibrary.selectedImages)
         }
@@ -106,61 +68,6 @@ struct LocalImageContentList: View {
         .onChange(of: localLibrary.selectedImage?.id) { _, _ in
             guard infoImage != nil else { return }
             infoImage = localLibrary.selectedImage
-        }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("显示方式", selection: $contentLayoutRaw) {
-                    Label("列表", systemImage: "list.bullet").tag(LocalContentLayout.list.rawValue)
-                    Label("网格", systemImage: "square.grid.2x2").tag(LocalContentLayout.grid.rawValue)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 92)
-                .help("切换列表 / 网格")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Text("排序方式")
-                    ForEach(LocalImageSortField.allCases) { field in
-                        Button {
-                            imageSortFieldRaw = field.rawValue
-                        } label: {
-                            if imageSortField == field {
-                                Label(field.title, systemImage: "checkmark")
-                            } else {
-                                Text(field.title)
-                            }
-                        }
-                    }
-
-                    Divider()
-                    Text("顺序")
-                    ForEach(LocalImageSortDirection.allCases) { direction in
-                        Button {
-                            imageSortDirectionRaw = direction.rawValue
-                        } label: {
-                            if imageSortDirection == direction {
-                                Label(direction.title, systemImage: "checkmark")
-                            } else {
-                                Text(direction.title)
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                }
-                .help("排序")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    localLibrary.refreshSelectedRoot()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("刷新本地目录")
-                .disabled(localLibrary.selectedFolder == nil || localLibrary.isScanning)
-            }
         }
     }
 
@@ -183,7 +90,9 @@ struct LocalImageContentList: View {
             LocalImageWaterfallGrid(
                 items: filteredImagesWithOriginalIndex,
                 metadataByImageID: metadataByImageID,
-                selectedImageID: localLibrary.selectedImage?.id
+                selectedImageID: localLibrary.selectedImage?.id,
+                preferredColumnCount: detailPane.gridColumnLimit,
+                preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
             ) { index in
                 localLibrary.selectImage(at: index)
             } onQuickLook: { image in
@@ -197,15 +106,15 @@ struct LocalImageContentList: View {
     }
 
     private var contentLayout: LocalContentLayout {
-        LocalContentLayout(rawValue: contentLayoutRaw) ?? .grid
+        preferences.layout
     }
 
     private var imageSortField: LocalImageSortField {
-        LocalImageSortField(rawValue: imageSortFieldRaw) ?? .name
+        preferences.sortField
     }
 
     private var imageSortDirection: LocalImageSortDirection {
-        LocalImageSortDirection(rawValue: imageSortDirectionRaw) ?? .ascending
+        preferences.sortDirection
     }
 
     private var inspectedMetadata: LocalImageMetadata? {
@@ -214,14 +123,14 @@ struct LocalImageContentList: View {
     }
 
     private var filteredImages: [LocalImageItem] {
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return localLibrary.selectedImages
         }
         return filteredImagesWithOriginalIndex.map(\.image)
     }
 
     private var filteredImagesWithOriginalIndex: [(originalIndex: Int, image: LocalImageItem)] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let items = Array(localLibrary.selectedImages.enumerated()).map { ($0.offset, $0.element) }
         let filtered: [(originalIndex: Int, image: LocalImageItem)]
         if query.isEmpty {
@@ -238,7 +147,7 @@ struct LocalImageContentList: View {
     }
 
     private func navigationSubtitle(for folder: LocalFolderNode) -> String {
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "\(folder.images.count) 张"
         }
         return "\(filteredImages.count) / \(folder.images.count) 张"
