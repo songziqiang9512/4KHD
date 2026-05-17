@@ -220,14 +220,20 @@ final class LocalImageGridItemView: NSCollectionViewItem {
     }
 
     private func refreshAppearance() {
-        imageContainer.layer?.borderColor = (isSelectedState ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+        let borderColor = isSelectedState
+            ? NSColor.controlAccentColor
+            : NSColor.separatorColor.withAlphaComponent(view.localImageGridIsDarkAppearance ? 0.55 : 0.42)
+        imageContainer.layer?.borderColor = borderColor.cgColor
         imageContainer.layer?.borderWidth = isSelectedState ? 2 : 1
-        hoverOutline.layer?.borderColor = (view.localImageGridIsDarkAppearance ? NSColor.white : .controlAccentColor).cgColor
+        hoverOutline.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.86).cgColor
+        imageContainer.layer?.backgroundColor = (view.localImageGridIsDarkAppearance
+            ? NSColor.controlBackgroundColor
+            : NSColor.windowBackgroundColor).cgColor
     }
 
     private func setupViews() {
         imageContainer.wantsLayer = true
-        imageContainer.layer?.cornerRadius = 12
+        imageContainer.layer?.cornerRadius = 8
         imageContainer.layer?.masksToBounds = true
         imageContainer.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         imageContainer.layer?.borderWidth = 1
@@ -239,7 +245,7 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         placeholderLabel.font = .systemFont(ofSize: 11)
 
         hoverOutline.wantsLayer = true
-        hoverOutline.layer?.cornerRadius = 11
+        hoverOutline.layer?.cornerRadius = 7
         hoverOutline.layer?.borderWidth = 1
         hoverOutline.layer?.backgroundColor = NSColor.clear.cgColor
         hoverOutline.alphaValue = 0

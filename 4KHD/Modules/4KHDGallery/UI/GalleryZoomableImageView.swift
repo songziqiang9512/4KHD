@@ -87,6 +87,7 @@ final class GalleryZoomableImageView: NSView {
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.15
         scrollView.maxMagnification = 6
+        scrollView.contentView = GalleryCenteringClipView()
         scrollView.documentView = documentView
 
         documentView.wantsLayer = true
@@ -177,5 +178,21 @@ final class GalleryZoomableImageView: NSView {
 
     @objc private func openOriginal() {
         openOriginalAction?()
+    }
+}
+
+private final class GalleryCenteringClipView: NSClipView {
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        var constrained = super.constrainBoundsRect(proposedBounds)
+        guard let documentView else { return constrained }
+
+        let documentFrame = documentView.frame
+        if documentFrame.width < proposedBounds.width {
+            constrained.origin.x = floor((documentFrame.width - proposedBounds.width) / 2)
+        }
+        if documentFrame.height < proposedBounds.height {
+            constrained.origin.y = floor((documentFrame.height - proposedBounds.height) / 2)
+        }
+        return constrained
     }
 }

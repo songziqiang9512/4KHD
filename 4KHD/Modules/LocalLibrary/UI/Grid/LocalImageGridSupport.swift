@@ -8,10 +8,10 @@ enum LocalImageThumbnailLoadResult {
 }
 
 enum LocalImageGridAnimation {
-    static let cardHoverScale: CGFloat = 1.05
+    static let cardHoverScale: CGFloat = 1.025
     static let cardPressedScale: CGFloat = 0.96
-    static let cardHoverExpandDuration: CFTimeInterval = 0.30
-    static let cardHoverCollapseDuration: CFTimeInterval = 0.34
+    static let cardHoverExpandDuration: CFTimeInterval = 0.18
+    static let cardHoverCollapseDuration: CFTimeInterval = 0.20
     static let cardPressDownDuration: CFTimeInterval = 0.08
     static let cardPressUpDuration: CFTimeInterval = 0.12
     static let minimumPressVisualDuration: TimeInterval = 0.05

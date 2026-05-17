@@ -117,9 +117,9 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scrollView.hasVerticalScroller = true
         scrollView.documentView = collectionView
 
-        gridLayout.minimumInteritemSpacing = 12
-        gridLayout.minimumLineSpacing = 12
-        gridLayout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        gridLayout.minimumInteritemSpacing = 14
+        gridLayout.minimumLineSpacing = 14
+        gridLayout.sectionInset = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
 
         collectionView.collectionViewLayout = gridLayout
         collectionView.backgroundColors = [.clear]
@@ -250,12 +250,12 @@ final class GalleryGridItemView: NSCollectionViewItem {
 
     func applySelectionState(_ isSelected: Bool) {
         backgroundView.layer?.backgroundColor = isSelected
-            ? NSColor.controlAccentColor.withAlphaComponent(0.16).cgColor
+            ? NSColor.controlAccentColor.withAlphaComponent(0.12).cgColor
             : NSColor.clear.cgColor
         backgroundView.layer?.borderColor = isSelected
             ? NSColor.controlAccentColor.cgColor
             : NSColor.separatorColor.withAlphaComponent(0.7).cgColor
-        backgroundView.layer?.borderWidth = isSelected ? 1.5 : 0.5
+        backgroundView.layer?.borderWidth = isSelected ? 1.5 : 0
     }
 
     private func setupView() {
@@ -264,7 +264,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
         backgroundView.layer?.masksToBounds = true
 
         coverView.mode = .aspectFill
-        coverView.cornerRadius = 6
+        coverView.cornerRadius = 5
 
         imageCountLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         imageCountLabel.textColor = .secondaryLabelColor
@@ -297,7 +297,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
         let stack = NSStackView(views: [coverView, topMeta, titleLabel, bottomMeta])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 7
+        stack.spacing = 6
 
         view.addSubview(backgroundView)
         backgroundView.addSubview(stack)
@@ -309,10 +309,10 @@ final class GalleryGridItemView: NSCollectionViewItem {
             backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
             backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 7),
-            stack.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -7),
-            stack.topAnchor.constraint(equalTo: backgroundView.topAnchor, constant: 7),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: backgroundView.bottomAnchor, constant: -7),
+            stack.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -8),
+            stack.topAnchor.constraint(equalTo: backgroundView.topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: backgroundView.bottomAnchor, constant: -8),
             coverView.widthAnchor.constraint(equalTo: stack.widthAnchor),
             coverView.heightAnchor.constraint(equalTo: coverView.widthAnchor, multiplier: 1 / 0.74)
         ])
