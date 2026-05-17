@@ -46,6 +46,9 @@ final class LocalImageDetailViewController: NSViewController {
 
     override func loadView() {
         view = LocalImageDetailRootView()
+        (view as? LocalImageDetailRootView)?.appearanceHandler = { [weak self] in
+            self?.updateChromeAppearance()
+        }
         setupView()
     }
 
@@ -100,7 +103,6 @@ final class LocalImageDetailViewController: NSViewController {
         statusLabel.textColor = .labelColor
         statusLabel.alignment = .center
         statusLabel.wantsLayer = true
-        statusLabel.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.82).cgColor
         statusLabel.layer?.cornerRadius = 12
         statusLabel.isHidden = true
 
@@ -155,7 +157,6 @@ final class LocalImageDetailViewController: NSViewController {
         toolStack.spacing = 8
         toolStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         toolStack.wantsLayer = true
-        toolStack.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
         toolStack.layer?.cornerRadius = 16
 
         let tools: [(String, String, Selector)] = [
@@ -173,11 +174,14 @@ final class LocalImageDetailViewController: NSViewController {
         filmstripButton.image = NSImage(systemSymbolName: "rectangle.bottomthird.inset.filled", accessibilityDescription: "缩略图")
         filmstripButton.imagePosition = .imageOnly
         filmstripButton.bezelStyle = .texturedRounded
-        filmstripButton.isBordered = true
+        filmstripButton.isBordered = false
         filmstripButton.target = self
         filmstripButton.action = #selector(toggleFilmstrip)
         filmstripButton.toolTip = "显示/隐藏缩略图"
+        filmstripButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        filmstripButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
         toolStack.addArrangedSubview(filmstripButton)
+        updateChromeAppearance()
     }
 
     private func makeToolButton(symbolName: String, toolTip: String, action: Selector) -> NSButton {
@@ -185,12 +189,12 @@ final class LocalImageDetailViewController: NSViewController {
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: toolTip)
         button.imagePosition = .imageOnly
         button.bezelStyle = .texturedRounded
-        button.isBordered = true
+        button.isBordered = false
         button.target = self
         button.action = action
         button.toolTip = toolTip
-        button.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
         return button
     }
 
@@ -231,6 +235,7 @@ final class LocalImageDetailViewController: NSViewController {
             previousButton.isHidden = true
             nextButton.isHidden = true
             filmstripView.isHidden = true
+            toolStack.isHidden = true
             statusLabel.isHidden = true
             return
         }
@@ -252,9 +257,24 @@ final class LocalImageDetailViewController: NSViewController {
 
         loadMetadataIfNeeded(folder: folder)
         filmstripView.update(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex)
-        toolStack.isHidden = !immersive.isImmersive
+        toolStack.isHidden = false
+        updateToolButtons()
         updateFilmstripVisibility()
         updateSaveStatus()
+    }
+
+    private func updateChromeAppearance() {
+        let background = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
+        statusLabel.layer?.backgroundColor = background
+        toolStack.layer?.backgroundColor = background
+    }
+
+    private func updateToolButtons() {
+        guard toolStack.arrangedSubviews.count >= 2 else { return }
+        if let immersiveButton = toolStack.arrangedSubviews[1] as? NSButton {
+            let imageName = immersive.isImmersive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
+            immersiveButton.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)
+        }
     }
 
     private func updateFilmstripVisibility() {
@@ -347,7 +367,14 @@ final class LocalImageDetailViewController: NSViewController {
 
 @MainActor
 private final class LocalImageDetailRootView: NSView {
+    var appearanceHandler: (() -> Void)?
+
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appearanceHandler?()
+    }
 
     override func keyDown(with event: NSEvent) {
         if let controller = nextResponder as? LocalImageDetailViewController,

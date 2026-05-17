@@ -46,6 +46,9 @@ final class GalleryImageDetailViewController: NSViewController {
         (view as? GalleryImageDetailRootView)?.keyHandler = { [weak self] event in
             self?.handleKeyDown(event) ?? false
         }
+        (view as? GalleryImageDetailRootView)?.appearanceHandler = { [weak self] in
+            self?.updateChromeAppearance()
+        }
         setupView()
     }
 
@@ -100,18 +103,19 @@ final class GalleryImageDetailViewController: NSViewController {
         counterLabel.alignment = .center
         counterLabel.wantsLayer = true
         counterLabel.layer?.cornerRadius = 11
-        counterLabel.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.78).cgColor
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         statusLabel.textColor = .labelColor
         statusLabel.alignment = .center
         statusLabel.wantsLayer = true
         statusLabel.layer?.cornerRadius = 11
-        statusLabel.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.78).cgColor
 
         toolStack.orientation = .horizontal
         toolStack.alignment = .centerY
-        toolStack.spacing = 6
+        toolStack.spacing = 8
+        toolStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+        toolStack.wantsLayer = true
+        toolStack.layer?.cornerRadius = 16
         for item in makeToolButtons() {
             toolStack.addArrangedSubview(item)
         }
@@ -161,6 +165,7 @@ final class GalleryImageDetailViewController: NSViewController {
             filmstripView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             filmstripHeightConstraint
         ])
+        updateChromeAppearance()
     }
 
     private func setupStepButton(_ button: NSButton, imageName: String, action: Selector) {
@@ -226,6 +231,7 @@ final class GalleryImageDetailViewController: NSViewController {
             nextButton.isHidden = true
             counterLabel.isHidden = true
             statusLabel.isHidden = true
+            toolStack.isHidden = true
             filmstripView.isHidden = true
             return
         }
@@ -256,7 +262,7 @@ final class GalleryImageDetailViewController: NSViewController {
         counterLabel.stringValue = "\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))"
         statusLabel.stringValue = detailStatusText
         statusLabel.isHidden = statusLabel.stringValue.isEmpty
-        toolStack.isHidden = !immersive.isImmersive
+        toolStack.isHidden = false
         let showsFilmstrip = filmstripVisibility.isPresented
         filmstripView.isHidden = !showsFilmstrip
         filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
@@ -273,6 +279,13 @@ final class GalleryImageDetailViewController: NSViewController {
     }
 
     private var resetTokenSeen = UUID()
+
+    private func updateChromeAppearance() {
+        let background = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
+        counterLabel.layer?.backgroundColor = background
+        statusLabel.layer?.backgroundColor = background
+        toolStack.layer?.backgroundColor = background
+    }
 
     private var detailStatusText: String {
         if detailFailed { return "解析失败" }
@@ -389,8 +402,14 @@ final class GalleryImageDetailViewController: NSViewController {
 
 final class GalleryImageDetailRootView: NSView {
     var keyHandler: ((NSEvent) -> Bool)?
+    var appearanceHandler: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appearanceHandler?()
+    }
 
     override func keyDown(with event: NSEvent) {
         if keyHandler?(event) == true { return }

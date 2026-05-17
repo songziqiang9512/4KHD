@@ -50,11 +50,7 @@ private final class WorkspaceWindowController: NSWindowController {
         window.titlebarSeparatorStyle = .shadow
         window.toolbarStyle = .unified
         super.init(window: window)
-        let toolbar = WorkspaceToolbar(
-            appContext: appContext,
-            toggleImmersiveAction: { shellController.toggleImmersiveMode() },
-            isImmersive: { shellController.isImmersiveMode }
-        )
+        let toolbar = WorkspaceToolbar(appContext: appContext)
         window.toolbar = toolbar
     }
 
@@ -71,42 +67,27 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
-        static let resetZoom = NSToolbarItem.Identifier("WorkspaceToolbar.resetZoom")
-        static let immersive = NSToolbarItem.Identifier("WorkspaceToolbar.immersive")
-        static let filmstrip = NSToolbarItem.Identifier("WorkspaceToolbar.filmstrip")
-        static let openOriginal = NSToolbarItem.Identifier("WorkspaceToolbar.openOriginal")
-        static let save = NSToolbarItem.Identifier("WorkspaceToolbar.save")
         static let cacheLimit = NSToolbarItem.Identifier("WorkspaceToolbar.cacheLimit")
         static let importFolder = NSToolbarItem.Identifier("WorkspaceToolbar.importFolder")
     }
 
     private let appContext: WorkspaceAppContext
-    private let toggleImmersiveAction: () -> Void
-    private let isImmersive: () -> Bool
     private let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 260, height: 28))
     private var routeObserverID: UUID?
     private weak var layoutControl: NSSegmentedControl?
     private weak var refreshItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
-    private weak var immersiveItem: NSToolbarItem?
-    private weak var filmstripItem: NSToolbarItem?
-    private weak var openOriginalItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
 
-    init(
-        appContext: WorkspaceAppContext,
-        toggleImmersiveAction: @escaping () -> Void,
-        isImmersive: @escaping () -> Bool
-    ) {
+    init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
-        self.toggleImmersiveAction = toggleImmersiveAction
-        self.isImmersive = isImmersive
         super.init(identifier: "WorkspaceToolbar")
         displayMode = .iconOnly
         allowsUserCustomization = false
         delegate = self
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        searchField.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
         searchField.heightAnchor.constraint(equalToConstant: 28).isActive = true
         searchField.bezelStyle = .roundedBezel
         searchField.isBordered = true
@@ -138,11 +119,6 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             ItemID.layout,
             ItemID.refresh,
             ItemID.detailPane,
-            ItemID.resetZoom,
-            ItemID.immersive,
-            ItemID.filmstrip,
-            ItemID.openOriginal,
-            ItemID.save,
             ItemID.cacheLimit,
             ItemID.importFolder,
             .flexibleSpace,
@@ -161,6 +137,7 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             item.view = searchField
             item.label = "搜索"
             item.paletteLabel = "搜索"
+            item.visibilityPriority = .high
             return item
         case ItemID.layout:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -172,6 +149,7 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             item.view = control
             item.label = "布局"
             item.paletteLabel = "布局"
+            item.visibilityPriority = .high
             layoutControl = control
             updateLayoutControl()
             return item
@@ -183,6 +161,7 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             item.paletteLabel = "刷新"
             item.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "刷新")
             item.toolTip = "刷新当前内容"
+            item.visibilityPriority = .high
             refreshItem = item
             updateRefreshItem()
             return item
@@ -192,64 +171,17 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             item.action = #selector(toggleDetailPane(_:))
             item.label = "详情区"
             item.paletteLabel = "详情区"
+            item.visibilityPriority = .high
             detailPaneItem = item
             configureDetailPaneItem(item)
             return item
-        case ItemID.resetZoom:
-            return makeImageItem(
-                itemIdentifier,
-                symbolName: "1.magnifyingglass",
-                label: "实际大小",
-                toolTip: "重置大图缩放",
-                action: #selector(resetDetailZoom(_:))
-            )
-        case ItemID.immersive:
-            let item = makeImageItem(
-                itemIdentifier,
-                symbolName: "arrow.up.left.and.arrow.down.right",
-                label: "大图模式",
-                toolTip: "进入大图模式",
-                action: #selector(toggleImmersive(_:))
-            )
-            immersiveItem = item
-            configureImmersiveItem(item)
-            return item
-        case ItemID.filmstrip:
-            let item = makeImageItem(
-                itemIdentifier,
-                symbolName: "rectangle.bottomthird.inset.filled",
-                label: "缩略图",
-                toolTip: "显示/隐藏缩略图",
-                action: #selector(toggleFilmstrip(_:))
-            )
-            filmstripItem = item
-            configureFilmstripItem(item)
-            return item
-        case ItemID.openOriginal:
-            let item = makeImageItem(
-                itemIdentifier,
-                symbolName: "safari",
-                label: "原始位置",
-                toolTip: "打开原始页面或在 Finder 中显示",
-                action: #selector(openOriginal(_:))
-            )
-            openOriginalItem = item
-            configureOpenOriginalItem(item)
-            return item
-        case ItemID.save:
-            return makeImageItem(
-                itemIdentifier,
-                symbolName: "square.and.arrow.down",
-                label: "保存",
-                toolTip: "保存当前大图",
-                action: #selector(saveDetail(_:))
-            )
         case ItemID.cacheLimit:
             let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "缓存容量"
             item.paletteLabel = "缓存容量"
             item.image = NSImage(systemSymbolName: "internaldrive", accessibilityDescription: "缓存容量")
             item.menu = makeCacheLimitMenu()
+            item.visibilityPriority = .low
             cacheLimitItem = item
             return item
         case ItemID.importFolder:
@@ -260,6 +192,7 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             item.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: "导入目录")
             item.target = self
             item.action = #selector(importFolder(_:))
+            item.visibilityPriority = .standard
             return item
         default:
             return nil
@@ -283,33 +216,6 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
     @objc private func toggleDetailPane(_ sender: Any?) {
         appContext.detailPaneController.toggle()
         configureDetailPaneItem(detailPaneItem)
-    }
-
-    @objc private func resetDetailZoom(_ sender: Any?) {
-        appContext.toolbarContext.resetDetailZoom(for: currentModuleID)
-    }
-
-    @objc private func toggleImmersive(_ sender: Any?) {
-        toggleImmersiveAction()
-        configureImmersiveItem(immersiveItem)
-    }
-
-    @objc private func toggleFilmstrip(_ sender: Any?) {
-        appContext.toolbarContext.toggleFilmstrip()
-        configureFilmstripItem(filmstripItem)
-    }
-
-    @objc private func openOriginal(_ sender: Any?) {
-        switch currentModuleID {
-        case .fourKHDGallery:
-            appContext.toolbarContext.openOriginalPage()
-        case .localLibrary:
-            appContext.toolbarContext.revealInFinder()
-        }
-    }
-
-    @objc private func saveDetail(_ sender: Any?) {
-        appContext.toolbarContext.saveSelectedDetail(for: currentModuleID)
     }
 
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
@@ -347,9 +253,6 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
         updateLayoutControl()
         updateRefreshItem()
         configureDetailPaneItem(detailPaneItem)
-        configureImmersiveItem(immersiveItem)
-        configureFilmstripItem(filmstripItem)
-        configureOpenOriginalItem(openOriginalItem)
     }
 
     private func updateSearchField() {
@@ -400,55 +303,6 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
             accessibilityDescription: isPresented ? "隐藏详情区" : "显示详情区"
         )
         item.toolTip = isPresented ? "隐藏右侧详情区" : "显示右侧详情区"
-    }
-
-    private func configureImmersiveItem(_ item: NSToolbarItem?) {
-        guard let item else { return }
-        let immersive = isImmersive()
-        item.image = NSImage(
-            systemSymbolName: immersive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-            accessibilityDescription: immersive ? "退出大图模式" : "进入大图模式"
-        )
-        item.toolTip = immersive ? "退出大图模式" : "进入大图模式"
-    }
-
-    private func configureFilmstripItem(_ item: NSToolbarItem?) {
-        guard let item else { return }
-        let isPresented = appContext.toolbarContext.isFilmstripPresented
-        item.image = NSImage(
-            systemSymbolName: isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle",
-            accessibilityDescription: isPresented ? "隐藏缩略图" : "显示缩略图"
-        )
-        item.toolTip = isPresented ? "隐藏缩略图" : "显示缩略图"
-    }
-
-    private func configureOpenOriginalItem(_ item: NSToolbarItem?) {
-        guard let item else { return }
-        switch currentModuleID {
-        case .fourKHDGallery:
-            item.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "打开原网页")
-            item.toolTip = "打开原网页"
-        case .localLibrary:
-            item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "在 Finder 中显示")
-            item.toolTip = "在 Finder 中显示"
-        }
-    }
-
-    private func makeImageItem(
-        _ identifier: NSToolbarItem.Identifier,
-        symbolName: String,
-        label: String,
-        toolTip: String,
-        action: Selector
-    ) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: identifier)
-        item.label = label
-        item.paletteLabel = label
-        item.toolTip = toolTip
-        item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)
-        item.target = self
-        item.action = action
-        return item
     }
 
     private func makeCacheLimitMenu() -> NSMenu {

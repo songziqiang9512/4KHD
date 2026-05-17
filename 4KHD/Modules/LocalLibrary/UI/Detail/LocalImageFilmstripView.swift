@@ -103,7 +103,7 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
     }
 
     private func updateAppearance() {
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.72).cgColor
+        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
     }
 
     private func syncSelection() {

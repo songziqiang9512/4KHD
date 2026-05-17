@@ -32,7 +32,9 @@ final class GalleryZoomableImageView: NSView {
 
     override func layout() {
         super.layout()
-        fitImage(resetMagnification: false)
+        if abs(scrollView.magnification - 1) < 0.001 {
+            fitImage(resetMagnification: false)
+        }
     }
 
     func setImageURL(_ url: URL?) {

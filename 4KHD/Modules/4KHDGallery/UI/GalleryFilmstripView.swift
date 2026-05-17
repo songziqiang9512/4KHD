@@ -114,7 +114,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     }
 
     private func updateAppearance() {
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.72).cgColor
+        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
     }
 }
 

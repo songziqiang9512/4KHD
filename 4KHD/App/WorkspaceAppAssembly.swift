@@ -30,12 +30,8 @@ enum WorkspaceAppAssembly {
         let toolbarContext = WorkspaceToolbarContext(
             galleryStore: fourKHDGalleryStore,
             galleryPreferences: galleryPreferences,
-            galleryDetailInteraction: galleryDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
-            localDetailInteraction: localDetailInteraction,
-            localInspector: localInspector,
-            filmstripVisibility: filmstripVisibility,
             importRootFolderAction: importRootFolderAction
         )
         let routeController = WorkspaceRouteController(

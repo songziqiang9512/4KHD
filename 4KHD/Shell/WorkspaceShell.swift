@@ -127,10 +127,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         sidebarItem.isCollapsed
     }
 
-    var isImmersiveMode: Bool {
-        immersive.isImmersive
-    }
-
     init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
         sidebarToggleRelay = SidebarToggleRelay()
@@ -209,10 +205,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         toggleSidebar()
     }
 
-    func toggleImmersiveMode() {
-        immersive.toggle()
-    }
-
     private func installObservers() {
         routeObserverID = appContext.routeController.addObserver { [weak self] route in
             self?.reloadColumns(for: route)
@@ -260,12 +252,19 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private func applyDetailPaneVisibility(_ isPresented: Bool) {
         UserDefaults.standard.set(isPresented, forKey: WorkspaceDetailPaneController.defaultsKey)
         guard !immersive.isImmersive else { return }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0
-            detailItem.animator().isCollapsed = !isPresented
+        if isPresented {
+            contentItem.maximumThickness = 430
+            contentItem.preferredThicknessFraction = 0.28
+        } else {
+            contentItem.preferredThicknessFraction = 0.34
+            contentItem.maximumThickness = expandedContentMaximumThickness
         }
-        contentItem.maximumThickness = isPresented ? 430 : 10_000
+        detailItem.isCollapsed = !isPresented
         splitView.adjustSubviews()
+    }
+
+    private var expandedContentMaximumThickness: CGFloat {
+        max(720, splitView.bounds.width - sidebarItem.minimumThickness)
     }
 
     private func applyImmersiveState(_ immersive: ImmersiveController) {
