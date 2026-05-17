@@ -1,20 +1,16 @@
 import AppKit
-import SwiftUI
+import Observation
 
 // MARK: - Immersive 控制器（窗内大图模式）
 
-/// 共享给详情面板的沉浸模式控制器。
-/// 用 Swift 5.9 的 `@Observable` —— SwiftUI 只在真正读过的字段变化时重渲染，
-/// 既消除 `Combine` 的耦合，也避免了之前用 `ObservableObject` 时偶发的工具栏不可靠问题。
 @MainActor
 @Observable
 final class ImmersiveController {
+    @ObservationIgnored private var observers: [UUID: (ImmersiveController) -> Void] = [:]
+
     var isImmersive: Bool = false
-    var columnVisibility: NavigationSplitViewVisibility = .all
     var peekRevealing: Bool = false
     var isToolbarVisible: Bool = true
-
-    @ObservationIgnored private var nonImmersiveVisibility: NavigationSplitViewVisibility = .all
     @ObservationIgnored private var peekHideWorkItem: DispatchWorkItem?
 
     func toggle() {
@@ -23,50 +19,38 @@ final class ImmersiveController {
 
     func set(_ on: Bool) {
         if on {
-            if !isImmersive { nonImmersiveVisibility = columnVisibility }
             peekHideWorkItem?.cancel()
-            withAnimation(.easeInOut(duration: 0.22)) {
-                isImmersive = true
-                peekRevealing = false
-                isToolbarVisible = false
-                // 让 NavigationSplitView 把 sidebar + content 一起收掉，detail 占满。
-                columnVisibility = .detailOnly
-            }
+            isImmersive = true
+            peekRevealing = false
+            isToolbarVisible = false
         } else {
             peekHideWorkItem?.cancel()
-            withAnimation(.easeInOut(duration: 0.22)) {
-                isImmersive = false
-                peekRevealing = false
-                isToolbarVisible = true
-                columnVisibility = nonImmersiveVisibility
-            }
+            isImmersive = false
+            peekRevealing = false
+            isToolbarVisible = true
         }
+        notifyObservers()
     }
 
-    /// 鼠标贴到屏幕左边缘触发条 → 滑出侧栏 + 中栏。
     func revealColumns() {
         guard isImmersive else { return }
         peekHideWorkItem?.cancel()
-        withAnimation(.easeInOut(duration: 0.22)) {
-            peekRevealing = true
-        }
+        peekRevealing = true
+        notifyObservers()
     }
 
-    /// 鼠标离开侧栏 / 中栏 → 0.4s 后再收回，避免分隔条上抖动。
     func handleColumnHover(_ hovering: Bool) {
         guard isImmersive else { return }
         peekHideWorkItem?.cancel()
         if hovering {
-            withAnimation(.easeInOut(duration: 0.22)) {
-                peekRevealing = true
-            }
+            peekRevealing = true
+            notifyObservers()
             return
         }
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.isImmersive else { return }
-            withAnimation(.easeInOut(duration: 0.22)) {
-                self.peekRevealing = false
-            }
+            self.peekRevealing = false
+            self.notifyObservers()
         }
         peekHideWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
@@ -75,15 +59,30 @@ final class ImmersiveController {
     func handleToolbarPointer(isNearTop: Bool) {
         guard isImmersive else { return }
         if isNearTop {
-            withAnimation(.easeInOut(duration: 0.14)) {
-                isToolbarVisible = true
-            }
+            isToolbarVisible = true
+            notifyObservers()
             return
         }
 
         guard isToolbarVisible else { return }
-        withAnimation(.easeInOut(duration: 0.14)) {
-            isToolbarVisible = false
+        isToolbarVisible = false
+        notifyObservers()
+    }
+
+    func addObserver(_ observer: @escaping (ImmersiveController) -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = observer
+        observer(self)
+        return id
+    }
+
+    func removeObserver(id: UUID) {
+        observers.removeValue(forKey: id)
+    }
+
+    private func notifyObservers() {
+        for observer in observers.values {
+            observer(self)
         }
     }
 }
@@ -106,367 +105,451 @@ final class SidebarDisclosureState {
     }
 }
 
-/// macOS 三段式工作区外壳。普通状态使用 `NavigationSplitView`；进入沉浸模式后切换
-/// 到一张 detail 占满窗口的布局，左缘鼠标触发条会把侧栏 / 中栏作为浮层滑出来。
-struct WorkspaceShell: View {
-    @Environment(WorkspaceAppContext.self) private var appContext
-    @Environment(\.scenePhase) private var scenePhase
-    @AppStorage(OnlineCacheLimit.defaultsKey) private var onlineCacheLimitRaw = OnlineCacheLimit.gb1.rawValue
-    @AppStorage("com.songziqiang.4khd.detailPanePresented.v1") private var detailPanePresentedRaw = true
-    // @State 持有 @Observable 子对象 —— SwiftUI 会复用同一实例。
-    @State private var immersive = ImmersiveController()
-    @State private var detailPane = WorkspaceDetailPaneController()
-    @State private var sidebarDisclosure = SidebarDisclosureState()
-    @State private var didBootstrap = false
+@MainActor
+final class WorkspaceSplitViewController: NSSplitViewController {
+    private let appContext: WorkspaceAppContext
+    private let immersive = ImmersiveController()
+    private let sidebarDisclosure = SidebarDisclosureState()
+    private let sidebarToggleRelay: SidebarToggleRelay
+    private let sidebarController: WorkspaceSidebarViewController
+    private let contentController: WorkspaceColumnHostController
+    private let detailController: WorkspaceColumnHostController
+    private let sidebarItem: NSSplitViewItem
+    private let contentItem: NSSplitViewItem
+    private let detailItem: NSSplitViewItem
+    private var routeObserverID: UUID?
+    private var detailObserverID: UUID?
+    private var immersiveObserverID: UUID?
+    private var toolbarMonitor: Any?
+    private var didBootstrap = false
 
-    @SceneStorage("com.songziqiang.4khd.sidebarSelection")
-    private var storedSelection: String = ""
-
-    private var selection: WorkspaceRoute {
-        if let route = WorkspaceRoute(rawValue: storedSelection) {
-            return route
-        }
-        return appContext.moduleRegistry.defaultRoute()
+    var isSidebarCollapsed: Bool {
+        sidebarItem.isCollapsed
     }
 
-    private var selectionBinding: Binding<WorkspaceRoute?> {
-        Binding(
-            get: { selection },
-            set: { newValue in
-                guard let newValue else { return }
-                let normalized = appContext.moduleRegistry.normalizedRoute(newValue)
-                storedSelection = normalized.rawValue
-                DispatchQueue.main.async {
-                    apply(normalized)
-                }
+    var isImmersiveMode: Bool {
+        immersive.isImmersive
+    }
+
+    init(appContext: WorkspaceAppContext) {
+        self.appContext = appContext
+        sidebarToggleRelay = SidebarToggleRelay()
+        sidebarController = WorkspaceSidebarViewController(appContext: appContext)
+        contentController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
+        detailController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
+        sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        contentItem = NSSplitViewItem(viewController: contentController)
+        detailItem = NSSplitViewItem(viewController: detailController)
+        super.init(nibName: nil, bundle: nil)
+        configureSplitItems()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.frame.size = NSSize(width: 1280, height: 820)
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        addSplitViewItem(sidebarItem)
+        addSplitViewItem(contentItem)
+        addSplitViewItem(detailItem)
+        installObservers()
+        bootstrapIfNeeded()
+    }
+
+    deinit {
+        if let routeObserverID {
+            let routeController = appContext.routeController
+            Task { @MainActor in
+                routeController.removeObserver(id: routeObserverID)
             }
+        }
+        if let detailObserverID {
+            let detailPaneController = appContext.detailPaneController
+            Task { @MainActor in
+                detailPaneController.removeObserver(id: detailObserverID)
+            }
+        }
+        if let immersiveObserverID {
+            let immersive = immersive
+            Task { @MainActor in
+                immersive.removeObserver(id: immersiveObserverID)
+            }
+        }
+        if let toolbarMonitor {
+            NSEvent.removeMonitor(toolbarMonitor)
+        }
+    }
+
+    private func configureSplitItems() {
+        sidebarItem.minimumThickness = 200
+        sidebarItem.maximumThickness = 240
+        sidebarItem.preferredThicknessFraction = 0.16
+        sidebarItem.canCollapse = true
+
+        contentItem.minimumThickness = 280
+        contentItem.maximumThickness = 430
+        contentItem.preferredThicknessFraction = 0.28
+        contentItem.canCollapse = true
+
+        detailItem.minimumThickness = 560
+        detailItem.canCollapse = true
+    }
+
+    func toggleSidebar() {
+        sidebarItem.animator().isCollapsed.toggle()
+        splitView.adjustSubviews()
+    }
+
+    @objc func toggleWorkspaceSidebar(_ sender: Any?) {
+        toggleSidebar()
+    }
+
+    func toggleImmersiveMode() {
+        immersive.toggle()
+    }
+
+    private func installObservers() {
+        routeObserverID = appContext.routeController.addObserver { [weak self] route in
+            self?.reloadColumns(for: route)
+        }
+        detailObserverID = appContext.detailPaneController.addObserver { [weak self] isPresented in
+            self?.applyDetailPaneVisibility(isPresented)
+        }
+        immersiveObserverID = immersive.addObserver { [weak self] immersive in
+            self?.applyImmersiveState(immersive)
+        }
+        toolbarMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+            self?.handleToolbarPointer(event)
+            return event
+        }
+    }
+
+    private func bootstrapIfNeeded() {
+        guard !didBootstrap else { return }
+        didBootstrap = true
+        let storedDetailValue = UserDefaults.standard.object(
+            forKey: WorkspaceDetailPaneController.defaultsKey
+        ) as? Bool
+        appContext.detailPaneController.setPresented(storedDetailValue ?? true)
+        CookieBridge.shared.start()
+        appContext.routeController.applyCurrentRoute()
+        appContext.moduleRegistry.bootstrapModules()
+    }
+
+    private func reloadColumns(for route: WorkspaceRoute) {
+        sidebarController.reload()
+        let moduleContext = WorkspaceModuleControllerContext(
+            appContext: appContext,
+            immersive: immersive,
+            detailPaneController: appContext.detailPaneController,
+            sidebarDisclosure: sidebarDisclosure
+        )
+        contentController.setContentController(
+            appContext.moduleRegistry.contentController(for: route, context: moduleContext)
+        )
+        detailController.setContentController(
+            appContext.moduleRegistry.detailController(for: route, context: moduleContext)
         )
     }
 
-    var body: some View {
-        // 在 body 内 shadow 一份 @Bindable，给需要 $... 写法的地方提供 binding。
-        @Bindable var immersive = immersive
-        return Group {
-            if immersive.isImmersive {
-                detailColumn
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                NavigationSplitView(columnVisibility: $immersive.columnVisibility) {
-                    WorkspaceSidebar(selection: selectionBinding, importRootFolder: importRootFolder)
-                        .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
-                } content: {
-                    contentColumn
-                        .navigationSplitViewColumnWidth(
-                            min: 280,
-                            ideal: detailPane.preferredContentIdealWidth,
-                            max: detailPane.preferredContentMaxWidth
-                        )
-                } detail: {
-                    detailColumn
-                        .navigationSplitViewColumnWidth(min: 560, ideal: 900)
-                }
-                .navigationSplitViewStyle(.balanced)
-            }
-        }
-        .frame(minWidth: 1080, minHeight: 700)
-        .overlay(alignment: .leading) {
-            immersivePeekChrome
-        }
-        .background {
-            ZStack {
-                ImmersiveToolbarMouseTracker(immersive: immersive)
-                ImmersiveWindowToolbarVisibilityController(
-                    isImmersive: immersive.isImmersive,
-                    isToolbarVisible: immersive.isToolbarVisible
-                )
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                WorkspaceToolbarSearchGroup(route: selection)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    ForEach(OnlineCacheLimit.allCases) { limit in
-                        Button {
-                            onlineCacheLimitRaw = limit.rawValue
-                            RemoteImagePipeline.shared.applyCacheLimit(limit)
-                        } label: {
-                            if selectedOnlineCacheLimit == limit {
-                                Label(limit.title, systemImage: "checkmark")
-                            } else {
-                                Text(limit.title)
-                            }
-                        }
-                    }
-                } label: {
-                    Label("缓存容量", systemImage: "internaldrive")
-                }
-                .help("设置在线图片磁盘缓存容量")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    chooseAndImportRootFolder()
-                } label: {
-                    Label("导入目录", systemImage: "folder.badge.plus")
-                }
-                .help("导入本地图片文件夹")
-            }
-        }
-        .environment(immersive)
-        .environment(detailPane)
-        .environment(sidebarDisclosure)
-        .task {
-            guard !didBootstrap else { return }
-            didBootstrap = true
-            detailPane.setPresented(detailPanePresentedRaw)
-            applyDetailPaneVisibility()
-            // 让 WKWebView 的 cookie（CF / 站点会话）同步给 URLSession，
-            // 后续子页面解析走 URLSession 直拉也带得上同一张票。
-            CookieBridge.shared.start()
-            let normalized = appContext.moduleRegistry.normalizedRoute(selection)
-            if storedSelection != normalized.rawValue {
-                storedSelection = normalized.rawValue
-            }
-            apply(normalized)
-            appContext.moduleRegistry.bootstrapModules()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                DetailPageImageCache.shared.flush()
-            }
-        }
-        .onChange(of: detailPane.isPresented) { _, isPresented in
-            detailPanePresentedRaw = isPresented
-            applyDetailPaneVisibility()
-        }
-        .onChange(of: immersive.isImmersive) { _, isImmersive in
-            if !isImmersive {
-                applyDetailPaneVisibility()
-            }
-        }
-    }
-
-    /// 沉浸态独有的两层 overlay：左缘 6pt 触发条 + 鼠标滑近时浮出的 sidebar/content 面板。
-    /// 浮层独立挂在最上面，不挤占 detail 列；离开沉浸时整层消失。
-    @ViewBuilder
-    private var immersivePeekChrome: some View {
-        if immersive.isImmersive {
-            ZStack(alignment: .leading) {
-                // 占位层撑开 ZStack 的尺寸，让浮层和触发条拿到正确的 maxHeight；
-                // 但必须关掉命中，否则会把整张窗口的点击都吞掉。
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false)
-
-                if immersive.peekRevealing {
-                    HStack(spacing: 0) {
-                        WorkspaceSidebar(selection: selectionBinding, importRootFolder: importRootFolder)
-                            .frame(width: 240)
-                            .background(.bar)
-                        Divider()
-                        contentColumn
-                            .frame(width: 320)
-                            .background(.background)
-                        Divider()
-                    }
-                    .frame(maxHeight: .infinity)
-                    .shadow(color: .black.opacity(0.25), radius: 12, x: 4, y: 0)
-                    .transition(.move(edge: .leading))
-                    .onHover { hovering in immersive.handleColumnHover(hovering) }
-                } else {
-                    // 6pt 隐形左缘触发条 —— 鼠标贴边时再把 peek 浮层吊出来。
-                    Color.clear
-                        .frame(width: 6, height: nil)
-                        .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .onHover { hovering in
-                            if hovering { immersive.revealColumns() }
-                        }
-                }
-            }
-            .allowsHitTesting(true)
-        }
-    }
-
-    @ViewBuilder
-    private var contentColumn: some View {
-        appContext.moduleRegistry.contentView(for: selection)
-    }
-
-    @ViewBuilder
-    private var detailColumn: some View {
-        appContext.moduleRegistry.detailView(for: selection)
-    }
-
-    private func apply(_ selection: WorkspaceRoute) {
-        appContext.moduleRegistry.apply(selection)
-    }
-
-    private func applyDetailPaneVisibility() {
+    private func applyDetailPaneVisibility(_ isPresented: Bool) {
+        UserDefaults.standard.set(isPresented, forKey: WorkspaceDetailPaneController.defaultsKey)
         guard !immersive.isImmersive else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
-            immersive.columnVisibility = detailPane.isPresented ? .all : .doubleColumn
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            detailItem.animator().isCollapsed = !isPresented
+        }
+        contentItem.maximumThickness = isPresented ? 430 : 10_000
+        splitView.adjustSubviews()
+    }
+
+    private func applyImmersiveState(_ immersive: ImmersiveController) {
+        view.window?.toolbar?.isVisible = !immersive.isImmersive || immersive.isToolbarVisible
+        if immersive.isImmersive {
+            sidebarItem.animator().isCollapsed = !immersive.peekRevealing
+            contentItem.animator().isCollapsed = !immersive.peekRevealing
+            detailItem.animator().isCollapsed = false
+        } else {
+            sidebarItem.animator().isCollapsed = false
+            contentItem.animator().isCollapsed = false
+            applyDetailPaneVisibility(appContext.detailPaneController.isPresented)
         }
     }
 
-    private var selectedOnlineCacheLimit: OnlineCacheLimit {
-        OnlineCacheLimit(rawValue: onlineCacheLimitRaw) ?? .gb1
+    private func handleToolbarPointer(_ event: NSEvent) {
+        guard immersive.isImmersive,
+              let window = event.window ?? NSApp.keyWindow,
+              window == view.window,
+              window.isKeyWindow else { return }
+        let topDistance = max(window.frame.height - event.locationInWindow.y, 0)
+        immersive.handleToolbarPointer(isNearTop: topDistance <= 72)
+        if event.locationInWindow.x <= 6 {
+            immersive.revealColumns()
+        }
+    }
+}
+
+private final class SidebarToggleRelay {
+    var toggleAction: (() -> Void)?
+
+    func toggle() {
+        toggleAction?()
+    }
+}
+
+@MainActor
+final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    private enum Node: Hashable {
+        case group(String)
+        case gallery(GallerySection)
+        case importLocal
+        case localFolder(LocalFolderNode)
+
+        var title: String {
+            switch self {
+            case .group(let title):
+                title
+            case .gallery(let section):
+                section.title
+            case .importLocal:
+                "导入本地目录"
+            case .localFolder(let folder):
+                folder.title
+            }
+        }
     }
 
-    private func importRootFolder() {
-        chooseAndImportRootFolder()
+    private let appContext: WorkspaceAppContext
+    private let rootView = NSView()
+    private let materialView = NSVisualEffectView()
+    private let outlineView = NSOutlineView()
+    private let scrollView = NSScrollView()
+    private var nodes: [Node] = []
+    private var childrenByNode: [Node: [Node]] = [:]
+    private var isObservingLocalLibrary = false
+
+    init(appContext: WorkspaceAppContext) {
+        self.appContext = appContext
+        super.init(nibName: nil, bundle: nil)
     }
 
-    private func chooseAndImportRootFolder() {
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func loadView() {
+        materialView.material = .sidebar
+        materialView.blendingMode = .behindWindow
+        materialView.state = .active
+
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("MainColumn"))
+        outlineView.addTableColumn(column)
+        outlineView.outlineTableColumn = column
+        outlineView.headerView = nil
+        outlineView.rowSizeStyle = .default
+        outlineView.style = .sourceList
+        outlineView.dataSource = self
+        outlineView.delegate = self
+        outlineView.target = self
+        outlineView.action = #selector(selectionDidChange(_:))
+        outlineView.doubleAction = #selector(doubleClick(_:))
+        scrollView.documentView = outlineView
+
+        rootView.addSubview(materialView)
+        rootView.addSubview(scrollView)
+        materialView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            materialView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            materialView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            materialView.topAnchor.constraint(equalTo: rootView.topAnchor),
+            materialView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+
+            scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: rootView.safeAreaLayoutGuide.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
+        ])
+        view = rootView
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        reload()
+        observeLocalLibrary()
+    }
+
+    func reload() {
+        rebuildNodes()
+        outlineView.reloadData()
+        for node in nodes {
+            outlineView.expandItem(node)
+        }
+        selectCurrentRoute()
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        if let node = item as? Node {
+            return childrenByNode[node]?.count ?? 0
+        }
+        return nodes.count
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if let node = item as? Node {
+            return childrenByNode[node]?[index] ?? Node.group("")
+        }
+        return nodes[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        guard let node = item as? Node else { return false }
+        return !(childrenByNode[node]?.isEmpty ?? true)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+        guard let node = item as? Node else { return false }
+        if case .group = node { return true }
+        return false
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        viewFor tableColumn: NSTableColumn?,
+        item: Any
+    ) -> NSView? {
+        guard let node = item as? Node else { return nil }
+        let identifier = NSUserInterfaceItemIdentifier("SidebarCell")
+        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
+            ?? NSTableCellView()
+        cell.identifier = identifier
+        cell.textField = cell.textField ?? NSTextField(labelWithString: "")
+        if cell.textField?.superview == nil, let textField = cell.textField {
+            textField.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(textField)
+            NSLayoutConstraint.activate([
+                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+        }
+        cell.textField?.stringValue = title(for: node)
+        cell.textField?.font = font(for: node)
+        cell.imageView?.image = nil
+        return cell
+    }
+
+    @objc private func selectionDidChange(_ sender: Any?) {
+        let selectedRow = outlineView.selectedRow
+        guard selectedRow >= 0,
+              let node = outlineView.item(atRow: selectedRow) as? Node else { return }
+        switch node {
+        case .gallery(let section):
+            appContext.routeController.select(
+                WorkspaceRoute(moduleID: .fourKHDGallery, itemID: section.rawValue)
+            )
+        case .localFolder(let folder):
+            appContext.routeController.select(
+                WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
+            )
+        case .importLocal:
+            appContext.importRootFolder()
+        case .group:
+            break
+        }
+    }
+
+    @objc private func doubleClick(_ sender: Any?) {
+        let clickedRow = outlineView.clickedRow
+        guard clickedRow >= 0,
+              let node = outlineView.item(atRow: clickedRow) as? Node,
+              case .importLocal = node else { return }
         appContext.importRootFolder()
     }
-}
 
-private struct ImmersiveWindowToolbarVisibilityController: NSViewRepresentable {
-    let isImmersive: Bool
-    let isToolbarVisible: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = WindowProbeView(frame: .zero)
-        view.onWindowChanged = { window in
-            context.coordinator.apply(to: window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
+    private func rebuildNodes() {
+        childrenByNode = [:]
+        let online = Node.group("线上")
+        let local = Node.group("本地")
+        nodes = [online, local]
+        childrenByNode[online] = GallerySection.allCases.map(Node.gallery)
+        if appContext.localLibraryStore.roots.isEmpty {
+            childrenByNode[local] = [.importLocal]
+        } else {
+            childrenByNode[local] = appContext.localLibraryStore.roots.map { makeFolderNode($0.tree) }
         }
-        return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.apply(to: nsView.window, isImmersive: isImmersive, isToolbarVisible: isToolbarVisible)
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.restore()
-    }
-
-    final class Coordinator {
-        private weak var window: NSWindow?
-        private var originalToolbarVisibility: Bool?
-
-        func apply(to window: NSWindow?, isImmersive: Bool, isToolbarVisible: Bool) {
-            guard let window else { return }
-            captureOriginalStateIfNeeded(window)
-            self.window = window
-
-            let shouldShowChrome = !isImmersive || isToolbarVisible
-            if window.toolbar?.isVisible != shouldShowChrome {
-                window.toolbar?.isVisible = shouldShowChrome
-            }
-        }
-
-        func restore() {
-            guard let window else { return }
-            if let originalToolbarVisibility {
-                window.toolbar?.isVisible = originalToolbarVisibility
-            }
-        }
-
-        private func captureOriginalStateIfNeeded(_ window: NSWindow) {
-            if originalToolbarVisibility == nil {
-                originalToolbarVisibility = window.toolbar?.isVisible
+    private func observeLocalLibrary() {
+        guard !isObservingLocalLibrary else { return }
+        isObservingLocalLibrary = true
+        withObservationTracking {
+            _ = appContext.localLibraryStore.roots
+            _ = appContext.localLibraryStore.selectedFolderID
+            _ = appContext.localLibraryStore.isScanning
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isObservingLocalLibrary = false
+                self.reload()
+                self.observeLocalLibrary()
             }
         }
     }
 
-    private final class WindowProbeView: NSView {
-        var onWindowChanged: ((NSWindow?) -> Void)?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            onWindowChanged?(window)
-        }
-    }
-}
-
-private struct ImmersiveToolbarMouseTracker: NSViewRepresentable {
-    let immersive: ImmersiveController
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(immersive: immersive)
+    private func makeFolderNode(_ folder: LocalFolderNode) -> Node {
+        let node = Node.localFolder(folder)
+        childrenByNode[node] = folder.folders.map(makeFolderNode)
+        return node
     }
 
-    func makeNSView(context: Context) -> NSView {
-        context.coordinator.install()
-        return NSView(frame: .zero)
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.immersive = immersive
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.uninstall()
-    }
-
-    final class Coordinator {
-        var immersive: ImmersiveController
-        private var monitor: Any?
-        private let revealDistanceFromTop: CGFloat = 72
-
-        init(immersive: ImmersiveController) {
-            self.immersive = immersive
-        }
-
-        deinit {
-            uninstall()
-        }
-
-        func install() {
-            guard monitor == nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-                self?.handle(event)
-                return event
+    private func selectCurrentRoute() {
+        let route = appContext.routeController.route
+        for row in 0 ..< outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? Node else { continue }
+            if routeMatches(route, node: node) {
+                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                return
             }
         }
+    }
 
-        func uninstall() {
-            if let monitor {
-                NSEvent.removeMonitor(monitor)
-                self.monitor = nil
-            }
-        }
-
-        private func handle(_ event: NSEvent) {
-            guard immersive.isImmersive,
-                  let window = event.window ?? NSApp.keyWindow,
-                  window.isKeyWindow else { return }
-
-            let topDistance = max(window.frame.height - event.locationInWindow.y, 0)
-            immersive.handleToolbarPointer(isNearTop: topDistance <= revealDistanceFromTop)
+    private func routeMatches(_ route: WorkspaceRoute, node: Node) -> Bool {
+        switch (route.moduleID, node) {
+        case (.fourKHDGallery, .gallery(let section)):
+            route.itemID == section.rawValue
+        case (.localLibrary, .localFolder(let folder)):
+            route.itemID == folder.id
+        default:
+            false
         }
     }
-}
 
-// MARK: - Sidebar
-
-struct WorkspaceSidebar: View {
-    @Environment(WorkspaceAppContext.self) private var appContext
-    @Binding var selection: WorkspaceRoute?
-    let importRootFolder: () -> Void
-
-    var body: some View {
-        List(selection: $selection) {
-            ForEach(appContext.moduleRegistry.modules, id: \.id) { module in
-                if let section = appContext.moduleRegistry.sidebarSection(
-                    for: module.id,
-                    selection: $selection,
-                    importRootFolder: importRootFolder
-                ) {
-                    section
-                }
-            }
+    private func title(for node: Node) -> String {
+        switch node {
+        case .localFolder(let folder):
+            "\(folder.title)  \(folder.imageCount)"
+        default:
+            node.title
         }
-        .listStyle(.sidebar)
-        .navigationTitle("4KHD")
+    }
+
+    private func font(for node: Node) -> NSFont {
+        switch node {
+        case .group:
+            NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        default:
+            NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        }
     }
 }

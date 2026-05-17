@@ -1,5 +1,6 @@
+import AppKit
+import Foundation
 import Nuke
-import SwiftUI
 import ImageIO
 
 enum OnlineCacheLimit: String, CaseIterable, Identifiable {
@@ -36,90 +37,6 @@ enum OnlineCacheLimit: String, CaseIterable, Identifiable {
     static var current: OnlineCacheLimit {
         let rawValue = UserDefaults.standard.string(forKey: defaultsKey) ?? OnlineCacheLimit.gb1.rawValue
         return OnlineCacheLimit(rawValue: rawValue) ?? .gb1
-    }
-}
-
-struct RemoteImageView<Placeholder: View>: View {
-    let url: URL?
-    let contentMode: ContentMode
-    let priority: TaskPriority
-    let remoteMaxPixelSize: CGFloat?
-    let localMaxPixelSize: CGFloat?
-    let remoteRequestConfigurator: ((inout URLRequest) -> Void)?
-    @ViewBuilder let placeholder: () -> Placeholder
-    let onLoaded: () -> Void
-    let onImageLoaded: (NSImage) -> Void
-    @State private var image: NSImage?
-    @State private var loadedURL: URL?
-    @State private var imageTask: ImageTask?
-
-    init(
-        url: URL?,
-        contentMode: ContentMode,
-        priority: TaskPriority = .utility,
-        remoteMaxPixelSize: CGFloat? = nil,
-        localMaxPixelSize: CGFloat? = nil,
-        remoteRequestConfigurator: ((inout URLRequest) -> Void)? = nil,
-        onLoaded: @escaping () -> Void = {},
-        onImageLoaded: @escaping (NSImage) -> Void = { _ in },
-        @ViewBuilder placeholder: @escaping () -> Placeholder
-    ) {
-        self.url = url
-        self.contentMode = contentMode
-        self.priority = priority
-        self.remoteMaxPixelSize = remoteMaxPixelSize
-        self.localMaxPixelSize = localMaxPixelSize
-        self.remoteRequestConfigurator = remoteRequestConfigurator
-        self.onLoaded = onLoaded
-        self.onImageLoaded = onImageLoaded
-        self.placeholder = placeholder
-    }
-
-    var body: some View {
-        ZStack {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-            } else {
-                placeholder()
-            }
-        }
-        .task(id: url, priority: priority) {
-            imageTask?.cancel()
-            guard loadedURL != url else { return }
-            loadedURL = url
-            image = nil
-            guard let url else { return }
-            if url.isFileURL {
-                let loadedImage = await LocalImageCache.shared.image(for: url, maxPixelSize: localMaxPixelSize)
-                guard loadedURL == url else { return }
-                if let loadedImage {
-                    image = loadedImage
-                    onImageLoaded(loadedImage)
-                    onLoaded()
-                }
-                return
-            }
-            let request = RemoteImagePipeline.shared.request(
-                for: url,
-                priority: priority.nukePriority,
-                maxPixelSize: remoteMaxPixelSize,
-                configureURLRequest: remoteRequestConfigurator
-            )
-            imageTask = RemoteImagePipeline.shared.loadImage(with: request) { loadedImage in
-                guard loadedURL == url else { return }
-                image = loadedImage
-                if let loadedImage {
-                    onImageLoaded(loadedImage)
-                    onLoaded()
-                }
-            }
-        }
-        .onDisappear {
-            imageTask?.cancel()
-            imageTask = nil
-        }
     }
 }
 
@@ -316,24 +233,5 @@ private extension NSImage {
     nonisolated var cacheCost: Int {
         guard let representation = representations.first else { return 1 }
         return max(representation.pixelsWide * representation.pixelsHigh * 4, 1)
-    }
-}
-
-private extension TaskPriority {
-    var nukePriority: ImageRequest.Priority {
-        switch self {
-        case .high, .userInitiated:
-            .veryHigh
-        case .medium:
-            .high
-        case .utility:
-            .normal
-        case .low:
-            .low
-        case .background:
-            .veryLow
-        default:
-            .normal
-        }
     }
 }

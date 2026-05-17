@@ -1,0 +1,131 @@
+import AppKit
+
+@MainActor
+final class LocalZoomableImageView: NSView {
+    private let scrollView = NSScrollView()
+    private let documentView = NSView()
+    private let imageView = NSImageView()
+    private let progressIndicator = NSProgressIndicator()
+    private var imageTask: Task<Void, Never>?
+    private var imageURL: URL?
+
+    var onDisplayed: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    deinit {
+        imageTask?.cancel()
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func layout() {
+        super.layout()
+        fitImage(resetMagnification: false)
+    }
+
+    func setImageURL(_ url: URL?) {
+        guard imageURL != url else { return }
+        imageURL = url
+        imageTask?.cancel()
+        imageView.image = nil
+        progressIndicator.isHidden = url == nil
+        if url != nil {
+            progressIndicator.startAnimation(nil)
+        }
+
+        guard let url else { return }
+        imageTask = Task { [weak self] in
+            let image = await LocalImageCache.shared.image(for: url, maxPixelSize: self?.maxPixelSize)
+            guard !Task.isCancelled else { return }
+            self?.display(image)
+        }
+    }
+
+    func resetZoom() {
+        fitImage(resetMagnification: true)
+    }
+
+    private func setupView() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+
+        scrollView.drawsBackground = false
+        scrollView.hasHorizontalScroller = true
+        scrollView.hasVerticalScroller = true
+        scrollView.allowsMagnification = true
+        scrollView.minMagnification = 0.05
+        scrollView.maxMagnification = 8
+        scrollView.autohidesScrollers = true
+
+        documentView.wantsLayer = true
+        documentView.layer?.backgroundColor = NSColor.black.cgColor
+        documentView.addSubview(imageView)
+
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.wantsLayer = true
+        imageView.layer?.backgroundColor = NSColor.black.cgColor
+        scrollView.documentView = documentView
+
+        progressIndicator.style = .spinning
+        progressIndicator.controlSize = .large
+        progressIndicator.isDisplayedWhenStopped = false
+
+        addSubview(scrollView)
+        addSubview(progressIndicator)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            progressIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
+            progressIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    private var maxPixelSize: CGFloat {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        return max(bounds.width, bounds.height) * scale
+    }
+
+    private func display(_ image: NSImage?) {
+        progressIndicator.stopAnimation(nil)
+        progressIndicator.isHidden = true
+        guard let image else { return }
+        imageView.image = image
+        fitImage(resetMagnification: true)
+        onDisplayed?()
+    }
+
+    private func fitImage(resetMagnification: Bool) {
+        guard let image = imageView.image, image.size.width > 0, image.size.height > 0 else { return }
+        let viewportSize = scrollView.contentView.bounds.size
+        guard viewportSize.width > 1, viewportSize.height > 1 else { return }
+
+        let fitScale = min(viewportSize.width / image.size.width, viewportSize.height / image.size.height)
+        let fittedSize = NSSize(width: image.size.width * fitScale, height: image.size.height * fitScale)
+        if resetMagnification {
+            scrollView.magnification = 1
+        }
+        documentView.frame = NSRect(origin: .zero, size: viewportSize)
+        imageView.frame = NSRect(
+            x: max((viewportSize.width - fittedSize.width) / 2, 0),
+            y: max((viewportSize.height - fittedSize.height) / 2, 0),
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+}

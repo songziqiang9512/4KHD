@@ -1,20 +1,21 @@
 # 4KHD
 
-4KHD 是一款 macOS 原生图片浏览软件，用来更稳定、更清晰地浏览 4KHD 网站上的图集内容。它会联网读取网站列表，在后台解析真实详情页，并用原生 SwiftUI 界面展示封面、缩略图、大图、分页、收藏和缓存状态。
+4KHD 是一款 macOS 原生图片浏览软件，用来更稳定、更清晰地浏览 4KHD 网站上的图集内容，并管理本地图片目录。应用界面已迁移为纯 AppKit 实现：主窗口、三栏工作区、侧边栏、工具栏、中栏列表/网格、右侧详情区和缩略图条都由 AppKit 原生控件承载。
 
 这个项目的目标不是把网站页面直接套进一个可见的 WebView，而是把网页解析层隐藏起来，只把最终的图片浏览体验交给原生界面处理。
 
 ## 功能特性
 
-- macOS 原生三栏图片浏览界面
+- macOS 原生三栏图片浏览界面，整体接近 Mail / Finder 的工作区布局
+- AppKit 原生 `NSToolbar`，包含侧边栏开关、列表/网格切换、刷新、详情区开关、大图控制、缓存容量、导入目录和搜索框
 - 联网读取 4KHD 站点栏目
   - 最新
   - 推荐
   - Cosplay
   - 写真
   - 收藏
-- 中栏常驻搜索入口
-- 图集列表展示封面、标题、图片数量、页数、收藏状态和缓存状态
+- 中栏支持列表 / 网格切换
+- 图集列表和网格展示封面、标题、图片数量、页数、收藏状态和缓存状态
 - 后台打开真实详情页并提取图片地址
 - 右侧大图浏览器
   - 上一张 / 下一张切换
@@ -22,10 +23,12 @@
   - 放大后触控板平移
   - 以鼠标位置为中心缩放
   - 实际大小显示
-  - 全屏看图模式
-  - 全屏下可隐藏顶部标题栏和底部缩略图栏
+  - 窗内大图模式
+  - 大图模式下可隐藏顶部工具栏和底部缩略图栏
 - 底部缩略图胶片条，支持自动翻页加载
 - 收藏图集，并持久保存详情页链接
+- 本地图片目录导入、扫描、搜索、列表/网格浏览
+- 本地图片详情浏览、Quick Look、Finder 定位
 - 本地详情页解析缓存
   - 已收藏图集永久缓存
   - 未收藏图集缓存 7 天
@@ -50,34 +53,38 @@ docs/screenshots/fullscreen-viewer.png
     -> 隐藏详情页解析器
     -> 标准化图片地址
     -> Nuke 图片加载管线
-    -> SwiftUI 原生图片浏览界面
+    -> AppKit 原生图片浏览界面
 ```
 
 主要模块：
 
-- `4KHD/Core/LibraryStore.swift`  
-  管理图集列表、栏目切换、搜索、收藏、详情选择、分页和缓存协调。
+- `4KHD/App/4KHDApp.swift`
+  AppKit 应用入口，使用 `NSApplicationDelegate`、`NSWindowController` 和原生 `NSToolbar` 创建主窗口。
 
-- `4KHD/Web/SiteListResolver.swift`  
-  解析网站列表页，生成图集条目。
+- `4KHD/Shell/WorkspaceShell.swift`
+  使用 `NSSplitViewController` 管理三栏工作区、侧边栏、详情区开合和大图模式。
 
-- `4KHD/Web/DetailPageHTMLResolver.swift` 和 `4KHD/Web/DetailImageResolverView.swift`  
-  在后台解析详情页，提取真实图片地址和分页链接，不直接显示网站页面。
+- `4KHD/Shell/WorkspaceModuleRegistry.swift`
+  统一模块接入面，由模块提供 AppKit `NSViewController`。
 
-- `4KHD/Core/DetailPageImageCache.swift`  
-  将详情页解析结果写入本地缓存。
+- `4KHD/Modules/4KHDGallery/`
+  在线图库模块，包含站点列表解析、详情页解析、收藏桥接、中栏 AppKit 列表/网格和右侧详情浏览。
 
-- `4KHD/UI/GalleryWorkspaceView.swift`  
-  实现三栏主界面、大图画布、底部缩略图条和全屏查看器。
+- `4KHD/Modules/LocalLibrary/`
+  本地图片模块，包含目录导入、metadata 读取、中栏 AppKit 列表/网格和右侧详情浏览。
 
-- `4KHD/UI/RemoteImageView.swift`  
-  封装 Nuke 图片加载，用于封面、缩略图和大图显示。
+- `4KHD/Modules/Favorites/`
+  收藏记录与收藏分组能力。
+
+- `4KHD/Shared/Services/RemoteImageView.swift`
+  封装 Nuke 图片加载 pipeline 和本地图片缓存，用于封面、缩略图和大图显示。
 
 ## 运行环境
 
 - macOS
 - Xcode
-- SwiftUI
+- Swift
+- AppKit
 - Swift Package Manager
 - 可访问 `https://www.4khd.com` 的网络环境
 
@@ -96,7 +103,7 @@ open 4KHD.xcodeproj
 也可以用命令行构建：
 
 ```bash
-xcodebuild -scheme 4KHD -configuration Debug -destination 'platform=macOS' build
+xcodebuild -scheme 4KHD -project 4KHD.xcodeproj -configuration Debug build
 ```
 
 ## 缓存位置
@@ -111,6 +118,7 @@ xcodebuild -scheme 4KHD -configuration Debug -destination 'platform=macOS' build
 
 ## 说明
 
+- 生产代码当前按 `0 SwiftUI` 目标维护；如需验证，可运行 `rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'`。
 - 软件依赖 4KHD 当前的网站结构。如果网站 HTML 发生变化，解析规则可能需要调整。
 - 软件不会随仓库分发网站图片内容，图片内容在运行时从网站读取。
 - 请遵守来源网站的访问规则、内容版权和使用限制。

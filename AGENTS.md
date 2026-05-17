@@ -81,14 +81,17 @@
 1. 顶层目录已完成收敛到 `App / Shell / Shared / Modules`。
 2. `App` 已承担场景组装职责，模块实例与 `WorkspaceModuleRegistry` 由装配层创建。
 3. `Shell` 已通过 `WorkspaceModuleRegistry` 渲染 sidebar / content / detail，不再直接创建具体模块 store。
-4. `Shared` 已承载通用图片加载缓存、cookie 桥接、详情共享 UI、平台桥接等公共能力。
-5. `Favorites` 已从直接持有 `GalleryItem` 的实现，收敛为只持有自己的收藏记录；业务模块自行桥接到各自模型。
+4. App 生命周期、主窗口、三栏工作区、source list、toolbar、中栏列表/网格和详情区均已迁移到 AppKit。
+5. `Shared` 已承载通用图片加载缓存、cookie 桥接、详情区状态、filmstrip 可见性和平台桥接等公共能力。
+6. `Favorites` 已从直接持有 `GalleryItem` 的实现，收敛为只持有自己的收藏记录；业务模块自行桥接到各自模型。
+7. 生产代码当前应保持 `0 SwiftUI`：不得重新引入 `import SwiftUI`、`NSHostingController`、`NSViewRepresentable`、`AnyView` 或 SwiftUI 状态机制。
 
 当前仍未完全完成的事项：
 
-1. `WorkspaceShell.swift` 仍偏大，侧栏与沉浸相关实现还在同文件内。
-2. 中栏网格体验仍分成在线 `SwiftUI` 网格与本地 `AppKit` 网格两套实现，后续若统一要优先收敛交互和布局行为，而不是先追求代码形式一致。
-3. 详情区开合、工具栏控制和中栏自动避让仍缺少壳层级统一状态。
+1. `WorkspaceShell.swift` 仍偏大，侧栏、split layout 和沉浸相关实现还在同文件内。
+2. Toolbar 仍集中在 `4KHDApp.swift` 内，后续若继续扩展应拆出壳层 toolbar host，而不是把模块按钮继续堆进入口文件。
+3. 中栏 AppKit 列表/网格体验已迁移完成，但在线模块和本地模块仍各自维护列表/网格实现；后续若统一，应优先统一交互和布局行为，而不是强行合并控件实现。
+4. 详情区开合、工具栏控制和中栏自动避让已有第一版壳层状态，但仍需要继续做手动验收和细节收敛。
 
 ## 5. 模块开发约束
 

@@ -61,8 +61,8 @@
 
 当前还需要继续关注：
 
-1. 模块 toolbar 仍主要分散在各 content / detail view 内，壳层还没有统一的 toolbar host。
-2. 路由表达虽然已经是 `moduleID + itemID`，但中栏与详情区联动状态还没有抽成专门的壳层布局状态。
+1. 全局 toolbar 已迁移为 AppKit `NSToolbar`，但实现仍集中在 `4KHDApp.swift` 内，还没有独立成 `WorkspaceToolbarHost`。
+2. 路由表达已经是 `moduleID + itemID`，中栏与详情区开合已有第一版壳层控制；后续重点是继续做 AppKit 行为验收和拆分壳层文件。
 
 #### 2.2.3 Shared 层已经建立，但中栏体验尚未统一
 
@@ -70,15 +70,15 @@
 
 1. `RemoteImagePipeline / LocalImageCache / DetailPageImageCache`
 2. `CookieBridge`
-3. `ZoomableImageCanvas`
-4. `HorizontalFilmstrip`
-5. 若干详情区共享控件与平台桥接
+3. `WorkspaceDetailPaneController`
+4. `FilmstripVisibilityController`
+5. `LocalQuickLookController / LocalDesktopWallpaperSetter`
 
 当前仍不统一的部分是中栏体验：
 
-1. 在线中栏网格是 `SwiftUI LazyVGrid`
-2. 本地中栏网格是 `AppKit NSCollectionView` 瀑布流
-3. 两者在代码形态和布局能力上不同，后续统一时应优先统一壳层行为和交互结果，而不是强行统一到底层实现。
+1. 在线中栏和本地中栏都已迁移为 AppKit。
+2. 在线模块和本地模块仍各自维护列表/网格实现。
+3. 后续统一时应优先统一壳层行为和交互结果，而不是强行统一到底层控件实现。
 
 #### 2.2.4 Favorites 已独立出记录模型，但还不是通用收藏平台
 
@@ -390,26 +390,19 @@ moduleID + moduleScopedSelectionPayload
 
 ## 6.4 Shared/UI
 
-这里放所有可跨模块复用的 UI 组件与交互件。
+这里放真正跨模块复用的 AppKit UI 组件与交互件。
 
-当前建议进入 Shared/UI 的有：
+当前状态：
 
-- `ZoomableImageCanvas`
-- `StepButton`
-- `DetailStatusBadge`
-- `DetailPlaceholder`
-- `KeyDownCatcher`
-- 共享的 filmstrip tile / 占位组件
-- 通用加载态 / 空态组件
+1. 旧的 SwiftUI `Shared/UI/Detail` 组件已删除。
+2. 线上详情和本地详情目前各自持有 AppKit zoom view / filmstrip view。
+3. `Shared/UI` 暂时没有稳定公共控件，不能为了“看起来通用”把单模块控件提前抽进来。
 
-当前 `SmallViews.swift` 可拆到这里，但不建议继续保持“大杂烩单文件”形式。
+后续只有在两个模块出现稳定重复实现时，再考虑抽取：
 
-建议按职责拆分成：
-
-- `ImagePlaceholders.swift`
-- `DetailControls.swift`
-- `KeyboardSupport.swift`
-- `StatusBadges.swift`
+- 通用 AppKit 图片 fit / zoom 容器
+- 通用 AppKit filmstrip item
+- 通用 AppKit 空态 / 加载态
 
 ## 6.5 Shared/Platform
 
@@ -419,7 +412,6 @@ moduleID + moduleScopedSelectionPayload
 
 - `LocalQuickLookController`
 - `LocalDesktopWallpaperSetter`
-- 各类 `NSViewRepresentable` 桥接
 - Finder 打开 / Reveal 支持
 - 将来如果有窗口行为桥接、toolbar bridge，也放这里
 
@@ -470,16 +462,17 @@ Modules/4KHDGallery/
   Services/
     SiteListResolver.swift
     DetailPageHTMLResolver.swift
-    DetailImageResolverView.swift
+    DetailImageResolver.swift
     GalleryRequestFactory.swift
     GalleryFavoritesBridge.swift
 
   UI/
-    GalleryContentList.swift
-    GalleryRow.swift
-    GalleryGridCard.swift
-    ImageDetailPane.swift
-    Filmstrip.swift
+    GalleryContentViewController.swift
+    GalleryContentViews.swift
+    GalleryGridContainerView.swift
+    GalleryImageDetailViewController.swift
+    GalleryZoomableImageView.swift
+    GalleryFilmstripView.swift
 ```
 
 ### 7.1.3 关于当前 FourKHDGalleryStore
@@ -525,16 +518,14 @@ Modules/LocalLibrary/
     LocalFileAvailabilityMonitor.swift
 
   UI/
-    LocalSidebar/
     Content/
-      LocalImageContentList.swift
-      LocalImageRow.swift
+      LocalImageContentViewController.swift
+      LocalImageContentViewController+Table.swift
     Detail/
-      LocalImageDetailPane.swift
-      LocalImageInfoView.swift
-      LocalImageInspectorOverlay.swift
+      LocalImageDetailViewController.swift
+      LocalZoomableImageView.swift
+      LocalImageFilmstripView.swift
     Grid/
-      LocalImageWaterfallGrid.swift
       LocalImageGridContainerView.swift
       LocalImageGridCollectionView.swift
       LocalImageGridLayout.swift
@@ -542,15 +533,18 @@ Modules/LocalLibrary/
       LocalImageGridSupport.swift
 ```
 
-### 7.2.3 对当前文件名的建议
+### 7.2.3 当前 UI 文件状态
 
-当前 `LocalImageContentList.swift` 实际包含的是中栏内容页，不只是 folder pane。
+旧的 `LocalImageContentList.swift` / `LocalImageRow.swift` / `LocalImageWaterfallGrid.swift` 已删除。
 
-建议重命名为：
+当前本地 UI 入口：
 
-- `LocalImageContentList.swift`
+1. `LocalImageContentViewController.swift` 负责中栏控制。
+2. `LocalImageContentViewController+Table.swift` 承载列表模式。
+3. `LocalImageGridContainerView.swift` 等文件承载网格模式。
+4. `LocalImageDetailViewController.swift`、`LocalZoomableImageView.swift`、`LocalImageFilmstripView.swift` 承载右侧详情。
 
-扫描、排序、搜索相关逻辑则逐步拆出到 `Services`。
+扫描、导入和 metadata 读取相关逻辑已经下沉到 `Services`。
 
 ## 7.3 Favorites 模块
 
@@ -659,9 +653,10 @@ Shell/
 
 当前现状补充：
 
-1. 搜索框仍由各内容视图通过 `.searchable(..., placement: .toolbar)` 注入。
-2. 主壳 toolbar 当前主要承载缓存容量和导入目录。
-3. “详情区展开/折叠”这类布局控制应优先放入壳层 toolbar，而不是继续分散在模块内部 toolbar。
+1. 主窗口已经使用 AppKit `NSToolbar`。
+2. 当前 toolbar 承载侧边栏开关、布局切换、刷新、搜索、详情区开关、大图模式、filmstrip、保存、缓存容量和导入目录。
+3. 侧边栏开关使用 AppKit 标准 `.toggleSidebar` toolbar item，配合 full-size titlebar 和 sidebar material，保持 macOS 原生展开/收起体验。
+4. “详情区展开/折叠”这类布局控制已进入壳层 toolbar，但 toolbar host 还没有独立成文件。
 
 ## 9. 状态层规划
 
@@ -739,7 +734,7 @@ Shell/
 
 - `SiteListResolver`
 - `DetailPageHTMLResolver`
-- `DetailImageResolverView`
+- `DetailImageResolver`
 - `ApifyLibrary`（如果继续保留为 4KHD 数据源初始化支持）
 
 ### 应进入 LocalLibrary/Services
@@ -764,15 +759,15 @@ Shell/
 
 ### SmallViews.swift
 
-当前是实用组件杂烩，建议至少按职责拆开。
+旧 SwiftUI 组件文件已删除。后续如新增共享 AppKit 组件，应按职责建小文件，不恢复“大杂烩单文件”。
 
 ### LocalImageContentList.swift
 
-建议改名并拆出服务逻辑。
+旧 SwiftUI 中栏文件已删除，当前本地中栏入口是 `LocalImageContentViewController`。
 
 当前补充：
 
-1. `LocalImageContentList` 的导入面板与 metadata 读取已拆到模块 `Services`。
+1. 导入面板与 metadata 读取已拆到模块 `Services`。
 2. 真正还偏重的部分，是本地 `AppKit` 网格与内容视图的联动状态。
 
 ## 11.2 适合保留同文件的情况
@@ -916,12 +911,12 @@ Modules/NewModule/
 
 1. 图片缓存与请求基础设施
 2. cookie 桥接
-3. 详情区共享控件与共享 filmstrip
+3. 详情区状态、filmstrip 可见性和平台桥接
 
 仍待推进：
 
 1. 中栏共享交互骨架
-2. 详情区展开/折叠后的统一布局行为
+2. 详情区展开/折叠后的统一布局行为验收
 
 ## 阶段 5：壳层模块注册化
 

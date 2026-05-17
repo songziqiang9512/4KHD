@@ -1,9 +1,19 @@
-import SwiftUI
+import CoreGraphics
+import Foundation
+import Observation
 
 @MainActor
 @Observable
 final class WorkspaceDetailPaneController {
-    var isPresented: Bool = true
+    static let defaultsKey = "com.songziqiang.4khd.detailPanePresented.v1"
+
+    @ObservationIgnored private var observers: [UUID: (Bool) -> Void] = [:]
+
+    var isPresented: Bool = true {
+        didSet {
+            notifyObservers()
+        }
+    }
 
     var preferredContentIdealWidth: CGFloat {
         isPresented ? 380 : 760
@@ -30,8 +40,23 @@ final class WorkspaceDetailPaneController {
     }
 
     func toggle() {
-        withAnimation(.easeInOut(duration: 0.22)) {
-            isPresented.toggle()
+        isPresented.toggle()
+    }
+
+    func addObserver(_ observer: @escaping (Bool) -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = observer
+        observer(isPresented)
+        return id
+    }
+
+    func removeObserver(id: UUID) {
+        observers.removeValue(forKey: id)
+    }
+
+    private func notifyObservers() {
+        for observer in observers.values {
+            observer(isPresented)
         }
     }
 }

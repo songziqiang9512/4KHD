@@ -1,4 +1,4 @@
-import SwiftUI
+import AppKit
 
 enum WorkspaceAppAssembly {
     @MainActor
@@ -11,6 +11,7 @@ enum WorkspaceAppAssembly {
         let localDetailInteraction = LocalDetailInteractionController()
         let localInspector = LocalImageInspectorController()
         let filmstripVisibility = FilmstripVisibilityController()
+        let detailPaneController = WorkspaceDetailPaneController()
         let importRootFolderAction = {
             guard let folderURL = LocalLibraryImportService.chooseFolder() else { return }
             localLibraryStore.importRootFolder(folderURL)
@@ -23,7 +24,8 @@ enum WorkspaceAppAssembly {
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
             localInspector: localInspector,
-            filmstripVisibility: filmstripVisibility
+            filmstripVisibility: filmstripVisibility,
+            importRootFolderAction: importRootFolderAction
         )
         let toolbarContext = WorkspaceToolbarContext(
             galleryStore: fourKHDGalleryStore,
@@ -36,9 +38,17 @@ enum WorkspaceAppAssembly {
             filmstripVisibility: filmstripVisibility,
             importRootFolderAction: importRootFolderAction
         )
+        let routeController = WorkspaceRouteController(
+            defaultRoute: moduleRegistry.defaultRoute(),
+            normalizeRoute: { moduleRegistry.normalizedRoute($0) },
+            applyRoute: { moduleRegistry.apply($0) }
+        )
 
         return WorkspaceAppContext(
             moduleRegistry: moduleRegistry,
+            routeController: routeController,
+            detailPaneController: detailPaneController,
+            localLibraryStore: localLibraryStore,
             toolbarContext: toolbarContext,
             importRootFolderAction: importRootFolderAction
         )
@@ -53,7 +63,8 @@ enum WorkspaceAppAssembly {
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
         localInspector: LocalImageInspectorController,
-        filmstripVisibility: FilmstripVisibilityController
+        filmstripVisibility: FilmstripVisibilityController,
+        importRootFolderAction: @escaping () -> Void
     ) -> WorkspaceModuleRegistry {
         return WorkspaceModuleRegistry(
             modules: [
@@ -63,25 +74,19 @@ enum WorkspaceAppAssembly {
                     defaultRoute: {
                         WorkspaceRoute(moduleID: .fourKHDGallery, itemID: GallerySection.latest.rawValue)
                     },
-                    makeSidebarSection: { selection, _ in
-                        AnyView(
-                            FourKHDGallerySidebarSection(selection: selection)
-                                .environment(fourKHDGalleryStore)
+                    makeContentController: { context in
+                        GalleryContentViewController(
+                            library: fourKHDGalleryStore,
+                            preferences: galleryPreferences,
+                            detailPane: context.detailPaneController
                         )
                     },
-                    makeContentView: {
-                        AnyView(
-                            GalleryContentList()
-                                .environment(fourKHDGalleryStore)
-                                .environment(galleryPreferences)
-                        )
-                    },
-                    makeDetailView: {
-                        AnyView(
-                            ImageDetailPane()
-                                .environment(fourKHDGalleryStore)
-                                .environment(galleryDetailInteraction)
-                                .environment(filmstripVisibility)
+                    makeDetailController: { context in
+                        GalleryImageDetailViewController(
+                            library: fourKHDGalleryStore,
+                            immersive: context.immersive,
+                            detailInteraction: galleryDetailInteraction,
+                            filmstripVisibility: filmstripVisibility
                         )
                     },
                     normalizeRoute: { route in
@@ -109,27 +114,20 @@ enum WorkspaceAppAssembly {
                         }
                         return WorkspaceRoute(moduleID: .localLibrary, itemID: "")
                     },
-                    makeSidebarSection: { selection, importRootFolder in
-                        AnyView(
-                            LocalLibrarySidebarSection(selection: selection, importRootFolder: importRootFolder)
-                                .environment(localLibraryStore)
+                    makeContentController: { context in
+                        LocalImageContentViewController(
+                            localLibrary: localLibraryStore,
+                            preferences: localPreferences,
+                            detailPane: context.detailPaneController,
+                            importRootFolderAction: importRootFolderAction
                         )
                     },
-                    makeContentView: {
-                        AnyView(
-                            LocalImageContentList()
-                                .environment(localLibraryStore)
-                                .environment(localPreferences)
-                                .environment(localInspector)
-                        )
-                    },
-                    makeDetailView: {
-                        AnyView(
-                            LocalImageDetailPane()
-                                .environment(localLibraryStore)
-                                .environment(localDetailInteraction)
-                                .environment(localInspector)
-                                .environment(filmstripVisibility)
+                    makeDetailController: { context in
+                        LocalImageDetailViewController(
+                            localLibrary: localLibraryStore,
+                            immersive: context.immersive,
+                            detailInteraction: localDetailInteraction,
+                            filmstripVisibility: filmstripVisibility
                         )
                     },
                     normalizeRoute: { route in

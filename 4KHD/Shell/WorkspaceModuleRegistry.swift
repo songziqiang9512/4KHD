@@ -1,12 +1,19 @@
-import SwiftUI
+import AppKit
+
+@MainActor
+struct WorkspaceModuleControllerContext {
+    let appContext: WorkspaceAppContext
+    let immersive: ImmersiveController
+    let detailPaneController: WorkspaceDetailPaneController
+    let sidebarDisclosure: SidebarDisclosureState
+}
 
 struct WorkspaceModuleDescriptor {
     let id: WorkspaceModuleID
     let displayName: String
     let defaultRoute: @MainActor () -> WorkspaceRoute
-    let makeSidebarSection: (_ selection: Binding<WorkspaceRoute?>, _ importRootFolder: @escaping () -> Void) -> AnyView
-    let makeContentView: () -> AnyView
-    let makeDetailView: () -> AnyView
+    let makeContentController: @MainActor (_ context: WorkspaceModuleControllerContext) -> NSViewController
+    let makeDetailController: @MainActor (_ context: WorkspaceModuleControllerContext) -> NSViewController
     let normalizeRoute: @MainActor (_ route: WorkspaceRoute) -> WorkspaceRoute
     let applyRoute: @MainActor (_ route: WorkspaceRoute) -> Void
     let bootstrap: @MainActor () -> Void
@@ -45,22 +52,20 @@ struct WorkspaceModuleRegistry {
         return normalized
     }
 
-    func contentView(for route: WorkspaceRoute) -> AnyView {
-        descriptor(for: route)?.makeContentView()
-            ?? AnyView(ContentUnavailableView("模块不可用", systemImage: "square.stack"))
+    func contentController(
+        for route: WorkspaceRoute,
+        context: WorkspaceModuleControllerContext
+    ) -> NSViewController {
+        descriptor(for: route)?.makeContentController(context)
+            ?? WorkspaceUnavailableController(message: "模块不可用")
     }
 
-    func sidebarSection(
-        for moduleID: WorkspaceModuleID,
-        selection: Binding<WorkspaceRoute?>,
-        importRootFolder: @escaping () -> Void
-    ) -> AnyView? {
-        descriptor(for: moduleID)?.makeSidebarSection(selection, importRootFolder)
-    }
-
-    func detailView(for route: WorkspaceRoute) -> AnyView {
-        descriptor(for: route)?.makeDetailView()
-            ?? AnyView(ContentUnavailableView("模块不可用", systemImage: "photo"))
+    func detailController(
+        for route: WorkspaceRoute,
+        context: WorkspaceModuleControllerContext
+    ) -> NSViewController {
+        descriptor(for: route)?.makeDetailController(context)
+            ?? WorkspaceUnavailableController(message: "模块不可用")
     }
 
     func apply(_ route: WorkspaceRoute) {
@@ -76,5 +81,35 @@ struct WorkspaceModuleRegistry {
     private func normalizedRouteIfAvailable(_ route: WorkspaceRoute) -> WorkspaceRoute? {
         guard let descriptor = descriptor(for: route) else { return nil }
         return descriptor.normalizeRoute(route)
+    }
+}
+
+@MainActor
+private final class WorkspaceUnavailableController: NSViewController {
+    private let message: String
+
+    init(message: String) {
+        self.message = message
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func loadView() {
+        let label = NSTextField(labelWithString: message)
+        label.alignment = .center
+        label.textColor = .secondaryLabelColor
+
+        let container = NSView()
+        container.addSubview(label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+        view = container
     }
 }
