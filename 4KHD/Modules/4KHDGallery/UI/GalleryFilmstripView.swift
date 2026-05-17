@@ -5,6 +5,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     var onSelect: ((Int) -> Void)?
     var onReachedEnd: (() -> Void)?
 
+    private let materialView = NSVisualEffectView()
     private let scrollView = NSScrollView()
     private let collectionView = NSCollectionView()
     private let layout = NSCollectionViewFlowLayout()
@@ -80,7 +81,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     }
 
     private func setupView() {
-        wantsLayer = true
+        wantsLayer = false
         updateAppearance()
 
         scrollView.drawsBackground = false
@@ -103,9 +104,15 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         collectionView.register(GalleryFilmstripItemView.self, forItemWithIdentifier: GalleryFilmstripItemView.reuseID)
         collectionView.register(GalleryFilmstripLoadingItem.self, forItemWithIdentifier: GalleryFilmstripLoadingItem.reuseID)
 
+        addSubview(materialView)
         addSubview(scrollView)
+        materialView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            materialView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            materialView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            materialView.topAnchor.constraint(equalTo: topAnchor),
+            materialView.bottomAnchor.constraint(equalTo: bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
@@ -114,7 +121,9 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     }
 
     private func updateAppearance() {
-        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
+        materialView.material = .hudWindow
+        materialView.blendingMode = .withinWindow
+        materialView.state = .active
     }
 }
 
@@ -123,6 +132,7 @@ final class GalleryFilmstripItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("GalleryFilmstripItemView")
 
     private let thumbnailView = GalleryRemoteImageView()
+    private let indexChrome = DetailOverlayChromeView(cornerRadius: 7)
     private let indexLabel = NSTextField(labelWithString: "")
 
     override func loadView() {
@@ -148,23 +158,27 @@ final class GalleryFilmstripItemView: NSCollectionViewItem {
         indexLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         indexLabel.textColor = .labelColor
         indexLabel.alignment = .center
-        indexLabel.wantsLayer = true
-        indexLabel.layer?.cornerRadius = 7
-        indexLabel.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.78).cgColor
+        indexLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        indexChrome.addSubview(indexLabel)
 
         view.addSubview(thumbnailView)
-        view.addSubview(indexLabel)
+        view.addSubview(indexChrome)
         thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+        indexChrome.translatesAutoresizingMaskIntoConstraints = false
         indexLabel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             thumbnailView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             thumbnailView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             thumbnailView.topAnchor.constraint(equalTo: view.topAnchor),
             thumbnailView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            indexLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
-            indexLabel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
-            indexLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 28),
-            indexLabel.heightAnchor.constraint(equalToConstant: 18)
+            indexChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            indexChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
+            indexChrome.heightAnchor.constraint(equalToConstant: 18),
+            indexChrome.widthAnchor.constraint(greaterThanOrEqualToConstant: 28),
+            indexChrome.widthAnchor.constraint(greaterThanOrEqualTo: indexLabel.widthAnchor, constant: 12),
+            indexLabel.leadingAnchor.constraint(equalTo: indexChrome.leadingAnchor, constant: 6),
+            indexLabel.trailingAnchor.constraint(equalTo: indexChrome.trailingAnchor, constant: -6),
+            indexLabel.centerYAnchor.constraint(equalTo: indexChrome.centerYAnchor)
         ])
     }
 }

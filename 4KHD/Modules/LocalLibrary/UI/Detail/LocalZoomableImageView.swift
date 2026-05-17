@@ -2,10 +2,11 @@ import AppKit
 
 @MainActor
 final class LocalZoomableImageView: NSView {
-    private let scrollView = NSScrollView()
+    private let scrollView = LocalZoomScrollView()
     private let documentView = NSView()
     private let imageView = NSImageView()
     private let progressIndicator = NSProgressIndicator()
+    private let minimumRubberBandMagnification: CGFloat = 0.8
     private var imageTask: Task<Void, Never>?
     private var imageURL: URL?
 
@@ -64,19 +65,22 @@ final class LocalZoomableImageView: NSView {
         scrollView.hasHorizontalScroller = true
         scrollView.hasVerticalScroller = true
         scrollView.allowsMagnification = true
-        scrollView.minMagnification = 0.05
+        scrollView.minMagnification = minimumRubberBandMagnification
         scrollView.maxMagnification = 8
         scrollView.autohidesScrollers = true
         scrollView.contentView = LocalCenteringClipView()
+        scrollView.onMagnifyEndedBelowBaseline = { [weak self] in
+            self?.restoreBaselineAfterRubberBand()
+        }
 
         documentView.wantsLayer = true
-        documentView.layer?.backgroundColor = NSColor.black.cgColor
+        documentView.layer?.backgroundColor = NSColor.clear.cgColor
         documentView.addSubview(imageView)
 
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
         imageView.wantsLayer = true
-        imageView.layer?.backgroundColor = NSColor.black.cgColor
+        imageView.layer?.backgroundColor = NSColor.clear.cgColor
         scrollView.documentView = documentView
 
         progressIndicator.style = .spinning
@@ -113,12 +117,13 @@ final class LocalZoomableImageView: NSView {
 
     private func fitImage(resetMagnification: Bool) {
         guard let image = imageView.image, image.size.width > 0, image.size.height > 0 else { return }
+        if resetMagnification {
+            scrollView.magnification = 1
+            scrollView.layoutSubtreeIfNeeded()
+        }
         let viewportSize = scrollView.contentView.bounds.size
         guard viewportSize.width > 1, viewportSize.height > 1 else { return }
 
-        if resetMagnification {
-            scrollView.magnification = 1
-        }
         let fitScale = min(viewportSize.width / image.size.width, viewportSize.height / image.size.height)
         let fittedSize = NSSize(width: image.size.width * fitScale, height: image.size.height * fitScale)
         documentView.frame = NSRect(origin: .zero, size: viewportSize)
@@ -130,6 +135,21 @@ final class LocalZoomableImageView: NSView {
         )
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func restoreBaselineAfterRubberBand() {
+        guard scrollView.magnification < 1 else { return }
+        let visibleRect = scrollView.contentView.bounds
+        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            scrollView.animator().setMagnification(1, centeredAt: center)
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            self.scrollView.contentView.scroll(to: .zero)
+            self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+        }
     }
 }
 
@@ -146,5 +166,31 @@ private final class LocalCenteringClipView: NSClipView {
             constrained.origin.y = floor((documentFrame.height - proposedBounds.height) / 2)
         }
         return constrained
+    }
+}
+
+private final class LocalZoomScrollView: NSScrollView {
+    var onMagnifyEndedBelowBaseline: (() -> Void)?
+
+    override func magnify(with event: NSEvent) {
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            if magnification < 1 {
+                onMagnifyEndedBelowBaseline?()
+                return
+            }
+        }
+
+        let proposedMagnification = min(max(magnification + event.magnification, minMagnification), maxMagnification)
+        guard event.magnification < 0, proposedMagnification < 1.0001 else {
+            super.magnify(with: event)
+            return
+        }
+
+        let visibleRect = contentView.bounds
+        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
+        setMagnification(proposedMagnification, centeredAt: center)
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            onMagnifyEndedBelowBaseline?()
+        }
     }
 }

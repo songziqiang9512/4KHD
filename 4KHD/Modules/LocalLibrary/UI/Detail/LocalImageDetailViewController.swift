@@ -11,8 +11,10 @@ final class LocalImageDetailViewController: NSViewController {
     private let filmstripView = LocalImageFilmstripView()
     private let previousButton = NSButton()
     private let nextButton = NSButton()
+    private let toolChrome = DetailOverlayChromeView()
     private let toolStack = NSStackView()
     private let filmstripButton = NSButton()
+    private let statusChrome = DetailOverlayChromeView(cornerRadius: 12)
     private let statusLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "没有可显示图片")
     private var filmstripHeightConstraint: NSLayoutConstraint?
@@ -46,9 +48,6 @@ final class LocalImageDetailViewController: NSViewController {
 
     override func loadView() {
         view = LocalImageDetailRootView()
-        (view as? LocalImageDetailRootView)?.appearanceHandler = { [weak self] in
-            self?.updateChromeAppearance()
-        }
         setupView()
     }
 
@@ -102,18 +101,19 @@ final class LocalImageDetailViewController: NSViewController {
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         statusLabel.textColor = .labelColor
         statusLabel.alignment = .center
-        statusLabel.wantsLayer = true
-        statusLabel.layer?.cornerRadius = 12
-        statusLabel.isHidden = true
+        statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        statusChrome.addSubview(statusLabel)
+        statusChrome.isHidden = true
 
         emptyLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
 
-        for subview in [zoomableImageView, filmstripView, previousButton, nextButton, toolStack, statusLabel, emptyLabel] {
+        for subview in [zoomableImageView, filmstripView, previousButton, nextButton, toolChrome, statusChrome, emptyLabel] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let filmstripHeight = filmstripView.heightAnchor.constraint(equalToConstant: 116)
         filmstripHeightConstraint = filmstripHeight
@@ -138,13 +138,21 @@ final class LocalImageDetailViewController: NSViewController {
             nextButton.widthAnchor.constraint(equalToConstant: 42),
             nextButton.heightAnchor.constraint(equalToConstant: 42),
 
-            toolStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14),
-            toolStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            toolChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14),
+            toolChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            toolStack.leadingAnchor.constraint(equalTo: toolChrome.leadingAnchor),
+            toolStack.trailingAnchor.constraint(equalTo: toolChrome.trailingAnchor),
+            toolStack.topAnchor.constraint(equalTo: toolChrome.topAnchor),
+            toolStack.bottomAnchor.constraint(equalTo: toolChrome.bottomAnchor),
 
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            statusLabel.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -16),
-            statusLabel.heightAnchor.constraint(equalToConstant: 28),
-            statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 76),
+            statusChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            statusChrome.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -16),
+            statusChrome.heightAnchor.constraint(equalToConstant: 28),
+            statusChrome.widthAnchor.constraint(greaterThanOrEqualToConstant: 76),
+            statusChrome.widthAnchor.constraint(greaterThanOrEqualTo: statusLabel.widthAnchor, constant: 18),
+            statusLabel.leadingAnchor.constraint(equalTo: statusChrome.leadingAnchor, constant: 9),
+            statusLabel.trailingAnchor.constraint(equalTo: statusChrome.trailingAnchor, constant: -9),
+            statusLabel.centerYAnchor.constraint(equalTo: statusChrome.centerYAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
@@ -156,8 +164,8 @@ final class LocalImageDetailViewController: NSViewController {
         toolStack.alignment = .centerY
         toolStack.spacing = 8
         toolStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
-        toolStack.wantsLayer = true
-        toolStack.layer?.cornerRadius = 16
+        toolChrome.addSubview(toolStack)
+        toolStack.translatesAutoresizingMaskIntoConstraints = false
 
         let tools: [(String, String, Selector)] = [
             ("1.magnifyingglass", "实际大小", #selector(resetZoom)),
@@ -174,14 +182,13 @@ final class LocalImageDetailViewController: NSViewController {
         filmstripButton.image = NSImage(systemSymbolName: "rectangle.bottomthird.inset.filled", accessibilityDescription: "缩略图")
         filmstripButton.imagePosition = .imageOnly
         filmstripButton.bezelStyle = .texturedRounded
-        filmstripButton.isBordered = false
+        filmstripButton.isBordered = true
         filmstripButton.target = self
         filmstripButton.action = #selector(toggleFilmstrip)
         filmstripButton.toolTip = "显示/隐藏缩略图"
         filmstripButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
         filmstripButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
         toolStack.addArrangedSubview(filmstripButton)
-        updateChromeAppearance()
     }
 
     private func makeToolButton(symbolName: String, toolTip: String, action: Selector) -> NSButton {
@@ -189,7 +196,7 @@ final class LocalImageDetailViewController: NSViewController {
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: toolTip)
         button.imagePosition = .imageOnly
         button.bezelStyle = .texturedRounded
-        button.isBordered = false
+        button.isBordered = true
         button.target = self
         button.action = action
         button.toolTip = toolTip
@@ -235,8 +242,9 @@ final class LocalImageDetailViewController: NSViewController {
             previousButton.isHidden = true
             nextButton.isHidden = true
             filmstripView.isHidden = true
-            toolStack.isHidden = true
-            statusLabel.isHidden = true
+            toolChrome.isHidden = true
+            statusChrome.isHidden = true
+            updateFilmstripLayout(shouldShow: false)
             return
         }
 
@@ -257,16 +265,10 @@ final class LocalImageDetailViewController: NSViewController {
 
         loadMetadataIfNeeded(folder: folder)
         filmstripView.update(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex)
-        toolStack.isHidden = false
+        toolChrome.isHidden = false
         updateToolButtons()
         updateFilmstripVisibility()
         updateSaveStatus()
-    }
-
-    private func updateChromeAppearance() {
-        let background = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
-        statusLabel.layer?.backgroundColor = background
-        toolStack.layer?.backgroundColor = background
     }
 
     private func updateToolButtons() {
@@ -279,18 +281,22 @@ final class LocalImageDetailViewController: NSViewController {
 
     private func updateFilmstripVisibility() {
         let shouldShow = filmstripVisibility.isPresented && !localLibrary.selectedImages.isEmpty
-        filmstripView.isHidden = !shouldShow
-        filmstripHeightConstraint?.constant = shouldShow ? 116 : 0
+        updateFilmstripLayout(shouldShow: shouldShow)
         filmstripButton.image = NSImage(
             systemSymbolName: shouldShow ? "rectangle.bottomthird.inset.filled" : "rectangle",
             accessibilityDescription: shouldShow ? "隐藏缩略图" : "显示缩略图"
         )
     }
 
+    private func updateFilmstripLayout(shouldShow: Bool) {
+        filmstripView.isHidden = !shouldShow
+        filmstripHeightConstraint?.constant = shouldShow ? 116 : 0
+    }
+
     private func updateSaveStatus() {
         let message = detailInteraction.saveMessage
         statusLabel.stringValue = message
-        statusLabel.isHidden = message.isEmpty
+        statusChrome.isHidden = message.isEmpty
     }
 
     private func loadMetadataIfNeeded(folder: LocalFolderNode) {
@@ -367,14 +373,7 @@ final class LocalImageDetailViewController: NSViewController {
 
 @MainActor
 private final class LocalImageDetailRootView: NSView {
-    var appearanceHandler: (() -> Void)?
-
     override var acceptsFirstResponder: Bool { true }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        appearanceHandler?()
-    }
 
     override func keyDown(with event: NSEvent) {
         if let controller = nextResponder as? LocalImageDetailViewController,

@@ -13,8 +13,11 @@ final class GalleryImageDetailViewController: NSViewController {
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
     private let previousButton = NSButton()
     private let nextButton = NSButton()
+    private let counterChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let counterLabel = NSTextField(labelWithString: "")
+    private let statusChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let statusLabel = NSTextField(labelWithString: "")
+    private let toolChrome = DetailOverlayChromeView()
     private let toolStack = NSStackView()
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var isObserving = false
@@ -45,9 +48,6 @@ final class GalleryImageDetailViewController: NSViewController {
         view = GalleryImageDetailRootView()
         (view as? GalleryImageDetailRootView)?.keyHandler = { [weak self] event in
             self?.handleKeyDown(event) ?? false
-        }
-        (view as? GalleryImageDetailRootView)?.appearanceHandler = { [weak self] in
-            self?.updateChromeAppearance()
         }
         setupView()
     }
@@ -101,29 +101,31 @@ final class GalleryImageDetailViewController: NSViewController {
         counterLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         counterLabel.textColor = .labelColor
         counterLabel.alignment = .center
-        counterLabel.wantsLayer = true
-        counterLabel.layer?.cornerRadius = 11
+        counterLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        counterChrome.addSubview(counterLabel)
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         statusLabel.textColor = .labelColor
         statusLabel.alignment = .center
-        statusLabel.wantsLayer = true
-        statusLabel.layer?.cornerRadius = 11
+        statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        statusChrome.addSubview(statusLabel)
 
         toolStack.orientation = .horizontal
         toolStack.alignment = .centerY
         toolStack.spacing = 8
         toolStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
-        toolStack.wantsLayer = true
-        toolStack.layer?.cornerRadius = 16
         for item in makeToolButtons() {
             toolStack.addArrangedSubview(item)
         }
+        toolChrome.addSubview(toolStack)
+        toolStack.translatesAutoresizingMaskIntoConstraints = false
 
-        for subview in [imageView, emptyLabel, previousButton, nextButton, counterLabel, statusLabel, toolStack, filmstripView] {
+        for subview in [imageView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, toolChrome, filmstripView] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
+        counterLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let filmstripHeightConstraint = filmstripView.heightAnchor.constraint(equalToConstant: 112)
         self.filmstripHeightConstraint = filmstripHeightConstraint
@@ -132,47 +134,58 @@ final class GalleryImageDetailViewController: NSViewController {
             imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             imageView.topAnchor.constraint(equalTo: view.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            imageView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
 
             previousButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
-            previousButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            previousButton.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
             previousButton.widthAnchor.constraint(equalToConstant: 36),
             previousButton.heightAnchor.constraint(equalToConstant: 36),
 
             nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            nextButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            nextButton.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
             nextButton.widthAnchor.constraint(equalToConstant: 36),
             nextButton.heightAnchor.constraint(equalToConstant: 36),
 
-            counterLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            counterLabel.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -12),
-            counterLabel.heightAnchor.constraint(equalToConstant: 24),
-            counterLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 64),
+            counterChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            counterChrome.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -12),
+            counterChrome.heightAnchor.constraint(equalToConstant: 24),
+            counterChrome.widthAnchor.constraint(greaterThanOrEqualToConstant: 64),
+            counterChrome.widthAnchor.constraint(greaterThanOrEqualTo: counterLabel.widthAnchor, constant: 16),
+            counterLabel.leadingAnchor.constraint(equalTo: counterChrome.leadingAnchor, constant: 8),
+            counterLabel.trailingAnchor.constraint(equalTo: counterChrome.trailingAnchor, constant: -8),
+            counterLabel.centerYAnchor.constraint(equalTo: counterChrome.centerYAnchor),
 
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            statusLabel.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -12),
-            statusLabel.heightAnchor.constraint(equalToConstant: 24),
-            statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 78),
+            statusChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            statusChrome.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -12),
+            statusChrome.heightAnchor.constraint(equalToConstant: 24),
+            statusChrome.widthAnchor.constraint(greaterThanOrEqualToConstant: 78),
+            statusChrome.widthAnchor.constraint(greaterThanOrEqualTo: statusLabel.widthAnchor, constant: 16),
+            statusLabel.leadingAnchor.constraint(equalTo: statusChrome.leadingAnchor, constant: 8),
+            statusLabel.trailingAnchor.constraint(equalTo: statusChrome.trailingAnchor, constant: -8),
+            statusLabel.centerYAnchor.constraint(equalTo: statusChrome.centerYAnchor),
 
-            toolStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            toolStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            toolChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            toolChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            toolStack.leadingAnchor.constraint(equalTo: toolChrome.leadingAnchor),
+            toolStack.trailingAnchor.constraint(equalTo: toolChrome.trailingAnchor),
+            toolStack.topAnchor.constraint(equalTo: toolChrome.topAnchor),
+            toolStack.bottomAnchor.constraint(equalTo: toolChrome.bottomAnchor),
 
             filmstripView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             filmstripView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filmstripView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             filmstripHeightConstraint
         ])
-        updateChromeAppearance()
     }
 
     private func setupStepButton(_ button: NSButton, imageName: String, action: Selector) {
         button.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)
         button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        button.bezelStyle = .texturedRounded
-        button.isBordered = false
+        button.bezelStyle = .circular
+        button.isBordered = true
         button.target = self
         button.action = action
     }
@@ -191,7 +204,7 @@ final class GalleryImageDetailViewController: NSViewController {
     private func makeToolButton(_ systemName: String, _ title: String, _ action: Selector) -> NSButton {
         let button = NSButton(image: NSImage(systemSymbolName: systemName, accessibilityDescription: title) ?? NSImage(), target: self, action: action)
         button.bezelStyle = .texturedRounded
-        button.isBordered = false
+        button.isBordered = true
         button.toolTip = title
         button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
         button.widthAnchor.constraint(equalToConstant: 28).isActive = true
@@ -229,10 +242,11 @@ final class GalleryImageDetailViewController: NSViewController {
             emptyLabel.isHidden = false
             previousButton.isHidden = true
             nextButton.isHidden = true
-            counterLabel.isHidden = true
-            statusLabel.isHidden = true
-            toolStack.isHidden = true
+            counterChrome.isHidden = true
+            statusChrome.isHidden = true
+            toolChrome.isHidden = true
             filmstripView.isHidden = true
+            updateFilmstripLayout(showsFilmstrip: false)
             return
         }
 
@@ -240,7 +254,7 @@ final class GalleryImageDetailViewController: NSViewController {
         emptyLabel.isHidden = true
         previousButton.isHidden = false
         nextButton.isHidden = false
-        counterLabel.isHidden = false
+        counterChrome.isHidden = false
         previousButton.isEnabled = library.selectedImageIndex > 0
         nextButton.isEnabled = true
 
@@ -261,11 +275,10 @@ final class GalleryImageDetailViewController: NSViewController {
 
         counterLabel.stringValue = "\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))"
         statusLabel.stringValue = detailStatusText
-        statusLabel.isHidden = statusLabel.stringValue.isEmpty
-        toolStack.isHidden = false
+        statusChrome.isHidden = statusLabel.stringValue.isEmpty
+        toolChrome.isHidden = false
         let showsFilmstrip = filmstripVisibility.isPresented
-        filmstripView.isHidden = !showsFilmstrip
-        filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
+        updateFilmstripLayout(showsFilmstrip: showsFilmstrip)
         filmstripView.update(
             slots: library.loadedImageSlots,
             selectedIndex: library.selectedImageIndex,
@@ -278,14 +291,12 @@ final class GalleryImageDetailViewController: NSViewController {
         updateToolButtons(item: item)
     }
 
-    private var resetTokenSeen = UUID()
-
-    private func updateChromeAppearance() {
-        let background = NSColor.windowBackgroundColor.withAlphaComponent(0.72).cgColor
-        counterLabel.layer?.backgroundColor = background
-        statusLabel.layer?.backgroundColor = background
-        toolStack.layer?.backgroundColor = background
+    private func updateFilmstripLayout(showsFilmstrip: Bool) {
+        filmstripView.isHidden = !showsFilmstrip
+        filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
     }
+
+    private var resetTokenSeen = UUID()
 
     private var detailStatusText: String {
         if detailFailed { return "解析失败" }
@@ -402,14 +413,8 @@ final class GalleryImageDetailViewController: NSViewController {
 
 final class GalleryImageDetailRootView: NSView {
     var keyHandler: ((NSEvent) -> Bool)?
-    var appearanceHandler: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        appearanceHandler?()
-    }
 
     override func keyDown(with event: NSEvent) {
         if keyHandler?(event) == true { return }

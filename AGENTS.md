@@ -19,12 +19,14 @@
 3. 公共能力独立。
 4. 删除任意模块，不应影响其他模块运行。
 5. 新增模块，不应要求重写底壳。
+6. 所有能用MacOS系统能力做成的功能，绝不自定义自己画。50行能搞定的功能绝不写200行。（重要）
 
 ## 2. 架构规范来源
 
 本项目的模块化底壳与目录规划，以以下文档作为正式规范来源：
 
 - [docs/architecture-module-shell-plan.md](/Users/songziqiang/Documents/Development/4KHD/docs/architecture-module-shell-plan.md)
+- [docs/ui-guidelines.md](/Users/songziqiang/Documents/Development/4KHD/docs/ui-guidelines.md)
 
 后续涉及以下事项时，必须优先遵守该文档中的边界定义与迁移方向：
 
@@ -34,6 +36,7 @@
 4. Shell 改造
 5. Store 命名与职责划分
 6. Toolbar / Sidebar / Workspace 路由设计
+7. macOS 原生 UI、系统材质、工具栏、侧边栏、详情区和三栏交互设计
 
 如果临时实现与该规划冲突，应优先修正实现，不应继续扩大冲突面。
 

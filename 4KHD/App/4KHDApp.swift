@@ -50,7 +50,7 @@ private final class WorkspaceWindowController: NSWindowController {
         window.titlebarSeparatorStyle = .shadow
         window.toolbarStyle = .unified
         super.init(window: window)
-        let toolbar = WorkspaceToolbar(appContext: appContext)
+        let toolbar = WorkspaceToolbar(appContext: appContext, splitController: shellController)
         window.toolbar = toolbar
     }
 
@@ -63,6 +63,7 @@ private final class WorkspaceWindowController: NSWindowController {
 @MainActor
 private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFieldDelegate {
     private enum ItemID {
+        static let sidebarTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.sidebarTrackingSeparator")
         static let search = NSToolbarItem.Identifier("WorkspaceToolbar.search")
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
@@ -72,30 +73,21 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
     }
 
     private let appContext: WorkspaceAppContext
-    private let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 260, height: 28))
+    private weak var splitController: WorkspaceSplitViewController?
     private var routeObserverID: UUID?
+    private weak var searchItem: NSSearchToolbarItem?
     private weak var layoutControl: NSSegmentedControl?
     private weak var refreshItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
 
-    init(appContext: WorkspaceAppContext) {
+    init(appContext: WorkspaceAppContext, splitController: WorkspaceSplitViewController) {
         self.appContext = appContext
+        self.splitController = splitController
         super.init(identifier: "WorkspaceToolbar")
         displayMode = .iconOnly
         allowsUserCustomization = false
         delegate = self
-        searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-        searchField.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
-        searchField.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        searchField.bezelStyle = .roundedBezel
-        searchField.isBordered = true
-        searchField.drawsBackground = true
-        searchField.delegate = self
-        searchField.sendsSearchStringImmediately = true
-        searchField.target = self
-        searchField.action = #selector(searchFieldChanged(_:))
         routeObserverID = appContext.routeController.addObserver { [weak self] _ in
             self?.refresh()
         }
@@ -115,7 +107,9 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
+            .flexibleSpace,
             .toggleSidebar,
+            ItemID.sidebarTrackingSeparator,
             ItemID.layout,
             ItemID.refresh,
             ItemID.detailPane,
@@ -132,20 +126,47 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
-        case ItemID.search:
+        case .toggleSidebar:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.view = searchField
+            item.target = splitController
+            item.action = #selector(WorkspaceSplitViewController.toggleWorkspaceSidebar(_:))
+            item.label = "侧边栏"
+            item.paletteLabel = "侧边栏"
+            item.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "切换侧边栏")
+            item.toolTip = "切换侧边栏"
+            item.visibilityPriority = .high
+            return item
+        case ItemID.sidebarTrackingSeparator:
+            guard let splitController else { return nil }
+            let item = NSTrackingSeparatorToolbarItem(
+                identifier: itemIdentifier,
+                splitView: splitController.splitView,
+                dividerIndex: 0
+            )
+            item.visibilityPriority = .high
+            return item
+        case ItemID.search:
+            let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "搜索"
             item.paletteLabel = "搜索"
             item.visibilityPriority = .high
+            item.searchField.delegate = self
+            item.searchField.sendsSearchStringImmediately = true
+            item.searchField.target = self
+            item.searchField.action = #selector(searchFieldChanged(_:))
+            searchItem = item
+            updateSearchField()
             return item
         case ItemID.layout:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             let control = NSSegmentedControl(labels: ["列表", "网格"], trackingMode: .selectOne, target: self, action: #selector(layoutChanged(_:)))
+            control.translatesAutoresizingMaskIntoConstraints = false
             control.segmentStyle = .texturedRounded
             control.setWidth(48, forSegment: 0)
             control.setWidth(48, forSegment: 1)
             control.toolTip = "切换列表/网格"
+            control.widthAnchor.constraint(equalToConstant: 104).isActive = true
+            control.heightAnchor.constraint(equalToConstant: 28).isActive = true
             item.view = control
             item.label = "布局"
             item.paletteLabel = "布局"
@@ -200,12 +221,14 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
     }
 
     func controlTextDidChange(_ notification: Notification) {
-        guard notification.object as? NSSearchField === searchField else { return }
+        guard let searchField = notification.object as? NSSearchField,
+              searchField === searchItem?.searchField else { return }
         appContext.toolbarContext.setSearchText(searchField.stringValue, for: currentModuleID)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard notification.object as? NSSearchField === searchField else { return }
+        guard let searchField = notification.object as? NSSearchField,
+              searchField === searchItem?.searchField else { return }
         appContext.toolbarContext.submitSearch(for: currentModuleID)
     }
 
@@ -256,6 +279,7 @@ private final class WorkspaceToolbar: NSToolbar, NSToolbarDelegate, NSSearchFiel
     }
 
     private func updateSearchField() {
+        guard let searchField = searchItem?.searchField else { return }
         let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
         let text: String
         switch snapshot {

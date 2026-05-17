@@ -5,13 +5,14 @@ import Nuke
 final class GalleryZoomableImageView: NSView {
     var onImageDisplayed: (() -> Void)?
 
-    private let scrollView = NSScrollView()
+    private let scrollView = GalleryZoomScrollView()
     private let documentView = NSView()
     private let imageView = NSImageView()
     private let placeholderContainer = NSView()
     private let placeholderLabel = NSTextField(labelWithString: "解析中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
     private let openOriginalButton = NSButton(title: "打开原网页", target: nil, action: nil)
+    private let minimumRubberBandMagnification: CGFloat = 0.8
     private var imageTask: ImageTask?
     private var loadedURL: URL?
     private var retryAction: (() -> Void)?
@@ -85,19 +86,22 @@ final class GalleryZoomableImageView: NSView {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.allowsMagnification = true
-        scrollView.minMagnification = 0.15
+        scrollView.minMagnification = minimumRubberBandMagnification
         scrollView.maxMagnification = 6
         scrollView.contentView = GalleryCenteringClipView()
         scrollView.documentView = documentView
+        scrollView.onMagnifyEndedBelowBaseline = { [weak self] in
+            self?.restoreBaselineAfterRubberBand()
+        }
 
         documentView.wantsLayer = true
-        documentView.layer?.backgroundColor = NSColor.black.cgColor
+        documentView.layer?.backgroundColor = NSColor.clear.cgColor
         documentView.addSubview(imageView)
 
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
         imageView.wantsLayer = true
-        imageView.layer?.backgroundColor = NSColor.black.cgColor
+        imageView.layer?.backgroundColor = NSColor.clear.cgColor
 
         addSubview(scrollView)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -151,14 +155,15 @@ final class GalleryZoomableImageView: NSView {
 
     private func fitImage(resetMagnification: Bool) {
         guard let image = imageView.image else { return }
+        if resetMagnification {
+            scrollView.magnification = 1
+            scrollView.layoutSubtreeIfNeeded()
+        }
         let viewport = scrollView.contentView.bounds.size
         guard viewport.width > 0, viewport.height > 0 else { return }
         let imageSize = image.size
         guard imageSize.width > 0, imageSize.height > 0 else { return }
 
-        if resetMagnification {
-            scrollView.magnification = 1
-        }
         let scale = min(viewport.width / imageSize.width, viewport.height / imageSize.height)
         let fittedSize = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
         documentView.frame = NSRect(origin: .zero, size: viewport)
@@ -179,6 +184,21 @@ final class GalleryZoomableImageView: NSView {
     @objc private func openOriginal() {
         openOriginalAction?()
     }
+
+    private func restoreBaselineAfterRubberBand() {
+        guard scrollView.magnification < 1 else { return }
+        let visibleRect = scrollView.contentView.bounds
+        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            scrollView.animator().setMagnification(1, centeredAt: center)
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            self.scrollView.contentView.scroll(to: .zero)
+            self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+        }
+    }
 }
 
 private final class GalleryCenteringClipView: NSClipView {
@@ -194,5 +214,31 @@ private final class GalleryCenteringClipView: NSClipView {
             constrained.origin.y = floor((documentFrame.height - proposedBounds.height) / 2)
         }
         return constrained
+    }
+}
+
+private final class GalleryZoomScrollView: NSScrollView {
+    var onMagnifyEndedBelowBaseline: (() -> Void)?
+
+    override func magnify(with event: NSEvent) {
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            if magnification < 1 {
+                onMagnifyEndedBelowBaseline?()
+                return
+            }
+        }
+
+        let proposedMagnification = min(max(magnification + event.magnification, minMagnification), maxMagnification)
+        guard event.magnification < 0, proposedMagnification < 1.0001 else {
+            super.magnify(with: event)
+            return
+        }
+
+        let visibleRect = contentView.bounds
+        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
+        setMagnification(proposedMagnification, centeredAt: center)
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            onMagnifyEndedBelowBaseline?()
+        }
     }
 }

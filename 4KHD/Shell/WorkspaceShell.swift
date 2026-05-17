@@ -110,7 +110,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private let appContext: WorkspaceAppContext
     private let immersive = ImmersiveController()
     private let sidebarDisclosure = SidebarDisclosureState()
-    private let sidebarToggleRelay: SidebarToggleRelay
     private let sidebarController: WorkspaceSidebarViewController
     private let contentController: WorkspaceColumnHostController
     private let detailController: WorkspaceColumnHostController
@@ -121,7 +120,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var detailObserverID: UUID?
     private var immersiveObserverID: UUID?
     private var toolbarMonitor: Any?
+    private var splitResizeObserver: NSObjectProtocol?
     private var didBootstrap = false
+    private var sidebarCollapsedTarget = false
 
     var isSidebarCollapsed: Bool {
         sidebarItem.isCollapsed
@@ -129,7 +130,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
     init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
-        sidebarToggleRelay = SidebarToggleRelay()
         sidebarController = WorkspaceSidebarViewController(appContext: appContext)
         contentController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
         detailController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
@@ -150,6 +150,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         view.frame.size = NSSize(width: 1280, height: 820)
         splitView.isVertical = true
         splitView.dividerStyle = .thin
+        splitView.delegate = self
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
         addSplitViewItem(detailItem)
@@ -179,25 +180,44 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         if let toolbarMonitor {
             NSEvent.removeMonitor(toolbarMonitor)
         }
+        if let splitResizeObserver {
+            NotificationCenter.default.removeObserver(splitResizeObserver)
+        }
     }
 
     private func configureSplitItems() {
         sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 240
         sidebarItem.preferredThicknessFraction = 0.16
+        sidebarItem.holdingPriority = NSLayoutConstraint.Priority(260)
         sidebarItem.canCollapse = true
+        sidebarItem.canCollapseFromWindowResize = false
+        sidebarItem.allowsFullHeightLayout = true
 
         contentItem.minimumThickness = 280
-        contentItem.maximumThickness = 430
+        contentItem.maximumThickness = expandedContentMaximumThickness
         contentItem.preferredThicknessFraction = 0.28
-        contentItem.canCollapse = true
+        contentItem.holdingPriority = NSLayoutConstraint.Priority(250)
+        contentItem.canCollapse = false
+        contentItem.canCollapseFromWindowResize = false
 
         detailItem.minimumThickness = 560
+        detailItem.holdingPriority = NSLayoutConstraint.Priority(240)
         detailItem.canCollapse = true
+        detailItem.canCollapseFromWindowResize = true
     }
 
     func toggleSidebar() {
-        sidebarItem.animator().isCollapsed.toggle()
+        setSidebarCollapsed(!sidebarCollapsedTarget, animated: true)
+    }
+
+    private func setSidebarCollapsed(_ isCollapsed: Bool, animated: Bool) {
+        sidebarCollapsedTarget = isCollapsed
+        if animated {
+            sidebarItem.animator().isCollapsed = isCollapsed
+        } else {
+            sidebarItem.isCollapsed = isCollapsed
+        }
         splitView.adjustSubviews()
     }
 
@@ -218,6 +238,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         toolbarMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleToolbarPointer(event)
             return event
+        }
+        splitResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSSplitView.didResizeSubviewsNotification,
+            object: splitView,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.stabilizeSplitLayoutIfNeeded()
+            }
         }
     }
 
@@ -252,14 +281,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private func applyDetailPaneVisibility(_ isPresented: Bool) {
         UserDefaults.standard.set(isPresented, forKey: WorkspaceDetailPaneController.defaultsKey)
         guard !immersive.isImmersive else { return }
-        if isPresented {
-            contentItem.maximumThickness = 430
-            contentItem.preferredThicknessFraction = 0.28
-        } else {
-            contentItem.preferredThicknessFraction = 0.34
-            contentItem.maximumThickness = expandedContentMaximumThickness
-        }
+        updateContentSizing(forDetailPane: isPresented)
         detailItem.isCollapsed = !isPresented
+        contentItem.isCollapsed = false
         splitView.adjustSubviews()
     }
 
@@ -267,17 +291,83 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         max(720, splitView.bounds.width - sidebarItem.minimumThickness)
     }
 
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard !immersive.isImmersive else { return }
+        updateContentSizing(forDetailPane: appContext.detailPaneController.isPresented)
+    }
+
     private func applyImmersiveState(_ immersive: ImmersiveController) {
         view.window?.toolbar?.isVisible = !immersive.isImmersive || immersive.isToolbarVisible
         if immersive.isImmersive {
-            sidebarItem.animator().isCollapsed = !immersive.peekRevealing
+            setSidebarCollapsed(!immersive.peekRevealing, animated: true)
             contentItem.animator().isCollapsed = !immersive.peekRevealing
             detailItem.animator().isCollapsed = false
         } else {
-            sidebarItem.animator().isCollapsed = false
+            setSidebarCollapsed(false, animated: true)
             contentItem.animator().isCollapsed = false
             applyDetailPaneVisibility(appContext.detailPaneController.isPresented)
         }
+    }
+
+    private func updateContentSizing(forDetailPane isPresented: Bool) {
+        contentItem.maximumThickness = expandedContentMaximumThickness
+        contentItem.preferredThicknessFraction = isPresented ? 0.28 : 0.34
+    }
+
+    private func stabilizeSplitLayoutIfNeeded() {
+        guard !immersive.isImmersive else { return }
+
+        let detailShouldBePresented = appContext.detailPaneController.isPresented
+        updateContentSizing(forDetailPane: detailShouldBePresented)
+
+        var needsAdjustment = false
+        if contentItem.isCollapsed {
+            contentItem.isCollapsed = false
+            needsAdjustment = true
+        }
+
+        if detailShouldBePresented != !detailItem.isCollapsed {
+            appContext.detailPaneController.setPresented(!detailItem.isCollapsed)
+        }
+
+        if needsAdjustment {
+            splitView.adjustSubviews()
+        }
+    }
+
+    override func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
+        if subview === sidebarController.view {
+            return sidebarCollapsedTarget
+        }
+        if subview === detailController.view {
+            return true
+        }
+        return false
+    }
+
+    override func splitView(
+        _ splitView: NSSplitView,
+        shouldCollapseSubview subview: NSView,
+        forDoubleClickOnDividerAt dividerIndex: Int
+    ) -> Bool {
+        false
+    }
+
+    override func splitView(
+        _ splitView: NSSplitView,
+        constrainSplitPosition proposedPosition: CGFloat,
+        ofSubviewAt dividerIndex: Int
+    ) -> CGFloat {
+        guard dividerIndex == 1 else { return proposedPosition }
+
+        let detailCollapseTrigger = splitView.bounds.width - 96
+        guard proposedPosition >= detailCollapseTrigger else { return proposedPosition }
+
+        Task { @MainActor [weak self] in
+            self?.appContext.detailPaneController.setPresented(false)
+        }
+        return splitView.bounds.width
     }
 
     private func handleToolbarPointer(_ event: NSEvent) {
@@ -290,14 +380,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         if event.locationInWindow.x <= 6 {
             immersive.revealColumns()
         }
-    }
-}
-
-private final class SidebarToggleRelay {
-    var toggleAction: (() -> Void)?
-
-    func toggle() {
-        toggleAction?()
     }
 }
 
@@ -332,7 +414,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDataS
     private var childrenByNode: [Node: [Node]] = [:]
     private var isObservingLocalLibrary = false
 
-    init(appContext: WorkspaceAppContext) {
+    fileprivate init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
         super.init(nibName: nil, bundle: nil)
     }
@@ -376,7 +458,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDataS
 
             scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: rootView.safeAreaLayoutGuide.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: rootView.safeAreaLayoutGuide.topAnchor, constant: 38),
             scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
         ])
         view = rootView
@@ -428,24 +510,67 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDataS
         item: Any
     ) -> NSView? {
         guard let node = item as? Node else { return nil }
-        let identifier = NSUserInterfaceItemIdentifier("SidebarCell")
+        let isGroup: Bool
+        if case .group = node {
+            isGroup = true
+        } else {
+            isGroup = false
+        }
+        let identifier = NSUserInterfaceItemIdentifier(isGroup ? "SidebarGroupCell" : "SidebarCell")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
             ?? NSTableCellView()
         cell.identifier = identifier
         cell.textField = cell.textField ?? NSTextField(labelWithString: "")
+        if !isGroup {
+            cell.imageView = cell.imageView ?? NSImageView()
+        }
         if cell.textField?.superview == nil, let textField = cell.textField {
             textField.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(textField)
-            NSLayoutConstraint.activate([
-                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
+            if let imageView = cell.imageView {
+                imageView.translatesAutoresizingMaskIntoConstraints = false
+                imageView.imageScaling = .scaleProportionallyDown
+                cell.addSubview(imageView)
+                NSLayoutConstraint.activate([
+                    imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                    imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    imageView.widthAnchor.constraint(equalToConstant: 18),
+                    imageView.heightAnchor.constraint(equalToConstant: 18),
+                    textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
+                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                ])
+            } else {
+                NSLayoutConstraint.activate([
+                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                ])
+            }
+        }
+        if let imageView = cell.imageView {
+            imageView.image = sidebarImage(for: node)
         }
         cell.textField?.stringValue = title(for: node)
         cell.textField?.font = font(for: node)
-        cell.imageView?.image = nil
         return cell
+    }
+
+    private func sidebarImage(for node: Node) -> NSImage? {
+        let systemName: String
+        switch node {
+        case .group:
+            return nil
+        case .gallery(let section):
+            systemName = section.sidebarSystemImage
+        case .importLocal:
+            systemName = "folder.badge.plus"
+        case .localFolder:
+            systemName = "folder"
+        }
+        let image = NSImage(systemSymbolName: systemName, accessibilityDescription: node.title)
+        image?.isTemplate = true
+        return image
     }
 
     @objc private func selectionDidChange(_ sender: Any?) {
