@@ -57,6 +57,20 @@ private enum MainMenuBuilder {
         let menu = NSMenu(title: appName)
         menu.addItem(
             NSMenuItem(
+                title: "About \(appName)",
+                action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(.separator())
+        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        let servicesMenu = NSMenu(title: "Services")
+        servicesItem.submenu = servicesMenu
+        menu.addItem(servicesItem)
+        NSApp.servicesMenu = servicesMenu
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
                 title: "Hide \(appName)",
                 action: #selector(NSApplication.hide(_:)),
                 keyEquivalent: "h"
@@ -331,6 +345,14 @@ private enum MainMenuBuilder {
             NSMenuItem(
                 title: "Zoom",
                 action: #selector(NSWindow.performZoom(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
+                title: "Bring All to Front",
+                action: #selector(NSApplication.arrangeInFront(_:)),
                 keyEquivalent: ""
             )
         )
