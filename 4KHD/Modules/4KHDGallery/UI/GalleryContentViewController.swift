@@ -3,24 +3,24 @@ import Observation
 
 @MainActor
 final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
-    private enum Row: Hashable {
+    enum Row: Hashable {
         case group(String)
         case item(GalleryItem.ID)
         case footer
     }
 
-    private let library: FourKHDGalleryStore
+    let library: FourKHDGalleryStore
     private let preferences: GalleryContentPreferences
     private let detailPane: WorkspaceDetailPaneController
     private let tableView = GalleryContentTableView()
     private let tableScrollView = NSScrollView()
     private let gridView = GalleryGridContainerView()
     private var activeView: NSView?
-    private var rows: [Row] = []
-    private var rowItems: [GalleryItem.ID: GalleryItem] = [:]
+    var rows: [Row] = []
+    var rowItems: [GalleryItem.ID: GalleryItem] = [:]
     private var rowGroups: [String: FavoriteAuthorGroup] = [:]
-    private var expandedFavoriteAuthorIDs = Set<String>()
-    private var favoriteAuthorOverrides: [String: String] = [:]
+    var expandedFavoriteAuthorIDs = Set<String>()
+    var favoriteAuthorOverrides: [String: String] = [:]
     private var isObserving = false
     private var isApplyingSelection = false
 
@@ -92,7 +92,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         }
     }
 
-    private func reloadContent() {
+    func reloadContent() {
         favoriteAuthorOverrides = loadFavoriteAuthorOverrides()
         rebuildRows()
 
@@ -161,7 +161,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty
     }
 
-    private var shouldGroupFavorites: Bool {
+    var shouldGroupFavorites: Bool {
         library.section == .favorites && library.activeSearchQuery == nil
     }
 
@@ -194,7 +194,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         }
     }
 
-    private var favoriteAuthorGroups: [FavoriteAuthorGroup] {
+    var favoriteAuthorGroups: [FavoriteAuthorGroup] {
         groupedFavoriteItems()
             .map { author, items in
                 FavoriteAuthorGroup(
@@ -290,62 +290,6 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         return true
     }
 
-    private func makeContextMenu(forRow row: Int) -> NSMenu? {
-        guard rows.indices.contains(row), case .item(let id) = rows[row], let item = rowItems[id] else {
-            return nil
-        }
-        let menu = NSMenu()
-        menu.addItem(withTitle: library.isFavorite(item) ? "取消收藏" : "收藏", action: #selector(toggleFavoriteFromMenu(_:)), keyEquivalent: "")
-            .representedObject = item
-
-        if shouldGroupFavorites,
-           let group = rowGroup(containing: item) {
-            let targetGroups = favoriteAuthorGroups.filter { $0.id != group.id }
-            if !targetGroups.isEmpty {
-                let moveItem = NSMenuItem(title: "移动到目录", action: nil, keyEquivalent: "")
-                let submenu = NSMenu()
-                for target in targetGroups {
-                    let itemMenu = NSMenuItem(title: target.author, action: #selector(moveFavoriteFromMenu(_:)), keyEquivalent: "")
-                    itemMenu.target = self
-                    itemMenu.representedObject = FavoriteMoveCommand(item: item, targetAuthor: target.author)
-                    submenu.addItem(itemMenu)
-                }
-                menu.setSubmenu(submenu, for: moveItem)
-                menu.addItem(moveItem)
-            }
-            if favoriteAuthorOverrides[item.detailURL.absoluteString] != nil {
-                menu.addItem(withTitle: "恢复自动分类", action: #selector(restoreFavoriteGroupingFromMenu(_:)), keyEquivalent: "")
-                    .representedObject = item
-            }
-        }
-        return menu
-    }
-
-    private func rowGroup(containing item: GalleryItem) -> FavoriteAuthorGroup? {
-        favoriteAuthorGroups.first { group in
-            group.items.contains { $0.id == item.id }
-        }
-    }
-
-    @objc private func toggleFavoriteFromMenu(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? GalleryItem else { return }
-        library.toggleFavorite(for: item)
-        reloadContent()
-    }
-
-    @objc private func moveFavoriteFromMenu(_ sender: NSMenuItem) {
-        guard let command = sender.representedObject as? FavoriteMoveCommand else { return }
-        setFavoriteAuthorOverride(command.targetAuthor, for: command.item)
-        expandedFavoriteAuthorIDs.insert(command.targetAuthor.lowercased())
-        reloadContent()
-    }
-
-    @objc private func restoreFavoriteGroupingFromMenu(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? GalleryItem else { return }
-        removeFavoriteAuthorOverride(for: item)
-        reloadContent()
-    }
-
     private func renameFavoriteGroup(_ group: FavoriteAuthorGroup) {
         guard let newAuthor = promptForFavoriteGroupName(currentName: group.author) else { return }
         var overrides = favoriteAuthorOverrides
@@ -385,13 +329,13 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         return decoded
     }
 
-    private func setFavoriteAuthorOverride(_ author: String, for item: GalleryItem) {
+    func setFavoriteAuthorOverride(_ author: String, for item: GalleryItem) {
         var overrides = favoriteAuthorOverrides
         overrides[item.detailURL.absoluteString] = normalizedFavoriteAuthorOverride(author)
         saveFavoriteAuthorOverrides(overrides)
     }
 
-    private func removeFavoriteAuthorOverride(for item: GalleryItem) {
+    func removeFavoriteAuthorOverride(for item: GalleryItem) {
         var overrides = favoriteAuthorOverrides
         overrides[item.detailURL.absoluteString] = nil
         saveFavoriteAuthorOverrides(overrides)
@@ -481,16 +425,6 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
         let row = tableView.selectedRow
         guard rows.indices.contains(row), case .item(let id) = rows[row], let item = rowItems[id] else { return }
         library.select(item)
-    }
-}
-
-private final class FavoriteMoveCommand: NSObject {
-    let item: GalleryItem
-    let targetAuthor: String
-
-    init(item: GalleryItem, targetAuthor: String) {
-        self.item = item
-        self.targetAuthor = targetAuthor
     }
 }
 
