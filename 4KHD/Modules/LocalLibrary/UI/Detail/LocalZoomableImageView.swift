@@ -172,6 +172,18 @@ private final class LocalCenteringClipView: NSClipView {
 private final class LocalZoomScrollView: NSScrollView {
     var onMagnifyEndedBelowBaseline: (() -> Void)?
 
+    override func viewWillStartLiveResize() {
+        hasHorizontalScroller = false
+        hasVerticalScroller = false
+        super.viewWillStartLiveResize()
+    }
+
+    override func viewDidEndLiveResize() {
+        hasHorizontalScroller = true
+        hasVerticalScroller = true
+        super.viewDidEndLiveResize()
+    }
+
     override func magnify(with event: NSEvent) {
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
             if magnification < 1 {

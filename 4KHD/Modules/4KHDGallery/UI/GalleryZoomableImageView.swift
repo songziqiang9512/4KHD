@@ -220,6 +220,18 @@ private final class GalleryCenteringClipView: NSClipView {
 private final class GalleryZoomScrollView: NSScrollView {
     var onMagnifyEndedBelowBaseline: (() -> Void)?
 
+    override func viewWillStartLiveResize() {
+        hasHorizontalScroller = false
+        hasVerticalScroller = false
+        super.viewWillStartLiveResize()
+    }
+
+    override func viewDidEndLiveResize() {
+        hasHorizontalScroller = true
+        hasVerticalScroller = true
+        super.viewDidEndLiveResize()
+    }
+
     override func magnify(with event: NSEvent) {
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
             if magnification < 1 {
