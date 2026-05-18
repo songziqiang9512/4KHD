@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 
 @MainActor
 final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemValidation, NSSearchFieldDelegate {
@@ -22,6 +23,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var refreshItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
+    private var isObservingToolbarState = false
     private let refreshQueue = WorkspaceCoalescingQueue(
         name: "Workspace Toolbar Refresh",
         interval: 0.05,
@@ -46,6 +48,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         detailObserverID = appContext.detailPaneController.addObserver { [weak self] _ in
             self?.scheduleRefresh()
         }
+        observeToolbarState()
     }
 
     deinit {
@@ -258,6 +261,37 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func scheduleRefresh() {
         refreshQueue.add(id: "refresh") { [weak self] in
             self?.refresh()
+        }
+    }
+
+    private func observeToolbarState() {
+        guard !isObservingToolbarState else { return }
+        isObservingToolbarState = true
+        withObservationTracking {
+            _ = appContext.routeController.route
+            _ = appContext.detailPaneController.isPresented
+            observeSnapshot(appContext.toolbarContext.snapshot(for: currentModuleID))
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isObservingToolbarState = false
+                self.scheduleRefresh()
+                self.observeToolbarState()
+            }
+        }
+    }
+
+    private func observeSnapshot(_ snapshot: WorkspaceToolbarSnapshot) {
+        switch snapshot {
+        case .gallery(let gallerySnapshot):
+            _ = gallerySnapshot.searchText
+            _ = gallerySnapshot.layout
+            _ = gallerySnapshot.isRefreshing
+        case .local(let localSnapshot):
+            _ = localSnapshot.searchText
+            _ = localSnapshot.layout
+            _ = localSnapshot.isRefreshing
+            _ = localSnapshot.hasSelection
         }
     }
 
