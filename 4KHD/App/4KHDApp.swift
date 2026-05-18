@@ -196,6 +196,20 @@ private enum MainMenuBuilder {
                 keyEquivalent: "r"
             )
         )
+        menu.addItem(
+            NSMenuItem(
+                title: "Previous Image",
+                action: #selector(WorkspaceSplitViewController.selectPreviousImage(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
+                title: "Next Image",
+                action: #selector(WorkspaceSplitViewController.selectNextImage(_:)),
+                keyEquivalent: ""
+            )
+        )
         menu.addItem(layoutMenuItem())
         menu.addItem(localSortMenuItem())
         menu.addItem(.separator())

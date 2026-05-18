@@ -11,6 +11,8 @@ enum WorkspaceToolbarSnapshot {
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
         let canShare: Bool
     }
 
@@ -21,6 +23,8 @@ enum WorkspaceToolbarSnapshot {
         let sortDirection: LocalImageSortDirection
         let isRefreshing: Bool
         let hasSelection: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
         let canShare: Bool
     }
 }
@@ -100,10 +104,16 @@ final class WorkspaceToolbarContext {
                     isRefreshing: galleryStore.isRefreshingList,
                     canFavorite: selectedItem != nil,
                     isFavorite: selectedItem.map { galleryStore.isFavorite($0) } ?? false,
+                    canSelectPreviousImage: galleryStore.selectedImageIndex > 0,
+                    canSelectNextImage: selectedItem.map { item in
+                        galleryStore.selectedImageIndex < max(item.imageCount - 1, 0)
+                    } ?? false,
                     canShare: selectedItem != nil
                 )
             )
         case .localLibrary:
+            let selectedImageIndex = localLibraryStore.selectedImageIndex
+            let imageCount = localLibraryStore.selectedImages.count
             return .local(
                 .init(
                     searchText: localPreferences.searchText,
@@ -112,6 +122,8 @@ final class WorkspaceToolbarContext {
                     sortDirection: localPreferences.sortDirection,
                     isRefreshing: localLibraryStore.isScanning,
                     hasSelection: localLibraryStore.selectedFolder != nil,
+                    canSelectPreviousImage: selectedImageIndex > 0,
+                    canSelectNextImage: selectedImageIndex < imageCount - 1,
                     canShare: localLibraryStore.selectedImage != nil
                 )
             )
@@ -188,5 +200,14 @@ final class WorkspaceToolbarContext {
         guard case .fourKHDGallery = moduleID,
               let item = galleryStore.selectedItem else { return }
         galleryStore.toggleFavorite(for: item)
+    }
+
+    func stepImage(_ delta: Int, for moduleID: WorkspaceModuleID) {
+        switch moduleID {
+        case .fourKHDGallery:
+            galleryStore.stepImage(delta)
+        case .localLibrary:
+            localLibraryStore.stepImage(delta)
+        }
     }
 }

@@ -182,6 +182,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         refreshToolbarState()
     }
 
+    @objc func selectPreviousImage(_ sender: Any?) {
+        appContext.toolbarContext.stepImage(-1, for: currentModuleID)
+        refreshToolbarState()
+    }
+
+    @objc func selectNextImage(_ sender: Any?) {
+        appContext.toolbarContext.stepImage(1, for: currentModuleID)
+        refreshToolbarState()
+    }
+
     @objc func setContentListLayout(_ sender: Any?) {
         setContentLayout(isList: true)
     }
@@ -247,6 +257,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case #selector(toggleCurrentFavorite(_:)):
             updateFavoriteValidationItem(item)
             return canFavoriteCurrentItem
+        case #selector(selectPreviousImage(_:)):
+            return canStepImage(-1)
+        case #selector(selectNextImage(_:)):
+            return canStepImage(1)
         case #selector(setContentListLayout(_:)):
             updateLayoutValidationItem(item, isList: true)
             return true
@@ -380,6 +394,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return false
         }
         return snapshot.canFavorite
+    }
+
+    private func canStepImage(_ delta: Int) -> Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
+        case .local(let snapshot):
+            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
+        }
     }
 
     private func updateFavoriteValidationItem(_ item: NSValidatedUserInterfaceItem) {
