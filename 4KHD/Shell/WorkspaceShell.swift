@@ -177,6 +177,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         refreshToolbarState()
     }
 
+    @objc func openCurrentReference(_ sender: Any?) {
+        guard let reference = currentReference else { return }
+        NSWorkspace.shared.open(reference.url)
+    }
+
+    @objc func copyCurrentReference(_ sender: Any?) {
+        currentReference?.writeToPasteboard()
+    }
+
     @objc func shareCurrentContent(_ sender: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
         guard !items.isEmpty else { return }
@@ -193,6 +202,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return searchFieldIsAvailable
         case #selector(refreshCurrentContent(_:)):
             return canRefreshCurrentModule
+        case #selector(openCurrentReference(_:)):
+            return currentReference != nil
+        case #selector(copyCurrentReference(_:)):
+            updateCopyReferenceValidationItem(item)
+            return currentReference != nil
         case #selector(shareCurrentContent(_:)):
             return canShareCurrentModule
         case #selector(importLocalFolder(_:)):
@@ -268,6 +282,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         appContext.routeController.route.moduleID
     }
 
+    private var currentReference: WorkspaceCurrentReference? {
+        appContext.toolbarContext.currentReference(for: currentModuleID)
+    }
+
     private var canRefreshCurrentModule: Bool {
         switch appContext.toolbarContext.snapshot(for: currentModuleID) {
         case .gallery(let gallerySnapshot):
@@ -284,6 +302,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case .local(let localSnapshot):
             return localSnapshot.canShare
         }
+    }
+
+    private func updateCopyReferenceValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        guard let menuItem = item as? NSMenuItem else { return }
+        menuItem.title = currentReference?.copyMenuTitle ?? "Copy Link"
     }
 
     private func updateToggleSidebarValidationItem(_ item: NSValidatedUserInterfaceItem) {

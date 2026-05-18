@@ -23,6 +23,39 @@ enum WorkspaceToolbarSnapshot {
     }
 }
 
+enum WorkspaceCurrentReference {
+    case web(URL)
+    case file(URL)
+
+    var url: URL {
+        switch self {
+        case .web(let url), .file(let url):
+            return url
+        }
+    }
+
+    var copyMenuTitle: String {
+        switch self {
+        case .web:
+            return "Copy Link"
+        case .file:
+            return "Copy Path"
+        }
+    }
+
+    func writeToPasteboard(_ pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        switch self {
+        case .web(let url):
+            let urlString = url.absoluteString
+            pasteboard.setString(urlString, forType: .URL)
+            pasteboard.setString(urlString, forType: .string)
+        case .file(let url):
+            pasteboard.setString(url.path, forType: .string)
+        }
+    }
+}
+
 @MainActor
 final class WorkspaceToolbarContext {
     private let galleryStore: FourKHDGalleryStore
@@ -125,6 +158,15 @@ final class WorkspaceToolbarContext {
             return galleryStore.selectedItem.map { [$0.detailURL] } ?? []
         case .localLibrary:
             return localLibraryStore.selectedImage.map { [$0.url as NSURL] } ?? []
+        }
+    }
+
+    func currentReference(for moduleID: WorkspaceModuleID) -> WorkspaceCurrentReference? {
+        switch moduleID {
+        case .fourKHDGallery:
+            return galleryStore.selectedItem.map { .web($0.detailURL) }
+        case .localLibrary:
+            return localLibraryStore.selectedImage.map { .file($0.url) }
         }
     }
 }

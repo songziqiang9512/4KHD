@@ -100,6 +100,13 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Open Original",
+                action: #selector(WorkspaceSplitViewController.openCurrentReference(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Share...",
                 action: #selector(WorkspaceSplitViewController.shareCurrentContent(_:)),
                 keyEquivalent: "s"
@@ -125,6 +132,11 @@ private enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         menu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        menu.addItem(NSMenuItem(
+            title: "Copy Link",
+            action: #selector(WorkspaceSplitViewController.copyCurrentReference(_:)),
+            keyEquivalent: ""
+        ))
         menu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         menu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         menu.addItem(.separator())
