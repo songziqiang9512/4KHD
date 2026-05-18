@@ -63,6 +63,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
 
     private func setupTable() {
         tableScrollView.drawsBackground = false
+        tableScrollView.automaticallyAdjustsContentInsets = true
         tableScrollView.hasVerticalScroller = true
         tableScrollView.documentView = tableView
 

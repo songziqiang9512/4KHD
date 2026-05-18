@@ -36,8 +36,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
         sidebarController = WorkspaceSidebarViewController(appContext: appContext)
-        contentController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
-        detailController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
+        contentController = WorkspaceColumnHostController()
+        detailController = WorkspaceColumnHostController()
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
         contentItem = NSSplitViewItem(contentListWithViewController: contentController)
         detailItem = NSSplitViewItem(viewController: detailController)

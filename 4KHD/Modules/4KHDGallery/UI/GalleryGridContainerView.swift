@@ -127,12 +127,13 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     private func setupView() {
         scrollView.drawsBackground = false
+        scrollView.automaticallyAdjustsContentInsets = true
         scrollView.hasVerticalScroller = true
         scrollView.documentView = collectionView
 
-        gridLayout.minimumInteritemSpacing = 14
-        gridLayout.minimumLineSpacing = 14
-        gridLayout.sectionInset = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        gridLayout.minimumInteritemSpacing = 8
+        gridLayout.minimumLineSpacing = 10
+        gridLayout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
 
         collectionView.collectionViewLayout = gridLayout
         collectionView.backgroundColors = [.clear]
@@ -162,8 +163,9 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     }
 
     private func updateItemSize() {
+        let visibleWidth = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : bounds.width
         let insetWidth = gridLayout.sectionInset.left + gridLayout.sectionInset.right
-        let availableWidth = max(bounds.width - insetWidth, preferredCardMinimumWidth)
+        let availableWidth = max(visibleWidth - insetWidth, preferredCardMinimumWidth)
         let columns: Int
         if let preferredColumnCount {
             columns = max(preferredColumnCount, 1)

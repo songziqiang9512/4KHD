@@ -80,6 +80,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
 
     private func setupTableView() {
         scrollView.drawsBackground = false
+        scrollView.automaticallyAdjustsContentInsets = true
         scrollView.hasVerticalScroller = true
         scrollView.documentView = tableView
 

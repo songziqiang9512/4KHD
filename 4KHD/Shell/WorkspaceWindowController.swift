@@ -20,6 +20,8 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 1280, height: 820))
         window.minSize = NSSize(width: 1080, height: 700)
         window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .shadow
