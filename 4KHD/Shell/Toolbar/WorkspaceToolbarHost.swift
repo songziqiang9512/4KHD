@@ -8,6 +8,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let detailTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.detailTrackingSeparator")
         static let search = NSToolbarItem.Identifier("WorkspaceToolbar.search")
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
+        static let localSort = NSToolbarItem.Identifier("WorkspaceToolbar.localSort")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
         static let cacheLimit = NSToolbarItem.Identifier("WorkspaceToolbar.cacheLimit")
@@ -20,6 +21,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private var detailObserverID: UUID?
     private weak var searchItem: NSSearchToolbarItem?
     private weak var layoutControl: NSSegmentedControl?
+    private weak var localSortItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
@@ -74,6 +76,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
             ItemID.layout,
+            ItemID.localSort,
             ItemID.refresh,
             ItemID.detailPane,
             ItemID.detailTrackingSeparator,
@@ -147,6 +150,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             layoutControl = control
             updateLayoutControl()
             return item
+        case ItemID.localSort:
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "排序"
+            item.paletteLabel = "排序"
+            item.image = NSImage(systemSymbolName: "arrow.up.arrow.down", accessibilityDescription: "排序")
+            item.menu = makeLocalSortMenu()
+            item.visibilityPriority = .standard
+            localSortItem = item
+            updateLocalSortItem()
+            return item
         case ItemID.refresh:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.target = self
@@ -203,6 +216,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         switch item.itemIdentifier {
         case ItemID.refresh:
             canRefreshCurrentModule
+        case ItemID.localSort:
+            currentModuleID == .localLibrary
         default:
             true
         }
@@ -240,6 +255,20 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func refreshContent(_ sender: Any?) {
         appContext.toolbarContext.refresh(for: currentModuleID)
+        refresh()
+    }
+
+    @objc private func selectLocalSortField(_ sender: NSMenuItem) {
+        guard let field = sender.representedObject as? LocalImageSortField,
+              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+        appContext.toolbarContext.setLocalSort(field: field, direction: snapshot.sortDirection)
+        refresh()
+    }
+
+    @objc private func selectLocalSortDirection(_ sender: NSMenuItem) {
+        guard let direction = sender.representedObject as? LocalImageSortDirection,
+              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+        appContext.toolbarContext.setLocalSort(field: snapshot.sortField, direction: direction)
         refresh()
     }
 
@@ -290,6 +319,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let localSnapshot):
             _ = localSnapshot.searchText
             _ = localSnapshot.layout
+            _ = localSnapshot.sortField
+            _ = localSnapshot.sortDirection
             _ = localSnapshot.isRefreshing
             _ = localSnapshot.hasSelection
         }
@@ -298,6 +329,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func refresh() {
         updateSearchField()
         updateLayoutControl()
+        updateLocalSortItem()
         updateRefreshItem()
         configureDetailPaneItem(detailPaneItem)
         validateVisibleItems()
@@ -328,6 +360,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             layoutControl.selectedSegment = gallerySnapshot.layout == .list ? 0 : 1
         case .local(let localSnapshot):
             layoutControl.selectedSegment = localSnapshot.layout == .list ? 0 : 1
+        }
+    }
+
+    private func updateLocalSortItem() {
+        guard let localSortItem else { return }
+        localSortItem.menu = makeLocalSortMenu()
+        if case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) {
+            localSortItem.toolTip = "排序：\(snapshot.sortField.title)，\(snapshot.sortDirection.title)"
+        } else {
+            localSortItem.toolTip = "本地图片排序"
         }
     }
 
@@ -372,6 +414,30 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             item.target = self
             item.representedObject = limit
             item.state = limit == current ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    private func makeLocalSortMenu() -> NSMenu {
+        let menu = NSMenu(title: "排序")
+        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            return menu
+        }
+
+        for field in LocalImageSortField.allCases {
+            let item = NSMenuItem(title: field.title, action: #selector(selectLocalSortField(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = field
+            item.state = field == snapshot.sortField ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        for direction in LocalImageSortDirection.allCases {
+            let item = NSMenuItem(title: direction.title, action: #selector(selectLocalSortDirection(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = direction
+            item.state = direction == snapshot.sortDirection ? .on : .off
             menu.addItem(item)
         }
         return menu
