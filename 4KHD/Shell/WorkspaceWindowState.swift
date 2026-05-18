@@ -38,6 +38,7 @@ struct WorkspaceWindowState: Codable {
 }
 
 enum WorkspaceSplitLayoutMetrics {
+    static let minimumSidebarWidth: CGFloat = 180
     static let defaultSidebarWidth: CGFloat = 240
     static let defaultContentWidth: CGFloat = 430
     static let minimumContentWidth: CGFloat = 320
