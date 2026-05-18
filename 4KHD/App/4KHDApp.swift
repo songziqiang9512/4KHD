@@ -68,6 +68,14 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         keyboardShortcutsWindowController?.window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    @objc func openApplicationSupportFolder(_ sender: Any?) {
+        AppStorageFolders.open(AppStorageFolders.applicationSupport)
+    }
+
+    @objc func openImageCacheFolder(_ sender: Any?) {
+        AppStorageFolders.open(AppStorageFolders.imageCache)
+    }
 }
 
 private enum MainMenuBuilder {
@@ -418,6 +426,21 @@ private enum MainMenuBuilder {
         )
         keyboardItem.target = NSApp.delegate as AnyObject?
         menu.addItem(keyboardItem)
+        menu.addItem(.separator())
+        let supportFolderItem = NSMenuItem(
+            title: "Open Application Support Folder",
+            action: #selector(FourKHDAppDelegate.openApplicationSupportFolder(_:)),
+            keyEquivalent: ""
+        )
+        supportFolderItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(supportFolderItem)
+        let imageCacheItem = NSMenuItem(
+            title: "Open Image Cache Folder",
+            action: #selector(FourKHDAppDelegate.openImageCacheFolder(_:)),
+            keyEquivalent: ""
+        )
+        imageCacheItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(imageCacheItem)
         item.submenu = menu
         NSApp.helpMenu = menu
         return item

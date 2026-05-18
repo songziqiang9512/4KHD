@@ -62,7 +62,7 @@ final class RemoteImagePipeline {
         var configuration = ImagePipeline.Configuration()
         configuration.dataLoader = DataLoader(configuration: Self.urlSessionConfiguration(urlCache: urlCache))
         configuration.imageCache = ImageCache(costLimit: 384 * 1024 * 1024, countLimit: 900)
-        if let dataCache = try? DataCache(name: "com.songziqiang.4khd.images") {
+        if let dataCache = try? DataCache(name: AppStorageFolders.imageCacheFolderName) {
             dataCache.sizeLimit = cacheLimit
             configuration.dataCache = dataCache
             dataCache.sweep()
