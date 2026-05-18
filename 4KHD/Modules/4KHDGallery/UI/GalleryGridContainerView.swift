@@ -98,6 +98,14 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         return item
     }
 
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        pasteboardWriterForItemAt indexPath: IndexPath
+    ) -> NSPasteboardWriting? {
+        guard items.indices.contains(indexPath.item) else { return nil }
+        return items[indexPath.item].detailURL as NSURL
+    }
+
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection,
               let indexPath = indexPaths.first,
@@ -132,6 +140,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         collectionView.allowsMultipleSelection = false
         collectionView.dataSource = self
         collectionView.delegate = self
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: true)
         collectionView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacent(delta: delta) ?? false
         }

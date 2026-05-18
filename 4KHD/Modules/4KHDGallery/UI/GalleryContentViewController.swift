@@ -75,6 +75,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableView.style = .plain
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: true)
         tableView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(forRow: row)
         }
@@ -390,6 +392,15 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
             toggleFavoriteGroup(id)
         }
         return false
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard rows.indices.contains(row),
+              case .item(let id) = rows[row],
+              let item = rowItems[id] else {
+            return nil
+        }
+        return item.detailURL as NSURL
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
