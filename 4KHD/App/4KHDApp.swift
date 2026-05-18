@@ -128,6 +128,13 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Set Desktop Wallpaper",
+                action: #selector(WorkspaceSplitViewController.setCurrentFileAsDesktopWallpaper(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Share...",
                 action: #selector(WorkspaceSplitViewController.shareCurrentContent(_:)),
                 keyEquivalent: "s"

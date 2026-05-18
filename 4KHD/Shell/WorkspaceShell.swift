@@ -223,6 +223,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         LocalQuickLookController.shared.open(url: fileURL)
     }
 
+    @objc func setCurrentFileAsDesktopWallpaper(_ sender: Any?) {
+        guard let fileURL = currentReference?.fileURL else { return }
+        LocalDesktopWallpaperSetter.setDesktopWallpaper(fileURL)
+    }
+
     @objc func shareCurrentContent(_ sender: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
         guard !items.isEmpty else { return }
@@ -260,7 +265,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             updateCopyReferenceValidationItem(item)
             return currentReference != nil
         case #selector(revealCurrentFileInFinder(_:)),
-             #selector(quickLookCurrentFile(_:)):
+             #selector(quickLookCurrentFile(_:)),
+             #selector(setCurrentFileAsDesktopWallpaper(_:)):
             return currentReference?.fileURL != nil
         case #selector(shareCurrentContent(_:)):
             return canShareCurrentModule
