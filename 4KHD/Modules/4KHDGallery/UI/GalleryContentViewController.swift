@@ -69,6 +69,9 @@ final class GalleryContentViewController: NSViewController {
         tableView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(forRow: row)
         }
+        tableView.arrowKeyHandler = { [weak self] delta in
+            self?.selectAdjacentFromTable(delta: delta) ?? false
+        }
     }
 
     private func setupGrid() {
@@ -249,6 +252,33 @@ final class GalleryContentViewController: NSViewController {
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         isApplyingSelection = false
+    }
+
+    private func selectAdjacentFromTable(delta: Int) -> Bool {
+        guard preferences.layout == .list else {
+            return false
+        }
+
+        let selectedRow = rows.firstIndex { row in
+            guard case .item(let id) = row else { return false }
+            return id == library.selectedItemID
+        }
+        let currentRow = selectedRow ?? (tableView.selectedRow >= 0 ? tableView.selectedRow : 0)
+        let start = currentRow + (delta < 0 ? -1 : 1)
+        let range: AnySequence<Int>
+        if delta < 0 {
+            range = AnySequence(stride(from: start, through: 0, by: -1))
+        } else {
+            range = AnySequence(stride(from: start, to: rows.count, by: 1))
+        }
+
+        for row in range {
+            guard case .item(let id) = rows[row], let item = rowItems[id] else { continue }
+            library.select(item)
+            return true
+        }
+
+        return true
     }
 
     private func makeContextMenu(forRow row: Int) -> NSMenu? {
@@ -457,6 +487,7 @@ private final class FavoriteMoveCommand: NSObject {
 
 final class GalleryContentTableView: NSTableView {
     var contextMenuProvider: ((Int) -> NSMenu?)?
+    var arrowKeyHandler: ((Int) -> Bool)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -468,4 +499,27 @@ final class GalleryContentTableView: NSTableView {
         }
         return contextMenuProvider?(row)
     }
+
+    override func keyDown(with event: NSEvent) {
+        let handled = WorkspaceKeyboardHandler.keyDown(
+            event,
+            context: WorkspaceKeyboardContext(stepSelection: arrowKeyHandler)
+        )
+        if handled {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func viewWillStartLiveResize() {
+        workspaceWillStartLiveResize()
+        super.viewWillStartLiveResize()
+    }
+
+    override func viewDidEndLiveResize() {
+        workspaceDidEndLiveResize()
+        super.viewDidEndLiveResize()
+    }
 }
+
+extension GalleryContentTableView: WorkspaceLiveResizeScrollerHiding {}

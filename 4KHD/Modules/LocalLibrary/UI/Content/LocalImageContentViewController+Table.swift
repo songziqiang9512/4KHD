@@ -111,12 +111,28 @@ final class LocalImageListTableView: NSTableView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.charactersIgnoringModifiers == " ", quickLookHandler?() == true {
+        let handled = WorkspaceKeyboardHandler.keyDown(
+            event,
+            context: WorkspaceKeyboardContext(quickLook: quickLookHandler)
+        )
+        if handled {
             return
         }
         super.keyDown(with: event)
     }
+
+    override func viewWillStartLiveResize() {
+        workspaceWillStartLiveResize()
+        super.viewWillStartLiveResize()
+    }
+
+    override func viewDidEndLiveResize() {
+        workspaceDidEndLiveResize()
+        super.viewDidEndLiveResize()
+    }
 }
+
+extension LocalImageListTableView: WorkspaceLiveResizeScrollerHiding {}
 
 final class LocalImageListCellView: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("LocalImageListCellView")

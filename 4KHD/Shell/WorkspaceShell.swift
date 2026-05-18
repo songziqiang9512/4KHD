@@ -1,112 +1,14 @@
 import AppKit
-import Observation
-
-// MARK: - Immersive 控制器（窗内大图模式）
-
-@MainActor
-@Observable
-final class ImmersiveController {
-    @ObservationIgnored private var observers: [UUID: (ImmersiveController) -> Void] = [:]
-
-    var isImmersive: Bool = false
-    var peekRevealing: Bool = false
-    var isToolbarVisible: Bool = true
-    @ObservationIgnored private var peekHideWorkItem: DispatchWorkItem?
-
-    func toggle() {
-        set(!isImmersive)
-    }
-
-    func set(_ on: Bool) {
-        if on {
-            peekHideWorkItem?.cancel()
-            isImmersive = true
-            peekRevealing = false
-            isToolbarVisible = false
-        } else {
-            peekHideWorkItem?.cancel()
-            isImmersive = false
-            peekRevealing = false
-            isToolbarVisible = true
-        }
-        notifyObservers()
-    }
-
-    func revealColumns() {
-        guard isImmersive else { return }
-        peekHideWorkItem?.cancel()
-        peekRevealing = true
-        notifyObservers()
-    }
-
-    func handleColumnHover(_ hovering: Bool) {
-        guard isImmersive else { return }
-        peekHideWorkItem?.cancel()
-        if hovering {
-            peekRevealing = true
-            notifyObservers()
-            return
-        }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.isImmersive else { return }
-            self.peekRevealing = false
-            self.notifyObservers()
-        }
-        peekHideWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
-    }
-
-    func handleToolbarPointer(isNearTop: Bool) {
-        guard isImmersive else { return }
-        if isNearTop {
-            isToolbarVisible = true
-            notifyObservers()
-            return
-        }
-
-        guard isToolbarVisible else { return }
-        isToolbarVisible = false
-        notifyObservers()
-    }
-
-    func addObserver(_ observer: @escaping (ImmersiveController) -> Void) -> UUID {
-        let id = UUID()
-        observers[id] = observer
-        observer(self)
-        return id
-    }
-
-    func removeObserver(id: UUID) {
-        observers.removeValue(forKey: id)
-    }
-
-    private func notifyObservers() {
-        for observer in observers.values {
-            observer(self)
-        }
-    }
-}
-
-@MainActor
-@Observable
-final class SidebarDisclosureState {
-    private var collapsedFolderIDs = Set<String>()
-
-    func isExpanded(_ folderID: String) -> Bool {
-        !collapsedFolderIDs.contains(folderID)
-    }
-
-    func setExpanded(_ isExpanded: Bool, for folderID: String) {
-        if isExpanded {
-            collapsedFolderIDs.remove(folderID)
-        } else {
-            collapsedFolderIDs.insert(folderID)
-        }
-    }
-}
 
 @MainActor
 final class WorkspaceSplitViewController: NSSplitViewController {
+    private enum SplitState {
+        static let widthsKey = "com.songziqiang.4khd.workspaceSplitWidths.v1"
+        static let sidebarHiddenKey = "com.songziqiang.4khd.workspaceSidebarHidden.v1"
+        static let defaultSidebarWidth: CGFloat = 240
+        static let defaultContentWidth: CGFloat = 430
+    }
+
     private let appContext: WorkspaceAppContext
     private let immersive = ImmersiveController()
     private let sidebarDisclosure = SidebarDisclosureState()
@@ -120,9 +22,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var detailObserverID: UUID?
     private var immersiveObserverID: UUID?
     private var toolbarMonitor: Any?
-    private var splitResizeObserver: NSObjectProtocol?
     private var didBootstrap = false
-    private var sidebarCollapsedTarget = false
+    private var didRestoreSplitViewState = false
+    private var isRestoringSplitViewState = false
+    private var expandedSidebarNodeIDs: [String] = ["group:线上", "group:本地"]
 
     var isSidebarCollapsed: Bool {
         sidebarItem.isCollapsed
@@ -134,9 +37,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         contentController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
         detailController = WorkspaceColumnHostController(respectsSafeAreaTop: true)
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
-        contentItem = NSSplitViewItem(viewController: contentController)
+        contentItem = NSSplitViewItem(contentListWithViewController: contentController)
         detailItem = NSSplitViewItem(viewController: detailController)
         super.init(nibName: nil, bundle: nil)
+        sidebarController.delegate = self
         configureSplitItems()
     }
 
@@ -150,12 +54,36 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         view.frame.size = NSSize(width: 1280, height: 820)
         splitView.isVertical = true
         splitView.dividerStyle = .thin
-        splitView.delegate = self
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
         addSplitViewItem(detailItem)
         installObservers()
         bootstrapIfNeeded()
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        Task { @MainActor [weak self] in
+            self?.restoreSplitViewStateIfNeeded()
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let handled = WorkspaceKeyboardHandler.keyDown(
+            event,
+            context: WorkspaceKeyboardContext(
+                toggleSidebar: { [weak self] in
+                    self?.toggleWorkspaceSidebar(nil)
+                },
+                toggleDetailPane: { [weak self] in
+                    self?.toggleWorkspaceDetailPane(nil)
+                }
+            )
+        )
+        if handled {
+            return
+        }
+        super.keyDown(with: event)
     }
 
     deinit {
@@ -180,49 +108,45 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         if let toolbarMonitor {
             NSEvent.removeMonitor(toolbarMonitor)
         }
-        if let splitResizeObserver {
-            NotificationCenter.default.removeObserver(splitResizeObserver)
-        }
     }
 
     private func configureSplitItems() {
-        sidebarItem.minimumThickness = 200
-        sidebarItem.maximumThickness = 240
-        sidebarItem.preferredThicknessFraction = 0.16
         sidebarItem.holdingPriority = NSLayoutConstraint.Priority(260)
         sidebarItem.canCollapse = true
-        sidebarItem.canCollapseFromWindowResize = false
         sidebarItem.allowsFullHeightLayout = true
+        sidebarController.view.translatesAutoresizingMaskIntoConstraints = false
+        sidebarController.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
 
-        contentItem.minimumThickness = 280
-        contentItem.maximumThickness = expandedContentMaximumThickness
-        contentItem.preferredThicknessFraction = 0.28
-        contentItem.holdingPriority = NSLayoutConstraint.Priority(250)
-        contentItem.canCollapse = false
-        contentItem.canCollapseFromWindowResize = false
+        contentItem.holdingPriority = NSLayoutConstraint.Priority(255)
+        if #available(macOS 26.0, *) {
+            contentItem.automaticallyAdjustsSafeAreaInsets = true
+        }
 
-        detailItem.minimumThickness = 560
-        detailItem.holdingPriority = NSLayoutConstraint.Priority(240)
+        detailItem.minimumThickness = 384
         detailItem.canCollapse = true
-        detailItem.canCollapseFromWindowResize = true
-    }
-
-    func toggleSidebar() {
-        setSidebarCollapsed(!sidebarCollapsedTarget, animated: true)
+        if #unavailable(macOS 26.0) {
+            detailItem.titlebarSeparatorStyle = .line
+        }
     }
 
     private func setSidebarCollapsed(_ isCollapsed: Bool, animated: Bool) {
-        sidebarCollapsedTarget = isCollapsed
         if animated {
             sidebarItem.animator().isCollapsed = isCollapsed
         } else {
             sidebarItem.isCollapsed = isCollapsed
         }
-        splitView.adjustSubviews()
     }
 
     @objc func toggleWorkspaceSidebar(_ sender: Any?) {
-        toggleSidebar()
+        super.toggleSidebar(sender)
+    }
+
+    @objc func toggleWorkspaceDetailPane(_ sender: Any?) {
+        appContext.detailPaneController.toggle()
+    }
+
+    func saveStateToUserDefaults() {
+        saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
     }
 
     private func installObservers() {
@@ -239,24 +163,19 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             self?.handleToolbarPointer(event)
             return event
         }
-        splitResizeObserver = NotificationCenter.default.addObserver(
-            forName: NSSplitView.didResizeSubviewsNotification,
-            object: splitView,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.stabilizeSplitLayoutIfNeeded()
-            }
-        }
     }
 
     private func bootstrapIfNeeded() {
         guard !didBootstrap else { return }
         didBootstrap = true
-        let storedDetailValue = UserDefaults.standard.object(
-            forKey: WorkspaceDetailPaneController.defaultsKey
-        ) as? Bool
-        appContext.detailPaneController.setPresented(storedDetailValue ?? true)
+        if let state = storedWindowState() {
+            expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
+            sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
+            appContext.detailPaneController.setPresented(state.isDetailPanePresented)
+        } else {
+            sidebarController.restoreExpandedNodeIDs(expandedSidebarNodeIDs)
+            appContext.detailPaneController.setPresented(legacyDetailPanePresented())
+        }
         CookieBridge.shared.start()
         appContext.routeController.applyCurrentRoute()
         appContext.moduleRegistry.bootstrapModules()
@@ -279,22 +198,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func applyDetailPaneVisibility(_ isPresented: Bool) {
-        UserDefaults.standard.set(isPresented, forKey: WorkspaceDetailPaneController.defaultsKey)
+        saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
         guard !immersive.isImmersive else { return }
-        updateContentSizing(forDetailPane: isPresented)
+        if !isPresented {
+            saveVisibleSplitViewStateIfNeeded()
+        }
         detailItem.isCollapsed = !isPresented
-        contentItem.isCollapsed = false
+        if isPresented {
+            restoreDetailWidthForPresentedDetail()
+        }
         splitView.adjustSubviews()
-    }
-
-    private var expandedContentMaximumThickness: CGFloat {
-        max(720, splitView.bounds.width - sidebarItem.minimumThickness)
-    }
-
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        guard !immersive.isImmersive else { return }
-        updateContentSizing(forDetailPane: appContext.detailPaneController.isPresented)
     }
 
     private func applyImmersiveState(_ immersive: ImmersiveController) {
@@ -310,64 +223,186 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         }
     }
 
-    private func updateContentSizing(forDetailPane isPresented: Bool) {
-        contentItem.maximumThickness = expandedContentMaximumThickness
-        contentItem.preferredThicknessFraction = isPresented ? 0.28 : 0.34
-    }
+    private func restoreSplitViewStateIfNeeded() {
+        guard !didRestoreSplitViewState,
+              splitView.arrangedSubviews.count == 3 else { return }
+        didRestoreSplitViewState = true
 
-    private func stabilizeSplitLayoutIfNeeded() {
-        guard !immersive.isImmersive else { return }
-
-        let detailShouldBePresented = appContext.detailPaneController.isPresented
-        updateContentSizing(forDetailPane: detailShouldBePresented)
-
-        var needsAdjustment = false
-        if contentItem.isCollapsed {
-            contentItem.isCollapsed = false
-            needsAdjustment = true
-        }
-
-        if detailShouldBePresented != !detailItem.isCollapsed {
-            appContext.detailPaneController.setPresented(!detailItem.isCollapsed)
-        }
-
-        if needsAdjustment {
-            splitView.adjustSubviews()
-        }
-    }
-
-    override func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
-        if subview === sidebarController.view {
-            return sidebarCollapsedTarget
-        }
-        if subview === detailController.view {
-            return true
-        }
-        return false
-    }
-
-    override func splitView(
-        _ splitView: NSSplitView,
-        shouldCollapseSubview subview: NSView,
-        forDoubleClickOnDividerAt dividerIndex: Int
-    ) -> Bool {
-        false
-    }
-
-    override func splitView(
-        _ splitView: NSSplitView,
-        constrainSplitPosition proposedPosition: CGFloat,
-        ofSubviewAt dividerIndex: Int
-    ) -> CGFloat {
-        guard dividerIndex == 1 else { return proposedPosition }
-
-        let detailCollapseTrigger = splitView.bounds.width - 96
-        guard proposedPosition >= detailCollapseTrigger else { return proposedPosition }
-
+        splitView.layoutSubtreeIfNeeded()
         Task { @MainActor [weak self] in
-            self?.appContext.detailPaneController.setPresented(false)
+            guard let self else { return }
+            self.isRestoringSplitViewState = true
+            defer { self.isRestoringSplitViewState = false }
+            if let state = self.storedWindowState(), state.splitViewWidths.count == 3 {
+                self.restoreSplitViewState(state)
+            } else if let legacyWidths = self.legacySplitViewWidths(), legacyWidths.count == 3 {
+                self.restoreSplitViewWidths(legacyWidths, isSidebarHidden: self.legacySidebarHidden())
+            } else {
+                self.applyDefaultSplitViewWidths()
+            }
         }
-        return splitView.bounds.width
+    }
+
+    private func restoreSplitViewState(_ state: WorkspaceWindowState) {
+        restoreFullScreenState(state.isFullScreen)
+        expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
+        sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
+        restoreSplitViewWidths(state.splitViewWidths, isSidebarHidden: state.isSidebarHidden)
+    }
+
+    private func restoreFullScreenState(_ isFullScreen: Bool) {
+        guard isFullScreen,
+              let window = view.window,
+              !window.styleMask.contains(.fullScreen) else { return }
+        window.toggleFullScreen(self)
+    }
+
+    private func restoreSplitViewWidths(_ widths: [Int], isSidebarHidden: Bool) {
+        let dividerThickness = splitView.dividerThickness
+        let sidebarWidth = CGFloat(widths[0])
+        let contentWidth = CGFloat(widths[1])
+
+        if isSidebarHidden {
+            splitView.setPosition(0, ofDividerAt: 0)
+            splitView.setPosition(contentWidth, ofDividerAt: 1)
+        } else {
+            splitView.setPosition(sidebarWidth, ofDividerAt: 0)
+            splitView.setPosition(sidebarWidth + dividerThickness + contentWidth, ofDividerAt: 1)
+        }
+
+        sidebarItem.isCollapsed = isSidebarHidden
+    }
+
+    private func applyDefaultSplitViewWidths() {
+        let dividerThickness = splitView.dividerThickness
+        let windowWidth = view.window?.frame.width ?? view.bounds.width
+        let maxContentWidth = max(
+            320,
+            windowWidth - SplitState.defaultSidebarWidth - detailItem.minimumThickness - (dividerThickness * 2)
+        )
+        let contentWidth = min(SplitState.defaultContentWidth, maxContentWidth)
+        splitView.setPosition(SplitState.defaultSidebarWidth, ofDividerAt: 0)
+        splitView.setPosition(SplitState.defaultSidebarWidth + dividerThickness + contentWidth, ofDividerAt: 1)
+    }
+
+    private func restoreDetailWidthForPresentedDetail() {
+        if let widths = storedWindowState()?.splitViewWidths ?? legacySplitViewWidths(),
+           widths.count == 3,
+           widths[2] >= Int(detailItem.minimumThickness) {
+            restoreDetailWidth(CGFloat(widths[2]))
+            return
+        }
+        applyDefaultSplitViewWidths()
+    }
+
+    private func restoreDetailWidth(_ storedDetailWidth: CGFloat) {
+        let dividerThickness = splitView.dividerThickness
+        let sidebarWidth = sidebarItem.isCollapsed
+            ? 0
+            : max(splitView.arrangedSubviews.first?.frame.width ?? 0, SplitState.defaultSidebarWidth)
+        let windowWidth = view.window?.frame.width ?? view.bounds.width
+        let dividerTotal = sidebarItem.isCollapsed ? dividerThickness : dividerThickness * 2
+        let maximumDetailWidth = max(
+            detailItem.minimumThickness,
+            windowWidth - sidebarWidth - 320 - dividerTotal
+        )
+        let detailWidth = min(max(storedDetailWidth, detailItem.minimumThickness), maximumDetailWidth)
+        let contentWidth = max(320, windowWidth - sidebarWidth - detailWidth - dividerTotal)
+
+        if !sidebarItem.isCollapsed {
+            splitView.setPosition(sidebarWidth, ofDividerAt: 0)
+        }
+        splitView.setPosition(sidebarWidth + dividerThickness + contentWidth, ofDividerAt: 1)
+    }
+
+    override func splitViewDidResizeSubviews(_ notification: Notification) {
+        saveVisibleSplitViewStateIfNeeded()
+    }
+
+    private func saveVisibleSplitViewStateIfNeeded() {
+        guard didRestoreSplitViewState,
+              !isRestoringSplitViewState,
+              !immersive.isImmersive,
+              splitView.arrangedSubviews.count == 3 else { return }
+
+        guard !detailItem.isCollapsed,
+              let widths = currentSplitViewWidths(),
+              widths[2] >= Int(detailItem.minimumThickness) else { return }
+        saveWindowStateToUserDefaults(widths: widths, includeHiddenDetailWidth: true)
+    }
+
+    private func currentSplitViewWidths() -> [Int]? {
+        guard let window = view.window,
+              splitView.arrangedSubviews.count == 3 else { return nil }
+
+        let dividerThickness = splitView.dividerThickness
+        let isSidebarHidden = sidebarItem.isCollapsed
+        let detailWidth = splitView.arrangedSubviews[2].frame.width
+        let sidebarWidth: CGFloat
+        let contentWidth: CGFloat
+
+        if isSidebarHidden {
+            sidebarWidth = 0
+            contentWidth = window.frame.width - (detailWidth + dividerThickness)
+        } else {
+            sidebarWidth = splitView.arrangedSubviews[0].frame.width
+            contentWidth = window.frame.width - sidebarWidth - detailWidth - (dividerThickness * 2)
+        }
+
+        guard sidebarWidth.isFinite,
+              contentWidth.isFinite,
+              detailWidth.isFinite,
+              contentWidth > 0,
+              detailWidth > 0 else { return nil }
+
+        return [sidebarWidth, contentWidth, detailWidth].map { Int(floor($0)) }
+    }
+
+    private func saveWindowStateToUserDefaults(
+        widths: [Int]? = nil,
+        includeHiddenDetailWidth: Bool
+    ) {
+        let fallback = storedWindowState()?.splitViewWidths ?? legacySplitViewWidths() ?? []
+        let nextWidths: [Int]
+        if let widths {
+            nextWidths = widths
+        } else if includeHiddenDetailWidth,
+                  let current = currentSplitViewWidths(),
+                  current.count == 3 {
+            nextWidths = current
+        } else {
+            nextWidths = fallback
+        }
+
+        let state = WorkspaceWindowState(
+            isFullScreen: view.window?.styleMask.contains(.fullScreen) ?? false,
+            splitViewWidths: nextWidths,
+            isSidebarHidden: sidebarItem.isCollapsed,
+            isDetailPanePresented: appContext.detailPaneController.isPresented,
+            expandedSidebarNodeIDs: expandedSidebarNodeIDs
+        )
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: WorkspaceWindowState.defaultsKey)
+    }
+
+    private func storedWindowState() -> WorkspaceWindowState? {
+        guard let data = UserDefaults.standard.data(forKey: WorkspaceWindowState.defaultsKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(WorkspaceWindowState.self, from: data)
+    }
+
+    private func legacySplitViewWidths() -> [Int]? {
+        UserDefaults.standard.array(forKey: SplitState.widthsKey) as? [Int]
+    }
+
+    private func legacySidebarHidden() -> Bool {
+        UserDefaults.standard.bool(forKey: SplitState.sidebarHiddenKey)
+    }
+
+    private func legacyDetailPanePresented() -> Bool {
+        let stored = UserDefaults.standard.object(forKey: WorkspaceDetailPaneController.defaultsKey) as? Bool
+        return stored ?? true
     }
 
     private func handleToolbarPointer(_ event: NSEvent) {
@@ -383,297 +418,33 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 }
 
-@MainActor
-final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
-    private enum Node: Hashable {
-        case group(String)
-        case gallery(GallerySection)
-        case importLocal
-        case localFolder(LocalFolderNode)
-
-        var title: String {
-            switch self {
-            case .group(let title):
-                title
-            case .gallery(let section):
-                section.title
-            case .importLocal:
-                "导入本地目录"
-            case .localFolder(let folder):
-                folder.title
-            }
-        }
+extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
+    func sidebarViewController(_ controller: WorkspaceSidebarViewController, didSelect route: WorkspaceRoute) {
+        appContext.routeController.select(route)
     }
 
-    private let appContext: WorkspaceAppContext
-    private let rootView = NSView()
-    private let materialView = NSVisualEffectView()
-    private let outlineView = NSOutlineView()
-    private let scrollView = NSScrollView()
-    private var nodes: [Node] = []
-    private var childrenByNode: [Node: [Node]] = [:]
-    private var isObservingLocalLibrary = false
-
-    fileprivate init(appContext: WorkspaceAppContext) {
-        self.appContext = appContext
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func loadView() {
-        materialView.material = .sidebar
-        materialView.blendingMode = .behindWindow
-        materialView.state = .active
-
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("MainColumn"))
-        outlineView.addTableColumn(column)
-        outlineView.outlineTableColumn = column
-        outlineView.headerView = nil
-        outlineView.rowSizeStyle = .default
-        outlineView.style = .sourceList
-        outlineView.dataSource = self
-        outlineView.delegate = self
-        outlineView.target = self
-        outlineView.action = #selector(selectionDidChange(_:))
-        outlineView.doubleAction = #selector(doubleClick(_:))
-        scrollView.documentView = outlineView
-
-        rootView.addSubview(materialView)
-        rootView.addSubview(scrollView)
-        materialView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            materialView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            materialView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            materialView.topAnchor.constraint(equalTo: rootView.topAnchor),
-            materialView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-
-            scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: rootView.safeAreaLayoutGuide.topAnchor, constant: 38),
-            scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
-        ])
-        view = rootView
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        reload()
-        observeLocalLibrary()
-    }
-
-    func reload() {
-        rebuildNodes()
-        outlineView.reloadData()
-        for node in nodes {
-            outlineView.expandItem(node)
-        }
-        selectCurrentRoute()
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        if let node = item as? Node {
-            return childrenByNode[node]?.count ?? 0
-        }
-        return nodes.count
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if let node = item as? Node {
-            return childrenByNode[node]?[index] ?? Node.group("")
-        }
-        return nodes[index]
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        guard let node = item as? Node else { return false }
-        return !(childrenByNode[node]?.isEmpty ?? true)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        guard let node = item as? Node else { return false }
-        if case .group = node { return true }
-        return false
-    }
-
-    func outlineView(
-        _ outlineView: NSOutlineView,
-        viewFor tableColumn: NSTableColumn?,
-        item: Any
-    ) -> NSView? {
-        guard let node = item as? Node else { return nil }
-        let isGroup: Bool
-        if case .group = node {
-            isGroup = true
-        } else {
-            isGroup = false
-        }
-        let identifier = NSUserInterfaceItemIdentifier(isGroup ? "SidebarGroupCell" : "SidebarCell")
-        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
-            ?? NSTableCellView()
-        cell.identifier = identifier
-        cell.textField = cell.textField ?? NSTextField(labelWithString: "")
-        if !isGroup {
-            cell.imageView = cell.imageView ?? NSImageView()
-        }
-        if cell.textField?.superview == nil, let textField = cell.textField {
-            textField.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(textField)
-            if let imageView = cell.imageView {
-                imageView.translatesAutoresizingMaskIntoConstraints = false
-                imageView.imageScaling = .scaleProportionallyDown
-                cell.addSubview(imageView)
-                NSLayoutConstraint.activate([
-                    imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                    imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                    imageView.widthAnchor.constraint(equalToConstant: 18),
-                    imageView.heightAnchor.constraint(equalToConstant: 18),
-                    textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-                ])
-            } else {
-                NSLayoutConstraint.activate([
-                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-                ])
-            }
-        }
-        if let imageView = cell.imageView {
-            imageView.image = sidebarImage(for: node)
-        }
-        cell.textField?.stringValue = title(for: node)
-        cell.textField?.font = font(for: node)
-        return cell
-    }
-
-    private func sidebarImage(for node: Node) -> NSImage? {
-        let systemName: String
-        switch node {
-        case .group:
-            return nil
-        case .gallery(let section):
-            systemName = section.sidebarSystemImage
-        case .importLocal:
-            systemName = "folder.badge.plus"
-        case .localFolder:
-            systemName = "folder"
-        }
-        let image = NSImage(systemSymbolName: systemName, accessibilityDescription: node.title)
-        image?.isTemplate = true
-        return image
-    }
-
-    @objc private func selectionDidChange(_ sender: Any?) {
-        let selectedRow = outlineView.selectedRow
-        guard selectedRow >= 0,
-              let node = outlineView.item(atRow: selectedRow) as? Node else { return }
-        switch node {
-        case .gallery(let section):
-            appContext.routeController.select(
-                WorkspaceRoute(moduleID: .fourKHDGallery, itemID: section.rawValue)
-            )
-        case .localFolder(let folder):
-            appContext.routeController.select(
-                WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
-            )
-        case .importLocal:
-            appContext.importRootFolder()
-        case .group:
-            break
-        }
-    }
-
-    @objc private func doubleClick(_ sender: Any?) {
-        let clickedRow = outlineView.clickedRow
-        guard clickedRow >= 0,
-              let node = outlineView.item(atRow: clickedRow) as? Node,
-              case .importLocal = node else { return }
+    func sidebarViewControllerDidRequestLocalImport(_ controller: WorkspaceSidebarViewController) {
         appContext.importRootFolder()
     }
 
-    private func rebuildNodes() {
-        childrenByNode = [:]
-        let online = Node.group("线上")
-        let local = Node.group("本地")
-        nodes = [online, local]
-        childrenByNode[online] = GallerySection.allCases.map(Node.gallery)
-        if appContext.localLibraryStore.roots.isEmpty {
-            childrenByNode[local] = [.importLocal]
-        } else {
-            childrenByNode[local] = appContext.localLibraryStore.roots.map { makeFolderNode($0.tree) }
-        }
+    func sidebarViewController(
+        _ controller: WorkspaceSidebarViewController,
+        didChangeExpandedNodeIDs expandedNodeIDs: [String]
+    ) {
+        expandedSidebarNodeIDs = expandedNodeIDs
+        saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
     }
 
-    private func observeLocalLibrary() {
-        guard !isObservingLocalLibrary else { return }
-        isObservingLocalLibrary = true
-        withObservationTracking {
-            _ = appContext.localLibraryStore.roots
-            _ = appContext.localLibraryStore.selectedFolderID
-            _ = appContext.localLibraryStore.isScanning
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.isObservingLocalLibrary = false
-                self.reload()
-                self.observeLocalLibrary()
+    func sidebarViewControllerKeyboardContext(
+        _ controller: WorkspaceSidebarViewController
+    ) -> WorkspaceKeyboardContext {
+        WorkspaceKeyboardContext(
+            toggleSidebar: { [weak self] in
+                self?.toggleWorkspaceSidebar(nil)
+            },
+            toggleDetailPane: { [weak self] in
+                self?.toggleWorkspaceDetailPane(nil)
             }
-        }
-    }
-
-    private func makeFolderNode(_ folder: LocalFolderNode) -> Node {
-        let node = Node.localFolder(folder)
-        childrenByNode[node] = folder.folders.map(makeFolderNode)
-        return node
-    }
-
-    private func selectCurrentRoute() {
-        let route = appContext.routeController.route
-        for row in 0 ..< outlineView.numberOfRows {
-            guard let node = outlineView.item(atRow: row) as? Node else { continue }
-            if routeMatches(route, node: node) {
-                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                return
-            }
-        }
-    }
-
-    private func routeMatches(_ route: WorkspaceRoute, node: Node) -> Bool {
-        switch (route.moduleID, node) {
-        case (.fourKHDGallery, .gallery(let section)):
-            route.itemID == section.rawValue
-        case (.localLibrary, .localFolder(let folder)):
-            route.itemID == folder.id
-        default:
-            false
-        }
-    }
-
-    private func title(for node: Node) -> String {
-        switch node {
-        case .localFolder(let folder):
-            "\(folder.title)  \(folder.imageCount)"
-        default:
-            node.title
-        }
-    }
-
-    private func font(for node: Node) -> NSFont {
-        switch node {
-        case .group:
-            NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-        default:
-            NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        }
+        )
     }
 }

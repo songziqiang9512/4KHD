@@ -204,20 +204,28 @@ final class GalleryGridCollectionView: NSCollectionView {
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        let noModifiers = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
-        if noModifiers {
-            switch event.keyCode {
-            case 123, 126:
-                if arrowKeyHandler?(-1) == true { return }
-            case 124, 125:
-                if arrowKeyHandler?(1) == true { return }
-            default:
-                break
-            }
+        let handled = WorkspaceKeyboardHandler.keyDown(
+            event,
+            context: WorkspaceKeyboardContext(stepSelection: arrowKeyHandler)
+        )
+        if handled {
+            return
         }
         super.keyDown(with: event)
     }
+
+    override func viewWillStartLiveResize() {
+        workspaceWillStartLiveResize()
+        super.viewWillStartLiveResize()
+    }
+
+    override func viewDidEndLiveResize() {
+        workspaceDidEndLiveResize()
+        super.viewDidEndLiveResize()
+    }
 }
+
+extension GalleryGridCollectionView: WorkspaceLiveResizeScrollerHiding {}
 
 @MainActor
 final class GalleryGridItemView: NSCollectionViewItem {

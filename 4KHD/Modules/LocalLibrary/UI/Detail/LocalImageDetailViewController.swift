@@ -63,23 +63,23 @@ final class LocalImageDetailViewController: NSViewController {
     }
 
     func handleKeyDown(_ event: NSEvent) -> Bool {
-        guard event.hasBareKeyModifiers else { return false }
-        switch event.keyCode {
-        case 123:
-            localLibrary.stepImage(-1)
-            return true
-        case 124:
-            localLibrary.stepImage(1)
-            return true
-        case 49:
-            quickLookSelected()
-            return true
-        case 3:
-            immersive.toggle()
-            return true
-        default:
-            return false
-        }
+        WorkspaceKeyboardHandler.keyDown(
+            event,
+            context: WorkspaceKeyboardContext(
+                stepSelection: { [weak self] delta in
+                    self?.localLibrary.stepImage(delta)
+                    return true
+                },
+                quickLook: { [weak self] in
+                    self?.quickLookSelected()
+                    return true
+                },
+                toggleImmersive: { [weak self] in
+                    self?.immersive.toggle()
+                    return true
+                }
+            )
+        )
     }
 
     private func setupView() {

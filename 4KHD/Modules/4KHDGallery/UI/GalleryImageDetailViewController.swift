@@ -338,21 +338,19 @@ final class GalleryImageDetailViewController: NSViewController {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
-        let noModifiers = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
-        guard noModifiers else { return false }
-        switch event.keyCode {
-        case 123, 126:
-            library.stepImage(-1)
-            return true
-        case 124, 125, 49:
-            library.stepImage(1)
-            return true
-        case 3:
-            immersive.toggle()
-            return true
-        default:
-            return false
-        }
+        WorkspaceKeyboardHandler.keyDown(
+            event,
+            context: WorkspaceKeyboardContext(
+                stepSelection: { [weak self] delta in
+                    self?.library.stepImage(delta)
+                    return true
+                },
+                toggleImmersive: { [weak self] in
+                    self?.immersive.toggle()
+                    return true
+                }
+            )
+        )
     }
 
     @objc private func previousImage() {
@@ -408,16 +406,5 @@ final class GalleryImageDetailViewController: NSViewController {
             pageURLs: [],
             sampleImageURLs: []
         )
-    }
-}
-
-final class GalleryImageDetailRootView: NSView {
-    var keyHandler: ((NSEvent) -> Bool)?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        if keyHandler?(event) == true { return }
-        super.keyDown(with: event)
     }
 }
