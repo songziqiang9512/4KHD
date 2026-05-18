@@ -177,6 +177,28 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         refreshToolbarState()
     }
 
+    @objc func setContentListLayout(_ sender: Any?) {
+        setContentLayout(isList: true)
+    }
+
+    @objc func setContentGridLayout(_ sender: Any?) {
+        setContentLayout(isList: false)
+    }
+
+    @objc func selectLocalSortFieldFromMenu(_ sender: NSMenuItem) {
+        guard let field = sender.representedObject as? LocalImageSortField,
+              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+        appContext.toolbarContext.setLocalSort(field: field, direction: snapshot.sortDirection)
+        refreshToolbarState()
+    }
+
+    @objc func selectLocalSortDirectionFromMenu(_ sender: NSMenuItem) {
+        guard let direction = sender.representedObject as? LocalImageSortDirection,
+              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+        appContext.toolbarContext.setLocalSort(field: snapshot.sortField, direction: direction)
+        refreshToolbarState()
+    }
+
     @objc func openCurrentReference(_ sender: Any?) {
         guard let reference = currentReference else { return }
         NSWorkspace.shared.open(reference.url)
@@ -212,6 +234,18 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return searchFieldIsAvailable
         case #selector(refreshCurrentContent(_:)):
             return canRefreshCurrentModule
+        case #selector(setContentListLayout(_:)):
+            updateLayoutValidationItem(item, isList: true)
+            return true
+        case #selector(setContentGridLayout(_:)):
+            updateLayoutValidationItem(item, isList: false)
+            return true
+        case #selector(selectLocalSortFieldFromMenu(_:)):
+            updateLocalSortFieldValidationItem(item)
+            return currentModuleID == .localLibrary
+        case #selector(selectLocalSortDirectionFromMenu(_:)):
+            updateLocalSortDirectionValidationItem(item)
+            return currentModuleID == .localLibrary
         case #selector(openCurrentReference(_:)):
             return currentReference != nil
         case #selector(copyCurrentReference(_:)):
@@ -299,6 +333,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         appContext.toolbarContext.currentReference(for: currentModuleID)
     }
 
+    private func setContentLayout(isList: Bool) {
+        switch currentModuleID {
+        case .fourKHDGallery:
+            appContext.toolbarContext.setGalleryLayout(isList ? .list : .grid)
+        case .localLibrary:
+            appContext.toolbarContext.setLocalLayout(isList ? .list : .grid)
+        }
+        refreshToolbarState()
+    }
+
     private var canRefreshCurrentModule: Bool {
         switch appContext.toolbarContext.snapshot(for: currentModuleID) {
         case .gallery(let gallerySnapshot):
@@ -315,6 +359,32 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case .local(let localSnapshot):
             return localSnapshot.canShare
         }
+    }
+
+    private func updateLayoutValidationItem(_ item: NSValidatedUserInterfaceItem, isList: Bool) {
+        guard let menuItem = item as? NSMenuItem else { return }
+        let selectedLayoutIsList: Bool
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let gallerySnapshot):
+            selectedLayoutIsList = gallerySnapshot.layout == .list
+        case .local(let localSnapshot):
+            selectedLayoutIsList = localSnapshot.layout == .list
+        }
+        menuItem.state = selectedLayoutIsList == isList ? .on : .off
+    }
+
+    private func updateLocalSortFieldValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        guard let menuItem = item as? NSMenuItem,
+              let field = menuItem.representedObject as? LocalImageSortField,
+              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+        menuItem.state = field == snapshot.sortField ? .on : .off
+    }
+
+    private func updateLocalSortDirectionValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        guard let menuItem = item as? NSMenuItem,
+              let direction = menuItem.representedObject as? LocalImageSortDirection,
+              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+        menuItem.state = direction == snapshot.sortDirection ? .on : .off
     }
 
     private func updateCopyReferenceValidationItem(_ item: NSValidatedUserInterfaceItem) {

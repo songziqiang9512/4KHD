@@ -182,6 +182,8 @@ private enum MainMenuBuilder {
                 keyEquivalent: "r"
             )
         )
+        menu.addItem(layoutMenuItem())
+        menu.addItem(localSortMenuItem())
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
@@ -219,6 +221,49 @@ private enum MainMenuBuilder {
                 keyEquivalent: "3"
             )
         )
+        item.submenu = menu
+        return item
+    }
+
+    private static func layoutMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Layout")
+        menu.addItem(NSMenuItem(
+            title: "List",
+            action: #selector(WorkspaceSplitViewController.setContentListLayout(_:)),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Grid",
+            action: #selector(WorkspaceSplitViewController.setContentGridLayout(_:)),
+            keyEquivalent: ""
+        ))
+        item.submenu = menu
+        return item
+    }
+
+    private static func localSortMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Sort Local Images", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Sort Local Images")
+        for field in LocalImageSortField.allCases {
+            let menuItem = NSMenuItem(
+                title: field.title,
+                action: #selector(WorkspaceSplitViewController.selectLocalSortFieldFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            menuItem.representedObject = field
+            menu.addItem(menuItem)
+        }
+        menu.addItem(.separator())
+        for direction in LocalImageSortDirection.allCases {
+            let menuItem = NSMenuItem(
+                title: direction.title,
+                action: #selector(WorkspaceSplitViewController.selectLocalSortDirectionFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            menuItem.representedObject = direction
+            menu.addItem(menuItem)
+        }
         item.submenu = menu
         return item
     }
