@@ -435,10 +435,12 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private var canInspectCurrentItem: Bool {
-        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
-            return false
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canShare
+        case .local(let snapshot):
+            return snapshot.hasSelection
         }
-        return snapshot.hasSelection
     }
 
     private var canFavoriteCurrentItem: Bool {

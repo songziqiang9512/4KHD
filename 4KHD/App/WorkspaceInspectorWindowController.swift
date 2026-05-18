@@ -61,10 +61,15 @@ private final class WorkspaceInspectorViewController: NSViewController {
     private let appContext: WorkspaceAppContext
     private let titleLabel = NSTextField(labelWithString: "")
     private let moduleLabel = NSTextField(labelWithString: "")
+    private let primaryLabel = NSTextField(labelWithString: "")
     private let resolutionValue = NSTextField(labelWithString: "")
+    private let secondaryLabel = NSTextField(labelWithString: "")
     private let fileSizeValue = NSTextField(labelWithString: "")
+    private let tertiaryLabel = NSTextField(labelWithString: "")
     private let modifiedValue = NSTextField(labelWithString: "")
+    private let quaternaryLabel = NSTextField(labelWithString: "")
     private let availabilityValue = NSTextField(labelWithString: "")
+    private let pathLabel = NSTextField(labelWithString: "")
     private let pathValue = NSTextField(labelWithString: "")
 
     private var metadataTask: Task<Void, Never>?
@@ -98,29 +103,40 @@ private final class WorkspaceInspectorViewController: NSViewController {
     }
 
     func refresh() {
-        guard appContext.routeController.route.moduleID == .localLibrary,
-              let image = appContext.localLibraryStore.selectedImage else {
+        switch appContext.routeController.route.moduleID {
+        case .fourKHDGallery:
+            metadataTask?.cancel()
             observedImageID = nil
             currentMetadata = nil
+            guard let item = appContext.galleryStore.selectedItem else {
+                applyEmptyState(module: "4KHDGallery")
+                return
+            }
+            apply(item: item)
+        case .localLibrary:
+            guard let image = appContext.localLibraryStore.selectedImage else {
+                observedImageID = nil
+                currentMetadata = nil
+                metadataTask?.cancel()
+                applyEmptyState(module: "LocalLibrary")
+                return
+            }
+
+            if observedImageID == image.id {
+                apply(image: image, metadata: currentMetadata)
+                return
+            }
+
+            observedImageID = image.id
+            currentMetadata = nil
+            apply(image: image, metadata: nil)
             metadataTask?.cancel()
-            applyEmptyState()
-            return
-        }
-
-        if observedImageID == image.id {
-            apply(image: image, metadata: currentMetadata)
-            return
-        }
-
-        observedImageID = image.id
-        currentMetadata = nil
-        apply(image: image, metadata: nil)
-        metadataTask?.cancel()
-        metadataTask = Task { [weak self, image] in
-            let metadata = await LocalImageMetadataService.loadMetadata(for: [image])[image.id]
-            guard !Task.isCancelled else { return }
-            self?.currentMetadata = metadata
-            self?.apply(image: image, metadata: metadata)
+            metadataTask = Task { [weak self, image] in
+                let metadata = await LocalImageMetadataService.loadMetadata(for: [image])[image.id]
+                guard !Task.isCancelled else { return }
+                self?.currentMetadata = metadata
+                self?.apply(image: image, metadata: metadata)
+            }
         }
     }
 
@@ -141,11 +157,11 @@ private final class WorkspaceInspectorViewController: NSViewController {
         header.spacing = 2
 
         let fields = NSGridView(views: [
-            makeRow(title: "Resolution", value: resolutionValue),
-            makeRow(title: "Size", value: fileSizeValue),
-            makeRow(title: "Modified", value: modifiedValue),
-            makeRow(title: "Available", value: availabilityValue),
-            makeRow(title: "Path", value: pathValue)
+            makeRow(label: primaryLabel, value: resolutionValue),
+            makeRow(label: secondaryLabel, value: fileSizeValue),
+            makeRow(label: tertiaryLabel, value: modifiedValue),
+            makeRow(label: quaternaryLabel, value: availabilityValue),
+            makeRow(label: pathLabel, value: pathValue)
         ])
         fields.rowSpacing = 8
         fields.columnSpacing = 12
@@ -166,39 +182,63 @@ private final class WorkspaceInspectorViewController: NSViewController {
         ])
     }
 
-    private func makeRow(title: String, value: NSTextField) -> [NSView] {
-        let label = NSTextField(labelWithString: title)
+    private func makeRow(label: NSTextField, value: NSTextField) -> [NSView] {
         label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         label.textColor = .secondaryLabelColor
         label.alignment = .right
 
         value.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         value.lineBreakMode = .byTruncatingMiddle
-        value.maximumNumberOfLines = title == "Path" ? 2 : 1
+        value.maximumNumberOfLines = label === pathLabel ? 2 : 1
         value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return [label, value]
     }
 
-    private func applyEmptyState() {
+    private func applyEmptyState(module: String) {
         titleLabel.stringValue = "No Selection"
-        moduleLabel.stringValue = "LocalLibrary"
+        moduleLabel.stringValue = module
+        primaryLabel.stringValue = "Kind"
         resolutionValue.stringValue = "-"
+        secondaryLabel.stringValue = "Count"
         fileSizeValue.stringValue = "-"
+        tertiaryLabel.stringValue = "Section"
         modifiedValue.stringValue = "-"
+        quaternaryLabel.stringValue = "URL"
         availabilityValue.stringValue = "-"
+        pathLabel.stringValue = "Path"
         pathValue.stringValue = "-"
     }
 
     private func apply(image: LocalImageItem, metadata: LocalImageMetadata?) {
         titleLabel.stringValue = image.title
         moduleLabel.stringValue = "LocalLibrary"
+        primaryLabel.stringValue = "Resolution"
         resolutionValue.stringValue = formattedResolution(metadata) ?? "-"
+        secondaryLabel.stringValue = "Size"
         fileSizeValue.stringValue = metadata?.fileSize.map {
             ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
         } ?? "-"
+        tertiaryLabel.stringValue = "Modified"
         modifiedValue.stringValue = metadata?.modifiedDate?.formatted(date: .numeric, time: .omitted) ?? "-"
+        quaternaryLabel.stringValue = "Available"
         availabilityValue.stringValue = metadata?.fileExists == false ? "Missing" : "Available"
+        pathLabel.stringValue = "Path"
         pathValue.stringValue = image.url.path
+    }
+
+    private func apply(item: GalleryItem) {
+        titleLabel.stringValue = item.title
+        moduleLabel.stringValue = "4KHDGallery"
+        primaryLabel.stringValue = "Kind"
+        resolutionValue.stringValue = item.kind.rawValue
+        secondaryLabel.stringValue = "Images"
+        fileSizeValue.stringValue = "\(item.imageCount)"
+        tertiaryLabel.stringValue = "Section"
+        modifiedValue.stringValue = item.section.title
+        quaternaryLabel.stringValue = "Favorite"
+        availabilityValue.stringValue = appContext.galleryStore.isFavorite(item) ? "Yes" : "No"
+        pathLabel.stringValue = "URL"
+        pathValue.stringValue = item.detailURL.absoluteString
     }
 
     private func observeState() {
@@ -206,6 +246,10 @@ private final class WorkspaceInspectorViewController: NSViewController {
         isObserving = true
         withObservationTracking {
             _ = appContext.routeController.route
+            _ = appContext.galleryStore.selectedItemID
+            _ = appContext.galleryStore.selectedItem?.title
+            _ = appContext.galleryStore.section
+            _ = appContext.galleryStore.favorites.favorites
             _ = appContext.localLibraryStore.roots
             _ = appContext.localLibraryStore.selectedFolderID
             _ = appContext.localLibraryStore.selectedImageIndex

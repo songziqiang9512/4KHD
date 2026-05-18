@@ -46,6 +46,7 @@ enum WorkspaceAppAssembly {
             moduleRegistry: moduleRegistry,
             routeController: routeController,
             detailPaneController: detailPaneController,
+            galleryStore: fourKHDGalleryStore,
             localLibraryStore: localLibraryStore,
             toolbarContext: toolbarContext,
             importRootFolderAction: importRootFolderAction
