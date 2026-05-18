@@ -37,6 +37,8 @@ final class LocalImageGridContainerView: NSView {
         collectionView.allowsMultipleSelection = false
         collectionView.dataSource = self
         collectionView.delegate = self
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        collectionView.setDraggingSourceOperationMask(.copy, forLocal: true)
         collectionView.contextMenuProvider = { [weak self] indexPath in
             self?.makeContextMenu(for: indexPath)
         }

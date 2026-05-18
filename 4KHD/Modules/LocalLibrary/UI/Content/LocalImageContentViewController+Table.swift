@@ -12,6 +12,11 @@ extension LocalImageContentViewController {
         filteredEntries.indices.contains(row)
     }
 
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard filteredEntries.indices.contains(row) else { return nil }
+        return filteredEntries[row].image.url as NSURL
+    }
+
     func makeContextMenu(forRow row: Int) -> NSMenu? {
         guard filteredEntries.indices.contains(row) else { return nil }
         if tableView.selectedRow != row {

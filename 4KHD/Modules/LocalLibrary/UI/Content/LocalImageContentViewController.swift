@@ -92,6 +92,8 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         tableView.style = .plain
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: true)
         tableView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(forRow: row)
         }

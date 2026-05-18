@@ -38,6 +38,14 @@ extension LocalImageGridContainerView: NSCollectionViewDataSource {
         }
         return item
     }
+
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        pasteboardWriterForItemAt indexPath: IndexPath
+    ) -> NSPasteboardWriting? {
+        guard indexPath.item < entries.count else { return nil }
+        return entries[indexPath.item].image.url as NSURL
+    }
 }
 
 extension LocalImageGridContainerView: NSCollectionViewDelegate {
