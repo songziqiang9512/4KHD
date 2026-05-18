@@ -10,6 +10,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let localSort = NSToolbarItem.Identifier("WorkspaceToolbar.localSort")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
+        static let share = NSToolbarItem.Identifier("WorkspaceToolbar.share")
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
         static let cacheLimit = NSToolbarItem.Identifier("WorkspaceToolbar.cacheLimit")
         static let importFolder = NSToolbarItem.Identifier("WorkspaceToolbar.importFolder")
@@ -23,6 +24,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var layoutControl: NSSegmentedControl?
     private weak var localSortItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
+    private weak var shareItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
     private var isObservingToolbarState = false
@@ -78,6 +80,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.layout,
             ItemID.localSort,
             ItemID.refresh,
+            ItemID.share,
             ItemID.detailPane,
             ItemID.detailTrackingSeparator,
             ItemID.cacheLimit,
@@ -172,6 +175,18 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             refreshItem = item
             updateRefreshItem()
             return item
+        case ItemID.share:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(shareContent(_:))
+            item.label = "共享"
+            item.paletteLabel = "共享"
+            item.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "共享")
+            item.toolTip = "共享当前项目"
+            item.visibilityPriority = .standard
+            shareItem = item
+            updateShareItem()
+            return item
         case ItemID.detailPane:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.target = splitController
@@ -218,6 +233,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             canRefreshCurrentModule
         case ItemID.localSort:
             currentModuleID == .localLibrary
+        case ItemID.share:
+            canShareCurrentModule
         default:
             true
         }
@@ -256,6 +273,13 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     @objc private func refreshContent(_ sender: Any?) {
         appContext.toolbarContext.refresh(for: currentModuleID)
         refresh()
+    }
+
+    @objc private func shareContent(_ sender: Any?) {
+        let items = appContext.toolbarContext.shareItems(for: currentModuleID)
+        guard !items.isEmpty,
+              let anchorView = shareItem?.view ?? splitController?.view else { return }
+        SharingPresenter.show(items: items, of: anchorView, preferredEdge: .minY)
     }
 
     @objc private func selectLocalSortField(_ sender: NSMenuItem) {
@@ -316,6 +340,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = gallerySnapshot.searchText
             _ = gallerySnapshot.layout
             _ = gallerySnapshot.isRefreshing
+            _ = gallerySnapshot.canShare
         case .local(let localSnapshot):
             _ = localSnapshot.searchText
             _ = localSnapshot.layout
@@ -323,6 +348,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = localSnapshot.sortDirection
             _ = localSnapshot.isRefreshing
             _ = localSnapshot.hasSelection
+            _ = localSnapshot.canShare
         }
     }
 
@@ -331,6 +357,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         updateLayoutControl()
         updateLocalSortItem()
         updateRefreshItem()
+        updateShareItem()
         configureDetailPaneItem(detailPaneItem)
         validateVisibleItems()
     }
@@ -386,6 +413,19 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
     }
 
+    private func updateShareItem() {
+        guard let shareItem else { return }
+        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
+        switch snapshot {
+        case .gallery(let gallerySnapshot):
+            shareItem.isEnabled = gallerySnapshot.canShare
+            shareItem.toolTip = gallerySnapshot.canShare ? "共享当前图集链接" : "先选择一个图集"
+        case .local(let localSnapshot):
+            shareItem.isEnabled = localSnapshot.canShare
+            shareItem.toolTip = localSnapshot.canShare ? "共享当前本地图片" : "先选择一张本地图片"
+        }
+    }
+
     private var canRefreshCurrentModule: Bool {
         let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
         switch snapshot {
@@ -393,6 +433,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return !gallerySnapshot.isRefreshing
         case .local(let localSnapshot):
             return !localSnapshot.isRefreshing && localSnapshot.hasSelection
+        }
+    }
+
+    private var canShareCurrentModule: Bool {
+        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
+        switch snapshot {
+        case .gallery(let gallerySnapshot):
+            return gallerySnapshot.canShare
+        case .local(let localSnapshot):
+            return localSnapshot.canShare
         }
     }
 

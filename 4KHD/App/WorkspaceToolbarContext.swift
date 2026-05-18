@@ -9,6 +9,7 @@ enum WorkspaceToolbarSnapshot {
         let searchText: String
         let layout: GalleryContentLayout
         let isRefreshing: Bool
+        let canShare: Bool
     }
 
     struct LocalSnapshot {
@@ -18,6 +19,7 @@ enum WorkspaceToolbarSnapshot {
         let sortDirection: LocalImageSortDirection
         let isRefreshing: Bool
         let hasSelection: Bool
+        let canShare: Bool
     }
 }
 
@@ -50,7 +52,8 @@ final class WorkspaceToolbarContext {
                 .init(
                     searchText: galleryStore.searchText,
                     layout: galleryPreferences.layout,
-                    isRefreshing: galleryStore.isRefreshingList
+                    isRefreshing: galleryStore.isRefreshingList,
+                    canShare: galleryStore.selectedItem != nil
                 )
             )
         case .localLibrary:
@@ -61,7 +64,8 @@ final class WorkspaceToolbarContext {
                     sortField: localPreferences.sortField,
                     sortDirection: localPreferences.sortDirection,
                     isRefreshing: localLibraryStore.isScanning,
-                    hasSelection: localLibraryStore.selectedFolder != nil
+                    hasSelection: localLibraryStore.selectedFolder != nil,
+                    canShare: localLibraryStore.selectedImage != nil
                 )
             )
         }
@@ -113,5 +117,14 @@ final class WorkspaceToolbarContext {
 
     func importRootFolder() {
         importRootFolderAction()
+    }
+
+    func shareItems(for moduleID: WorkspaceModuleID) -> [Any] {
+        switch moduleID {
+        case .fourKHDGallery:
+            return galleryStore.selectedItem.map { [$0.detailURL] } ?? []
+        case .localLibrary:
+            return localLibraryStore.selectedImage.map { [$0.url as NSURL] } ?? []
+        }
     }
 }
