@@ -23,6 +23,20 @@ extension GalleryContentViewController {
             addFavoriteGroupMenuItems(to: menu, item: item, currentGroup: group)
         }
 
+        menu.addItem(.separator())
+        menu.addItem(menuItem(
+            "打开原网页",
+            action: #selector(openOriginalPageFromMenu(_:)),
+            representedObject: item.detailURL,
+            symbolName: "arrow.up.right.square"
+        ))
+        menu.addItem(menuItem(
+            "复制链接",
+            action: #selector(copyDetailURLFromMenu(_:)),
+            representedObject: item.detailURL,
+            symbolName: "doc.on.doc"
+        ))
+
         return menu
     }
 
@@ -43,6 +57,17 @@ extension GalleryContentViewController {
         guard let item = sender.representedObject as? GalleryItem else { return }
         removeFavoriteAuthorOverride(for: item)
         reloadContent()
+    }
+
+    @objc func openOriginalPageFromMenu(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc func copyDetailURLFromMenu(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
 
     private func addFavoriteGroupMenuItems(
@@ -75,10 +100,18 @@ extension GalleryContentViewController {
         }
     }
 
-    private func menuItem(_ title: String, action: Selector, representedObject: Any) -> NSMenuItem {
+    private func menuItem(
+        _ title: String,
+        action: Selector,
+        representedObject: Any,
+        symbolName: String? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         item.representedObject = representedObject
+        if let symbolName {
+            item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: title)
+        }
         return item
     }
 
