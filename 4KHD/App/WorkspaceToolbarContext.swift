@@ -34,6 +34,15 @@ enum WorkspaceCurrentReference {
         }
     }
 
+    var fileURL: URL? {
+        switch self {
+        case .web:
+            return nil
+        case .file(let url):
+            return url
+        }
+    }
+
     var copyMenuTitle: String {
         switch self {
         case .web:

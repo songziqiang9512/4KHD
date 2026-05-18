@@ -186,6 +186,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         currentReference?.writeToPasteboard()
     }
 
+    @objc func revealCurrentFileInFinder(_ sender: Any?) {
+        guard let fileURL = currentReference?.fileURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    @objc func quickLookCurrentFile(_ sender: Any?) {
+        guard let fileURL = currentReference?.fileURL else { return }
+        LocalQuickLookController.shared.open(url: fileURL)
+    }
+
     @objc func shareCurrentContent(_ sender: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
         guard !items.isEmpty else { return }
@@ -207,6 +217,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case #selector(copyCurrentReference(_:)):
             updateCopyReferenceValidationItem(item)
             return currentReference != nil
+        case #selector(revealCurrentFileInFinder(_:)),
+             #selector(quickLookCurrentFile(_:)):
+            return currentReference?.fileURL != nil
         case #selector(shareCurrentContent(_:)):
             return canShareCurrentModule
         case #selector(importLocalFolder(_:)):
