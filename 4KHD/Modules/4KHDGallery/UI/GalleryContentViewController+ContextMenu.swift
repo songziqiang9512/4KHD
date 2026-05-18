@@ -12,11 +12,11 @@ extension GalleryContentViewController {
 
     func makeContextMenu(for item: GalleryItem) -> NSMenu? {
         let menu = NSMenu()
-        menu.addItem(
-            withTitle: library.isFavorite(item) ? "取消收藏" : "收藏",
+        menu.addItem(menuItem(
+            library.isFavorite(item) ? "取消收藏" : "收藏",
             action: #selector(toggleFavoriteFromMenu(_:)),
-            keyEquivalent: ""
-        ).representedObject = item
+            representedObject: item
+        ))
 
         if shouldGroupFavorites,
            let group = rowGroup(containing: item) {
@@ -55,13 +55,11 @@ extension GalleryContentViewController {
             let moveItem = NSMenuItem(title: "移动到目录", action: nil, keyEquivalent: "")
             let submenu = NSMenu()
             for target in targetGroups {
-                let itemMenu = NSMenuItem(
-                    title: target.author,
+                let itemMenu = menuItem(
+                    target.author,
                     action: #selector(moveFavoriteFromMenu(_:)),
-                    keyEquivalent: ""
+                    representedObject: FavoriteMoveCommand(item: item, targetAuthor: target.author)
                 )
-                itemMenu.target = self
-                itemMenu.representedObject = FavoriteMoveCommand(item: item, targetAuthor: target.author)
                 submenu.addItem(itemMenu)
             }
             menu.setSubmenu(submenu, for: moveItem)
@@ -69,12 +67,19 @@ extension GalleryContentViewController {
         }
 
         if favoriteAuthorOverrides[item.detailURL.absoluteString] != nil {
-            menu.addItem(
-                withTitle: "恢复自动分类",
+            menu.addItem(menuItem(
+                "恢复自动分类",
                 action: #selector(restoreFavoriteGroupingFromMenu(_:)),
-                keyEquivalent: ""
-            ).representedObject = item
+                representedObject: item
+            ))
         }
+    }
+
+    private func menuItem(_ title: String, action: Selector, representedObject: Any) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = representedObject
+        return item
     }
 
     private func rowGroup(containing item: GalleryItem) -> FavoriteAuthorGroup? {
