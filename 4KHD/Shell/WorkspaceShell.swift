@@ -219,6 +219,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         NSWorkspace.shared.open(reference.url)
     }
 
+    @objc func saveCurrentImage(_ sender: Any?) {
+        appContext.toolbarContext.saveCurrentImage(for: currentModuleID)
+        refreshToolbarState()
+    }
+
     @objc func copyCurrentReference(_ sender: Any?) {
         currentReference?.writeToPasteboard()
     }
@@ -275,6 +280,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return currentModuleID == .localLibrary
         case #selector(openCurrentReference(_:)):
             return currentReference != nil
+        case #selector(saveCurrentImage(_:)):
+            return canSaveCurrentImage
         case #selector(copyCurrentReference(_:)):
             updateCopyReferenceValidationItem(item)
             return currentReference != nil
@@ -386,6 +393,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return gallerySnapshot.canShare
         case .local(let localSnapshot):
             return localSnapshot.canShare
+        }
+    }
+
+    private var canSaveCurrentImage: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let gallerySnapshot):
+            return gallerySnapshot.canSaveImage
+        case .local(let localSnapshot):
+            return localSnapshot.canSaveImage
         }
     }
 

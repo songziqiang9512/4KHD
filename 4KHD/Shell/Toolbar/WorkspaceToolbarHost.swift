@@ -344,6 +344,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = gallerySnapshot.isFavorite
             _ = gallerySnapshot.canSelectPreviousImage
             _ = gallerySnapshot.canSelectNextImage
+            _ = gallerySnapshot.canSaveImage
             _ = gallerySnapshot.canShare
         case .local(let localSnapshot):
             _ = localSnapshot.searchText
@@ -354,6 +355,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = localSnapshot.hasSelection
             _ = localSnapshot.canSelectPreviousImage
             _ = localSnapshot.canSelectNextImage
+            _ = localSnapshot.canSaveImage
             _ = localSnapshot.canShare
         }
     }

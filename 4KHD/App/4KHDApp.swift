@@ -114,6 +114,13 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Save Image...",
+                action: #selector(WorkspaceSplitViewController.saveCurrentImage(_:)),
+                keyEquivalent: "s"
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Quick Look",
                 action: #selector(WorkspaceSplitViewController.quickLookCurrentFile(_:)),
                 keyEquivalent: "y"
@@ -137,7 +144,7 @@ private enum MainMenuBuilder {
             NSMenuItem(
                 title: "Share...",
                 action: #selector(WorkspaceSplitViewController.shareCurrentContent(_:)),
-                keyEquivalent: "s"
+                keyEquivalent: ""
             )
         )
         menu.addItem(.separator())

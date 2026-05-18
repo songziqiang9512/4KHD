@@ -13,6 +13,7 @@ enum WorkspaceToolbarSnapshot {
         let isFavorite: Bool
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
+        let canSaveImage: Bool
         let canShare: Bool
     }
 
@@ -25,6 +26,7 @@ enum WorkspaceToolbarSnapshot {
         let hasSelection: Bool
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
+        let canSaveImage: Bool
         let canShare: Bool
     }
 }
@@ -75,21 +77,27 @@ enum WorkspaceCurrentReference {
 final class WorkspaceToolbarContext {
     private let galleryStore: FourKHDGalleryStore
     private let galleryPreferences: GalleryContentPreferences
+    private let galleryDetailInteraction: GalleryDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
+    private let localDetailInteraction: LocalDetailInteractionController
     private let importRootFolderAction: () -> Void
 
     init(
         galleryStore: FourKHDGalleryStore,
         galleryPreferences: GalleryContentPreferences,
+        galleryDetailInteraction: GalleryDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
+        localDetailInteraction: LocalDetailInteractionController,
         importRootFolderAction: @escaping () -> Void
     ) {
         self.galleryStore = galleryStore
         self.galleryPreferences = galleryPreferences
+        self.galleryDetailInteraction = galleryDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
+        self.localDetailInteraction = localDetailInteraction
         self.importRootFolderAction = importRootFolderAction
     }
 
@@ -108,6 +116,7 @@ final class WorkspaceToolbarContext {
                     canSelectNextImage: selectedItem.map { item in
                         galleryStore.selectedImageIndex < max(item.imageCount - 1, 0)
                     } ?? false,
+                    canSaveImage: selectedItem != nil && galleryStore.selectedSlot?.knownURL != nil,
                     canShare: selectedItem != nil
                 )
             )
@@ -124,6 +133,7 @@ final class WorkspaceToolbarContext {
                     hasSelection: localLibraryStore.selectedFolder != nil,
                     canSelectPreviousImage: selectedImageIndex > 0,
                     canSelectNextImage: selectedImageIndex < imageCount - 1,
+                    canSaveImage: localLibraryStore.selectedImage != nil,
                     canShare: localLibraryStore.selectedImage != nil
                 )
             )
@@ -208,6 +218,18 @@ final class WorkspaceToolbarContext {
             galleryStore.stepImage(delta)
         case .localLibrary:
             localLibraryStore.stepImage(delta)
+        }
+    }
+
+    func saveCurrentImage(for moduleID: WorkspaceModuleID) {
+        switch moduleID {
+        case .fourKHDGallery:
+            guard let item = galleryStore.selectedItem,
+                  let slot = galleryStore.selectedSlot else { return }
+            galleryDetailInteraction.save(item: item, slot: slot)
+        case .localLibrary:
+            guard let image = localLibraryStore.selectedImage else { return }
+            localDetailInteraction.save(image: image)
         }
     }
 }
