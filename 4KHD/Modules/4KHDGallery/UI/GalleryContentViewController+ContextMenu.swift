@@ -66,8 +66,7 @@ extension GalleryContentViewController {
 
     @objc func copyDetailURLFromMenu(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        writeURLToPasteboard(url)
     }
 
     private func addFavoriteGroupMenuItems(
@@ -113,6 +112,14 @@ extension GalleryContentViewController {
             item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: title)
         }
         return item
+    }
+
+    private func writeURLToPasteboard(_ url: URL) {
+        let pasteboard = NSPasteboard.general
+        let urlString = url.absoluteString
+        pasteboard.clearContents()
+        pasteboard.setString(urlString, forType: .URL)
+        pasteboard.setString(urlString, forType: .string)
     }
 
     private func rowGroup(containing item: GalleryItem) -> FavoriteAuthorGroup? {
