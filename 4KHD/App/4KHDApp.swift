@@ -15,6 +15,7 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     private var appContext: WorkspaceAppContext?
     private var windowController: WorkspaceWindowController?
     private var preferencesWindowController: WorkspacePreferencesWindowController?
+    private var keyboardShortcutsWindowController: WorkspaceKeyboardShortcutsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -40,6 +41,12 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         windowController?.saveStateToUserDefaults()
     }
 
+    @objc func showMainWindow(_ sender: Any?) {
+        windowController?.showWindow(sender)
+        windowController?.window?.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc func showPreferences(_ sender: Any?) {
         guard let appContext else { return }
         if preferencesWindowController == nil {
@@ -52,6 +59,15 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         preferencesWindowController?.window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    @objc func showKeyboardShortcutsWindow(_ sender: Any?) {
+        if keyboardShortcutsWindowController == nil {
+            keyboardShortcutsWindowController = WorkspaceKeyboardShortcutsWindowController()
+        }
+        keyboardShortcutsWindowController?.showWindow(sender)
+        keyboardShortcutsWindowController?.window?.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }
 
 private enum MainMenuBuilder {
@@ -62,6 +78,7 @@ private enum MainMenuBuilder {
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(viewMenuItem())
         mainMenu.addItem(windowMenuItem())
+        mainMenu.addItem(helpMenuItem())
         NSApp.mainMenu = mainMenu
     }
 
@@ -371,6 +388,14 @@ private enum MainMenuBuilder {
             )
         )
         menu.addItem(.separator())
+        let mainWindowItem = NSMenuItem(
+            title: "Main Window",
+            action: #selector(FourKHDAppDelegate.showMainWindow(_:)),
+            keyEquivalent: ""
+        )
+        mainWindowItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(mainWindowItem)
+        menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
                 title: "Bring All to Front",
@@ -380,6 +405,21 @@ private enum MainMenuBuilder {
         )
         item.submenu = menu
         NSApp.windowsMenu = menu
+        return item
+    }
+
+    private static func helpMenuItem() -> NSMenuItem {
+        let item = NSMenuItem()
+        let menu = NSMenu(title: "Help")
+        let keyboardItem = NSMenuItem(
+            title: "Keyboard Shortcuts",
+            action: #selector(FourKHDAppDelegate.showKeyboardShortcutsWindow(_:)),
+            keyEquivalent: "?"
+        )
+        keyboardItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(keyboardItem)
+        item.submenu = menu
+        NSApp.helpMenu = menu
         return item
     }
 }
