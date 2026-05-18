@@ -1,7 +1,8 @@
+import CoreGraphics
 import Foundation
 
 struct WorkspaceWindowState: Codable {
-    static let defaultsKey = "com.songziqiang.4khd.workspaceWindowState.v1"
+    static let defaultExpandedSidebarNodeIDs = ["group:线上", "group:本地"]
 
     var isFullScreen: Bool
     var splitViewWidths: [Int]
@@ -32,6 +33,49 @@ struct WorkspaceWindowState: Codable {
         expandedSidebarNodeIDs = try container.decodeIfPresent(
             [String].self,
             forKey: .expandedSidebarNodeIDs
-        ) ?? ["group:线上", "group:本地"]
+        ) ?? Self.defaultExpandedSidebarNodeIDs
+    }
+}
+
+enum WorkspaceSplitLayoutMetrics {
+    static let defaultSidebarWidth: CGFloat = 240
+    static let defaultContentWidth: CGFloat = 430
+    static let minimumContentWidth: CGFloat = 320
+}
+
+struct WorkspaceWindowStateStore {
+    private enum Key {
+        static let current = "com.songziqiang.4khd.workspaceWindowState.v1"
+        static let legacyWidths = "com.songziqiang.4khd.workspaceSplitWidths.v1"
+        static let legacySidebarHidden = "com.songziqiang.4khd.workspaceSidebarHidden.v1"
+    }
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func load() -> WorkspaceWindowState? {
+        guard let data = defaults.data(forKey: Key.current) else { return nil }
+        return try? JSONDecoder().decode(WorkspaceWindowState.self, from: data)
+    }
+
+    func save(_ state: WorkspaceWindowState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        defaults.set(data, forKey: Key.current)
+    }
+
+    func legacySplitViewWidths() -> [Int]? {
+        defaults.array(forKey: Key.legacyWidths) as? [Int]
+    }
+
+    func legacySidebarHidden() -> Bool {
+        defaults.bool(forKey: Key.legacySidebarHidden)
+    }
+
+    func legacyDetailPanePresented() -> Bool {
+        let stored = defaults.object(forKey: WorkspaceDetailPaneController.defaultsKey) as? Bool
+        return stored ?? true
     }
 }

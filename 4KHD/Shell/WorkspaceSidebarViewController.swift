@@ -29,7 +29,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private let outlineView = WorkspaceSidebarOutlineView()
     private let scrollView = NSScrollView()
     private var isObservingLocalLibrary = false
-    private var expandedNodeIDs: Set<String> = ["group:线上", "group:本地"]
+    private var expandedNodeIDs = Set(WorkspaceWindowState.defaultExpandedSidebarNodeIDs)
     private var isApplyingExpandedNodeIDs = false
     private let reloadQueue = WorkspaceCoalescingQueue(
         name: "Workspace Sidebar Reload",

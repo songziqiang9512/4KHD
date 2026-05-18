@@ -9,7 +9,6 @@ enum WorkspaceAppAssembly {
         let localLibraryStore = LocalLibraryStore()
         let localPreferences = LocalLibraryContentPreferences()
         let localDetailInteraction = LocalDetailInteractionController()
-        let localInspector = LocalImageInspectorController()
         let filmstripVisibility = FilmstripVisibilityController()
         let detailPaneController = WorkspaceDetailPaneController()
         let importRootFolderAction = {
@@ -23,7 +22,6 @@ enum WorkspaceAppAssembly {
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
-            localInspector: localInspector,
             filmstripVisibility: filmstripVisibility,
             importRootFolderAction: importRootFolderAction
         )
@@ -61,7 +59,6 @@ enum WorkspaceAppAssembly {
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
-        localInspector: LocalImageInspectorController,
         filmstripVisibility: FilmstripVisibilityController,
         importRootFolderAction: @escaping () -> Void
     ) -> WorkspaceModuleRegistry {
