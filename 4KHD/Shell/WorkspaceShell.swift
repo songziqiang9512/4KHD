@@ -19,6 +19,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         detailItem: detailItem,
         stateStore: windowStateStore
     )
+    private lazy var commandValidator = WorkspaceCommandValidator(appContext: appContext)
     private var routeObserverID: UUID?
     private var detailObserverID: UUID?
     private var immersiveObserverID: UUID?
@@ -72,23 +73,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     override func keyDown(with event: NSEvent) {
         let handled = WorkspaceKeyboardHandler.keyDown(
             event,
-            context: WorkspaceKeyboardContext(
-                toggleSidebar: { [weak self] in
-                    self?.toggleWorkspaceSidebar(nil)
-                },
-                toggleDetailPane: { [weak self] in
-                    self?.toggleWorkspaceDetailPane(nil)
-                },
-                focusSidebar: { [weak self] in
-                    self?.focusSidebarColumn() ?? false
-                },
-                focusContent: { [weak self] in
-                    self?.focusContentColumn() ?? false
-                },
-                focusDetail: { [weak self] in
-                    self?.focusDetailColumn() ?? false
-                }
-            )
+            context: makeKeyboardContext()
         )
         if handled {
             return
@@ -267,67 +252,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
-        switch item.action {
-        case #selector(moveFocusToSearchField(_:)):
-            return searchFieldIsAvailable
-        case #selector(refreshCurrentContent(_:)):
-            return canRefreshCurrentModule
-        case #selector(toggleCurrentFavorite(_:)):
-            updateFavoriteValidationItem(item)
-            return canFavoriteCurrentItem
-        case #selector(selectPreviousImage(_:)):
-            return canStepImage(-1)
-        case #selector(selectNextImage(_:)):
-            return canStepImage(1)
-        case #selector(setContentListLayout(_:)):
-            updateLayoutValidationItem(item, isList: true)
-            return true
-        case #selector(setContentGridLayout(_:)):
-            updateLayoutValidationItem(item, isList: false)
-            return true
-        case #selector(selectLocalSortFieldFromMenu(_:)):
-            updateLocalSortFieldValidationItem(item)
-            return currentModuleID == .localLibrary
-        case #selector(selectLocalSortDirectionFromMenu(_:)):
-            updateLocalSortDirectionValidationItem(item)
-            return currentModuleID == .localLibrary
-        case #selector(openCurrentReference(_:)):
-            return currentReference != nil
-        case #selector(showCurrentInspector(_:)):
-            return canInspectCurrentItem
-        case #selector(saveCurrentImage(_:)):
-            return canSaveCurrentImage
-        case #selector(resetCurrentZoom(_:)):
-            return canResetCurrentZoom
-        case #selector(copyCurrentReference(_:)):
-            updateCopyReferenceValidationItem(item)
-            return currentReference != nil
-        case #selector(revealCurrentFileInFinder(_:)),
-             #selector(quickLookCurrentFile(_:)),
-             #selector(setCurrentFileAsDesktopWallpaper(_:)):
-            return currentReference?.fileURL != nil
-        case #selector(shareCurrentContent(_:)):
-            return canShareCurrentModule
-        case #selector(importLocalFolder(_:)):
-            return true
-        case #selector(toggleWorkspaceSidebar(_:)):
-            updateToggleSidebarValidationItem(item)
-            return true
-        case #selector(toggleWorkspaceDetailPane(_:)):
-            updateToggleDetailPaneValidationItem(item)
-            return true
-        case #selector(toggleImmersiveMode(_:)):
-            updateImmersiveValidationItem(item)
-            return currentReference != nil
-        case #selector(navigateToSidebar(_:)):
-            return !sidebarItem.isCollapsed
-        case #selector(navigateToContent(_:)):
-            return !contentItem.isCollapsed
-        case #selector(navigateToDetail(_:)):
-            return !detailItem.isCollapsed
-        default:
-            return true
-        }
+        commandValidator.validate(item, state: commandValidationState)
     }
 
     func saveStateToUserDefaults() {
@@ -376,16 +301,44 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         (view.window?.toolbar as? WorkspaceToolbarHost)?.refreshVisibleState()
     }
 
-    private var searchFieldIsAvailable: Bool {
-        (view.window?.toolbar as? WorkspaceToolbarHost)?.searchFieldIsAvailable == true
-    }
-
     private var currentModuleID: WorkspaceModuleID {
         appContext.routeController.route.moduleID
     }
 
     private var currentReference: WorkspaceCurrentReference? {
         appContext.toolbarContext.currentReference(for: currentModuleID)
+    }
+
+    private var commandValidationState: WorkspaceCommandValidationState {
+        WorkspaceCommandValidationState(
+            currentModuleID: currentModuleID,
+            currentReference: currentReference,
+            searchFieldIsAvailable: (view.window?.toolbar as? WorkspaceToolbarHost)?.searchFieldIsAvailable == true,
+            isSidebarCollapsed: sidebarItem.isCollapsed,
+            isContentCollapsed: contentItem.isCollapsed,
+            isDetailCollapsed: detailItem.isCollapsed,
+            isImmersive: immersive.isImmersive
+        )
+    }
+
+    private func makeKeyboardContext() -> WorkspaceKeyboardContext {
+        WorkspaceKeyboardContext(
+            toggleSidebar: { [weak self] in
+                self?.toggleWorkspaceSidebar(nil)
+            },
+            toggleDetailPane: { [weak self] in
+                self?.toggleWorkspaceDetailPane(nil)
+            },
+            focusSidebar: { [weak self] in
+                self?.focusSidebarColumn() ?? false
+            },
+            focusContent: { [weak self] in
+                self?.focusContentColumn() ?? false
+            },
+            focusDetail: { [weak self] in
+                self?.focusDetailColumn() ?? false
+            }
+        )
     }
 
     private func setContentLayout(isList: Bool) {
@@ -396,130 +349,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             appContext.toolbarContext.setLocalLayout(isList ? .list : .grid)
         }
         refreshToolbarState()
-    }
-
-    private var canRefreshCurrentModule: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let gallerySnapshot):
-            return !gallerySnapshot.isRefreshing
-        case .local(let localSnapshot):
-            return !localSnapshot.isRefreshing && localSnapshot.hasSelection
-        }
-    }
-
-    private var canShareCurrentModule: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let gallerySnapshot):
-            return gallerySnapshot.canShare
-        case .local(let localSnapshot):
-            return localSnapshot.canShare
-        }
-    }
-
-    private var canSaveCurrentImage: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let gallerySnapshot):
-            return gallerySnapshot.canSaveImage
-        case .local(let localSnapshot):
-            return localSnapshot.canSaveImage
-        }
-    }
-
-    private var canResetCurrentZoom: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let gallerySnapshot):
-            return gallerySnapshot.canResetZoom
-        case .local(let localSnapshot):
-            return localSnapshot.canResetZoom
-        }
-    }
-
-    private var canInspectCurrentItem: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canShare
-        case .local(let snapshot):
-            return snapshot.hasSelection
-        }
-    }
-
-    private var canFavoriteCurrentItem: Bool {
-        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
-            return false
-        }
-        return snapshot.canFavorite
-    }
-
-    private func canStepImage(_ delta: Int) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
-        case .local(let snapshot):
-            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
-        }
-    }
-
-    private func updateFavoriteValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        guard let menuItem = item as? NSMenuItem else { return }
-        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
-            menuItem.title = "Favorite"
-            menuItem.state = .off
-            return
-        }
-        menuItem.title = snapshot.isFavorite ? "Unfavorite" : "Favorite"
-        menuItem.state = snapshot.isFavorite ? .on : .off
-    }
-
-    private func updateLayoutValidationItem(_ item: NSValidatedUserInterfaceItem, isList: Bool) {
-        guard let menuItem = item as? NSMenuItem else { return }
-        let selectedLayoutIsList: Bool
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let gallerySnapshot):
-            selectedLayoutIsList = gallerySnapshot.layout == .list
-        case .local(let localSnapshot):
-            selectedLayoutIsList = localSnapshot.layout == .list
-        }
-        menuItem.state = selectedLayoutIsList == isList ? .on : .off
-    }
-
-    private func updateLocalSortFieldValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        guard let menuItem = item as? NSMenuItem,
-              let field = menuItem.representedObject as? LocalImageSortField,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
-        menuItem.state = field == snapshot.sortField ? .on : .off
-    }
-
-    private func updateLocalSortDirectionValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        guard let menuItem = item as? NSMenuItem,
-              let direction = menuItem.representedObject as? LocalImageSortDirection,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
-        menuItem.state = direction == snapshot.sortDirection ? .on : .off
-    }
-
-    private func updateCopyReferenceValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        guard let menuItem = item as? NSMenuItem else { return }
-        menuItem.title = currentReference?.copyMenuTitle ?? "Copy Link"
-    }
-
-    private func updateToggleSidebarValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        guard let menuItem = item as? NSMenuItem else { return }
-        let isPresented = !sidebarItem.isCollapsed
-        menuItem.title = isPresented ? "Hide Sidebar" : "Show Sidebar"
-        menuItem.state = isPresented ? .on : .off
-    }
-
-    private func updateToggleDetailPaneValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        let isPresented = !detailItem.isCollapsed
-        if let menuItem = item as? NSMenuItem {
-            menuItem.title = isPresented ? "Hide Detail" : "Show Detail"
-            menuItem.state = isPresented ? .on : .off
-        }
-    }
-
-    private func updateImmersiveValidationItem(_ item: NSValidatedUserInterfaceItem) {
-        guard let menuItem = item as? NSMenuItem else { return }
-        menuItem.title = immersive.isImmersive ? "Exit Immersive Mode" : "Enter Immersive Mode"
-        menuItem.state = immersive.isImmersive ? .on : .off
     }
 
     private func bootstrapIfNeeded() {
@@ -710,22 +539,6 @@ extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
     func sidebarViewControllerKeyboardContext(
         _ controller: WorkspaceSidebarViewController
     ) -> WorkspaceKeyboardContext {
-        WorkspaceKeyboardContext(
-            toggleSidebar: { [weak self] in
-                self?.toggleWorkspaceSidebar(nil)
-            },
-            toggleDetailPane: { [weak self] in
-                self?.toggleWorkspaceDetailPane(nil)
-            },
-            focusSidebar: { [weak self] in
-                self?.focusSidebarColumn() ?? false
-            },
-            focusContent: { [weak self] in
-                self?.focusContentColumn() ?? false
-            },
-            focusDetail: { [weak self] in
-                self?.focusDetailColumn() ?? false
-            }
-        )
+        makeKeyboardContext()
     }
 }
