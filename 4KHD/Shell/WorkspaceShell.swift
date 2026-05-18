@@ -7,6 +7,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         static let sidebarHiddenKey = "com.songziqiang.4khd.workspaceSidebarHidden.v1"
         static let defaultSidebarWidth: CGFloat = 240
         static let defaultContentWidth: CGFloat = 430
+        static let minimumContentWidth: CGFloat = 320
     }
 
     private let appContext: WorkspaceAppContext
@@ -373,6 +374,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func restoreSplitViewWidths(_ widths: [Int], isSidebarHidden: Bool) {
+        guard canRestoreSplitViewWidths(widths, isSidebarHidden: isSidebarHidden) else {
+            applyDefaultSplitViewWidths(isSidebarHidden: isSidebarHidden)
+            return
+        }
+
         let dividerThickness = splitView.dividerThickness
         let sidebarWidth = CGFloat(widths[0])
         let contentWidth = CGFloat(widths[1])
@@ -388,16 +394,46 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         sidebarItem.isCollapsed = isSidebarHidden
     }
 
-    private func applyDefaultSplitViewWidths() {
+    private func canRestoreSplitViewWidths(_ widths: [Int], isSidebarHidden: Bool) -> Bool {
+        guard widths.count == 3 else { return false }
+
+        let sidebarWidth = isSidebarHidden ? 0 : CGFloat(widths[0])
+        let contentWidth = CGFloat(widths[1])
+        let detailWidth = CGFloat(widths[2])
+        let dividerThickness = splitView.dividerThickness
+        let dividerTotal = isSidebarHidden ? dividerThickness : dividerThickness * 2
+        let windowWidth = view.window?.frame.width ?? view.bounds.width
+
+        guard sidebarWidth.isFinite,
+              contentWidth.isFinite,
+              detailWidth.isFinite,
+              windowWidth.isFinite else { return false }
+        guard sidebarWidth >= 0,
+              contentWidth >= SplitState.minimumContentWidth,
+              detailWidth >= detailItem.minimumThickness else { return false }
+
+        return windowWidth >= sidebarWidth + contentWidth + detailItem.minimumThickness + dividerTotal
+    }
+
+    private func applyDefaultSplitViewWidths(isSidebarHidden: Bool = false) {
         let dividerThickness = splitView.dividerThickness
         let windowWidth = view.window?.frame.width ?? view.bounds.width
+        let sidebarWidth = isSidebarHidden ? 0 : SplitState.defaultSidebarWidth
+        let dividerTotal = isSidebarHidden ? dividerThickness : dividerThickness * 2
         let maxContentWidth = max(
-            320,
-            windowWidth - SplitState.defaultSidebarWidth - detailItem.minimumThickness - (dividerThickness * 2)
+            SplitState.minimumContentWidth,
+            windowWidth - sidebarWidth - detailItem.minimumThickness - dividerTotal
         )
         let contentWidth = min(SplitState.defaultContentWidth, maxContentWidth)
-        splitView.setPosition(SplitState.defaultSidebarWidth, ofDividerAt: 0)
-        splitView.setPosition(SplitState.defaultSidebarWidth + dividerThickness + contentWidth, ofDividerAt: 1)
+
+        sidebarItem.isCollapsed = isSidebarHidden
+        if isSidebarHidden {
+            splitView.setPosition(0, ofDividerAt: 0)
+            splitView.setPosition(contentWidth, ofDividerAt: 1)
+        } else {
+            splitView.setPosition(sidebarWidth, ofDividerAt: 0)
+            splitView.setPosition(sidebarWidth + dividerThickness + contentWidth, ofDividerAt: 1)
+        }
     }
 
     private func restoreDetailWidthForPresentedDetail() {
@@ -419,10 +455,13 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         let dividerTotal = sidebarItem.isCollapsed ? dividerThickness : dividerThickness * 2
         let maximumDetailWidth = max(
             detailItem.minimumThickness,
-            windowWidth - sidebarWidth - 320 - dividerTotal
+            windowWidth - sidebarWidth - SplitState.minimumContentWidth - dividerTotal
         )
         let detailWidth = min(max(storedDetailWidth, detailItem.minimumThickness), maximumDetailWidth)
-        let contentWidth = max(320, windowWidth - sidebarWidth - detailWidth - dividerTotal)
+        let contentWidth = max(
+            SplitState.minimumContentWidth,
+            windowWidth - sidebarWidth - detailWidth - dividerTotal
+        )
 
         if !sidebarItem.isCollapsed {
             splitView.setPosition(sidebarWidth, ofDividerAt: 0)
