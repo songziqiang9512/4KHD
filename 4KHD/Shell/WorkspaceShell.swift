@@ -24,9 +24,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var detailObserverID: UUID?
     private var immersiveObserverID: UUID?
     private var toolbarMonitor: Any?
+    private let splitResizeStateSaveQueue = WorkspaceCoalescingQueue(
+        name: "Workspace Split Resize State Save",
+        interval: 0.2,
+        maxInterval: 0.8
+    )
     private var didBootstrap = false
     private var didRestoreSplitViewState = false
     private var isRestoringSplitViewState = false
+    private var lastVisibleSplitViewWidths: [Int]?
     private var expandedSidebarNodeIDs = WorkspaceWindowState.defaultExpandedSidebarNodeIDs
 
     var isSidebarCollapsed: Bool {
@@ -256,6 +262,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     func saveStateToUserDefaults() {
+        splitResizeStateSaveQueue.performCallsImmediately()
+        if saveVisibleSplitViewStateIfNeeded() {
+            return
+        }
         saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
     }
 
@@ -356,9 +366,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         didBootstrap = true
         if let state = windowStateStore.load() {
             expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
+            cacheVisibleSplitViewWidths(state.splitViewWidths)
             sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
             appContext.detailPaneController.setPresented(state.isDetailPanePresented)
         } else {
+            cacheVisibleSplitViewWidths(windowStateStore.legacySplitViewWidths())
             sidebarController.restoreExpandedNodeIDs(expandedSidebarNodeIDs)
             appContext.detailPaneController.setPresented(windowStateStore.legacyDetailPanePresented())
         }
@@ -384,14 +396,20 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func applyDetailPaneVisibility(_ isPresented: Bool) {
-        saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
-        guard !immersive.isImmersive else { return }
-        if !isPresented {
-            saveVisibleSplitViewStateIfNeeded()
+        splitResizeStateSaveQueue.performCallsImmediately()
+        if didRestoreSplitViewState {
+            if !isPresented {
+                if !saveVisibleSplitViewStateIfNeeded() {
+                    saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
+                }
+            } else {
+                saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
+            }
         }
+        guard !immersive.isImmersive else { return }
         detailItem.isCollapsed = !isPresented
         if isPresented {
-            splitLayoutController.restoreDetailWidthForPresentedDetail()
+            splitLayoutController.restoreDetailWidthForPresentedDetail(preferredWidths: lastVisibleSplitViewWidths)
         }
         splitView.adjustSubviews()
     }
@@ -420,8 +438,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             self.isRestoringSplitViewState = true
             defer { self.isRestoringSplitViewState = false }
             if let state = self.windowStateStore.load(), state.splitViewWidths.count == 3 {
+                self.cacheVisibleSplitViewWidths(state.splitViewWidths)
                 self.restoreSplitViewState(state)
             } else if let legacyWidths = self.windowStateStore.legacySplitViewWidths(), legacyWidths.count == 3 {
+                self.cacheVisibleSplitViewWidths(legacyWidths)
                 self.splitLayoutController.restoreSplitViewWidths(
                     legacyWidths,
                     isSidebarHidden: self.windowStateStore.legacySidebarHidden()
@@ -435,6 +455,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private func restoreSplitViewState(_ state: WorkspaceWindowState) {
         restoreFullScreenState(state.isFullScreen)
         expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
+        cacheVisibleSplitViewWidths(state.splitViewWidths)
         sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
         splitLayoutController.restoreSplitViewWidths(state.splitViewWidths, isSidebarHidden: state.isSidebarHidden)
     }
@@ -447,27 +468,35 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {
-        saveVisibleSplitViewStateIfNeeded()
+        splitResizeStateSaveQueue.add(id: "split-widths") { [weak self] in
+            self?.saveVisibleSplitViewStateIfNeeded()
+        }
     }
 
-    private func saveVisibleSplitViewStateIfNeeded() {
+    @discardableResult
+    private func saveVisibleSplitViewStateIfNeeded() -> Bool {
         guard didRestoreSplitViewState,
               !isRestoringSplitViewState,
               !immersive.isImmersive,
-              splitView.arrangedSubviews.count == 3 else { return }
+              splitView.arrangedSubviews.count == 3 else { return false }
 
         guard !detailItem.isCollapsed,
               let widths = splitLayoutController.currentSplitViewWidths(),
               widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth),
-              widths[2] >= Int(detailItem.minimumThickness) else { return }
+              widths[2] >= Int(detailItem.minimumThickness) else { return false }
+        cacheVisibleSplitViewWidths(widths)
         saveWindowStateToUserDefaults(widths: widths, includeHiddenDetailWidth: true)
+        return true
     }
 
     private func saveWindowStateToUserDefaults(
         widths: [Int]? = nil,
         includeHiddenDetailWidth: Bool
     ) {
-        let fallback = windowStateStore.load()?.splitViewWidths ?? windowStateStore.legacySplitViewWidths() ?? []
+        let fallback = lastVisibleSplitViewWidths
+            ?? windowStateStore.load()?.splitViewWidths
+            ?? windowStateStore.legacySplitViewWidths()
+            ?? []
         let nextWidths: [Int]
         if let widths {
             nextWidths = widths
@@ -487,6 +516,14 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             expandedSidebarNodeIDs: expandedSidebarNodeIDs
         )
         windowStateStore.save(state)
+    }
+
+    private func cacheVisibleSplitViewWidths(_ widths: [Int]?) {
+        guard let widths,
+              widths.count == 3,
+              widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth),
+              widths[2] >= Int(detailItem.minimumThickness) else { return }
+        lastVisibleSplitViewWidths = widths
     }
 
     private func handleToolbarPointer(_ event: NSEvent) {

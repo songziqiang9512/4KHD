@@ -11,6 +11,7 @@ final class WorkspaceDetailPaneController {
 
     var isPresented: Bool = true {
         didSet {
+            guard oldValue != isPresented else { return }
             notifyObservers()
         }
     }

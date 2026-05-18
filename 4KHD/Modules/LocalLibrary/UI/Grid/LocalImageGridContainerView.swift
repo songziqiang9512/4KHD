@@ -62,6 +62,7 @@ final class LocalImageGridContainerView: NSView {
     var selectedImageID: LocalImageItem.ID?
     var isApplyingSelection = false
     private var lastAppliedIDs: [LocalImageItem.ID] = []
+    private var lastLayoutWidth: CGFloat = 0
     private var scrollObserver: NSObjectProtocol?
     private var prefetchWorkItem: DispatchWorkItem?
 
@@ -83,7 +84,11 @@ final class LocalImageGridContainerView: NSView {
 
     override func layout() {
         super.layout()
+        let width = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : bounds.width
+        guard abs(width - lastLayoutWidth) > 0.5 else { return }
+        lastLayoutWidth = width
         collectionView.collectionViewLayout?.invalidateLayout()
+        schedulePrefetch()
     }
 
     func focus() {
@@ -118,8 +123,11 @@ final class LocalImageGridContainerView: NSView {
             collectionView.reloadData()
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
-        } else if metadataChanged || columnPreferenceChanged || cardWidthPreferenceChanged {
+        } else if metadataChanged {
             collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
+            collectionView.collectionViewLayout?.invalidateLayout()
+            schedulePrefetch()
+        } else if columnPreferenceChanged || cardWidthPreferenceChanged {
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
         }
@@ -262,7 +270,6 @@ final class LocalImageGridContainerView: NSView {
 
     private func prefetchNearVisibleItems() {
         guard !entries.isEmpty else { return }
-        collectionView.collectionViewLayout?.prepare()
         let visibleRect = scrollView.contentView.bounds.insetBy(dx: 0, dy: -scrollView.contentView.bounds.height)
         let visibleIndexes = waterfallLayout
             .layoutAttributesForElements(in: visibleRect)

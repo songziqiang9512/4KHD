@@ -91,8 +91,8 @@
 
 当前仍未完全完成的事项：
 
-1. `WorkspaceShell.swift` 仍偏大，侧栏、split layout 和沉浸相关实现还在同文件内。
-2. Toolbar 仍集中在 `4KHDApp.swift` 内，后续若继续扩展应拆出壳层 toolbar host，而不是把模块按钮继续堆进入口文件。
+1. `WorkspaceShell.swift` 仍承载 split layout 协调逻辑，后续应继续拆出 split layout store 和尺寸策略边界。
+2. Toolbar 已拆出到 `Shell/Toolbar/WorkspaceToolbarHost.swift`；后续扩展按钮时应继续放在壳层 toolbar host 或模块接入面，不要回塞到 `4KHDApp.swift`。
 3. 中栏 AppKit 列表/网格体验已迁移完成，但在线模块和本地模块仍各自维护列表/网格实现；后续若统一，应优先统一交互和布局行为，而不是强行合并控件实现。
 4. 详情区开合、工具栏控制和中栏自动避让已有第一版壳层状态，但仍需要继续做手动验收和细节收敛。
 

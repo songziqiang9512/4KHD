@@ -69,7 +69,8 @@ final class LocalImageGridLayout: NSCollectionViewLayout {
     }
 
     override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool {
-        collectionView?.bounds.width != newBounds.width
+        guard let collectionView else { return false }
+        return abs(collectionView.bounds.width - newBounds.width) > 0.5
     }
 
     private func columnCount(for width: CGFloat) -> Int {

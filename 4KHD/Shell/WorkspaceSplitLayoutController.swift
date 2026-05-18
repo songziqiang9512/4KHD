@@ -64,14 +64,15 @@ final class WorkspaceSplitLayoutController {
         }
     }
 
-    func restoreDetailWidthForPresentedDetail() {
-        if let widths = stateStore.load()?.splitViewWidths ?? stateStore.legacySplitViewWidths(),
-           widths.count == 3,
-           widths[2] >= Int(detailItem.minimumThickness) {
+    func restoreDetailWidthForPresentedDetail(preferredWidths: [Int]? = nil) {
+        for candidate in [preferredWidths, stateStore.load()?.splitViewWidths, stateStore.legacySplitViewWidths()] {
+            guard let widths = candidate,
+                  widths.count == 3,
+                  widths[2] >= Int(detailItem.minimumThickness) else { continue }
             restoreDetailWidth(CGFloat(widths[2]))
             return
         }
-        applyDefaultSplitViewWidths()
+        applyDefaultSplitViewWidths(isSidebarHidden: sidebarItem.isCollapsed)
     }
 
     func currentSplitViewWidths() -> [Int]? {

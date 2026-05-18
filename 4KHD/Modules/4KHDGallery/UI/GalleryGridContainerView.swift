@@ -19,6 +19,9 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var isFavorite: (GalleryItem) -> Bool = { _ in false }
     private var isCached: (GalleryItem) -> Bool = { _ in false }
     private var isApplyingSelection = false
+    private var lastAppliedItemIDs: [GalleryItem.ID] = []
+    private var lastShowsFooter = false
+    private var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -27,6 +30,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    deinit {
+        if let scrollObserver {
+            NotificationCenter.default.removeObserver(scrollObserver)
+        }
     }
 
     override func layout() {
@@ -49,6 +58,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         isFavorite: @escaping (GalleryItem) -> Bool,
         isCached: @escaping (GalleryItem) -> Bool
     ) {
+        let previousSelectedItemID = self.selectedItemID
+        let previousBadgeSignature = visibleBadgeSignature()
+        let previousFooterState = (self.isRefreshing, self.canLoadMore)
+        let nextItemIDs = items.map(\.id)
+        let contentChanged = nextItemIDs != lastAppliedItemIDs || showsFooter != lastShowsFooter
+
         self.items = items
         self.selectedItemID = selectedItemID
         self.preferredColumnCount = preferredColumnCount
@@ -58,8 +73,21 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.canLoadMore = canLoadMore
         self.isFavorite = isFavorite
         self.isCached = isCached
-        updateItemSize()
-        collectionView.reloadData()
+
+        let itemSizeChanged = updateItemSize()
+        if contentChanged {
+            lastAppliedItemIDs = nextItemIDs
+            lastShowsFooter = showsFooter
+            collectionView.reloadData()
+        } else {
+            let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
+            let footerChanged = previousFooterState != (isRefreshing, canLoadMore)
+            if badgeChanged || footerChanged {
+                reloadVisibleItems()
+            } else if itemSizeChanged || previousSelectedItemID != selectedItemID {
+                refreshVisibleSelection()
+            }
+        }
         syncSelection()
     }
 
@@ -130,8 +158,19 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scrollView.borderType = .noBorder
         scrollView.automaticallyAdjustsContentInsets = true
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.contentView.drawsBackground = false
         scrollView.documentView = collectionView
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateItemSize()
+            }
+        }
 
         gridLayout.minimumInteritemSpacing = 8
         gridLayout.minimumLineSpacing = 10
@@ -164,20 +203,48 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         ])
     }
 
-    private func updateItemSize() {
+    @discardableResult
+    private func updateItemSize() -> Bool {
         let visibleWidth = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : bounds.width
         let insetWidth = gridLayout.sectionInset.left + gridLayout.sectionInset.right
         let availableWidth = max(visibleWidth - insetWidth, preferredCardMinimumWidth)
-        let columns: Int
-        if let preferredColumnCount {
-            columns = max(preferredColumnCount, 1)
-        } else {
-            columns = max(Int((availableWidth + gridLayout.minimumInteritemSpacing) / (preferredCardMinimumWidth + gridLayout.minimumInteritemSpacing)), 1)
-        }
+        let estimatedColumns = max(
+            Int((availableWidth + gridLayout.minimumInteritemSpacing) / (preferredCardMinimumWidth + gridLayout.minimumInteritemSpacing)),
+            1
+        )
+        let columns = max(estimatedColumns, preferredColumnCount ?? 1)
         let totalSpacing = CGFloat(columns - 1) * gridLayout.minimumInteritemSpacing
         let width = floor((availableWidth - totalSpacing) / CGFloat(columns))
-        gridLayout.itemSize = NSSize(width: width, height: max(width / 0.74 + 76, 230))
+        let nextSize = NSSize(width: width, height: max(width / 0.74 + 76, 230))
+        guard gridLayout.itemSize != nextSize else { return false }
+        gridLayout.itemSize = nextSize
         gridLayout.invalidateLayout()
+        return true
+    }
+
+    private struct BadgeSignature: Equatable {
+        let itemID: GalleryItem.ID
+        let isFavorite: Bool
+        let isCached: Bool
+    }
+
+    private func visibleBadgeSignature() -> [IndexPath: BadgeSignature] {
+        Dictionary(uniqueKeysWithValues: collectionView.indexPathsForVisibleItems().compactMap { indexPath in
+            guard items.indices.contains(indexPath.item) else { return nil }
+            let item = items[indexPath.item]
+            return (
+                indexPath,
+                BadgeSignature(itemID: item.id, isFavorite: isFavorite(item), isCached: isCached(item))
+            )
+        })
+    }
+
+    private func reloadVisibleItems() {
+        let visibleItems = Set(collectionView.indexPathsForVisibleItems().filter { indexPath in
+            indexPath.item < items.count + (showsFooter ? 1 : 0)
+        })
+        guard !visibleItems.isEmpty else { return }
+        collectionView.reloadItems(at: visibleItems)
     }
 
     private func syncSelection() {

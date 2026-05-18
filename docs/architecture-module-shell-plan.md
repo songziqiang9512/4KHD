@@ -47,8 +47,8 @@
 
 当前更真实的问题是：
 
-1. `WorkspaceShell.swift` 仍同时承载 sidebar、split layout、沉浸态浮层、toolbar 等多项职责。
-2. sidebar 和 immersive 相关实现还没有从 `WorkspaceShell.swift` 里进一步拆开。
+1. `WorkspaceShell.swift` 仍承载 split layout 协调逻辑，后续可继续拆出 split layout store 和尺寸策略边界。
+2. sidebar 已拆出到 `Shell/WorkspaceSidebarViewController.swift`，toolbar host 已拆出到 `Shell/Toolbar/WorkspaceToolbarHost.swift`，immersive 控制器已拆出到 `Shell/Immersive/ImmersiveController.swift`。
 3. 详情区开合、工具栏按钮、中栏避让策略还没有上升为壳层级布局状态。
 
 #### 2.2.2 模块装配已经上提，但模块接入面仍可继续稳定化
@@ -61,7 +61,7 @@
 
 当前还需要继续关注：
 
-1. 全局 toolbar 已迁移为 AppKit `NSToolbar`，但实现仍集中在 `4KHDApp.swift` 内，还没有独立成 `WorkspaceToolbarHost`。
+1. 全局 toolbar 已迁移为 AppKit `NSToolbar`，并已独立成 `WorkspaceToolbarHost`；后续需要继续收敛模块级 toolbar 注入边界。
 2. 路由表达已经是 `moduleID + itemID`，中栏与详情区开合已有第一版壳层控制；后续重点是继续做 AppKit 行为验收和拆分壳层文件。
 
 #### 2.2.3 Shared 层已经建立，但中栏体验尚未统一
@@ -197,9 +197,9 @@
 
 当前落地状态：
 
-1. `WorkspaceSidebar` 还在 `WorkspaceShell.swift` 内部同文件实现，尚未独立成文件。
-2. `ImmersiveController` 也仍与 `WorkspaceShell.swift` 同文件，后续可按收益再拆。
-3. `Toolbar/`、`WorkspaceLayout/` 还属于规划目标，尚未单独形成目录。
+1. `WorkspaceSidebarViewController` 已从 `WorkspaceShell.swift` 拆出到独立文件。
+2. `ImmersiveController` 已从 `WorkspaceShell.swift` 拆出到 `Shell/Immersive/ImmersiveController.swift`。
+3. `Toolbar/WorkspaceToolbarHost.swift` 已落地；`WorkspaceLayout/SidebarDisclosureState.swift` 已落地，完整 split layout store 仍属于后续规划目标。
 
 ## 5. 底壳架构设计
 
@@ -656,7 +656,7 @@ Shell/
 1. 主窗口已经使用 AppKit `NSToolbar`。
 2. 当前 toolbar 承载侧边栏开关、布局切换、刷新、搜索、详情区开关、大图模式、filmstrip、保存、缓存容量和导入目录。
 3. 侧边栏开关使用 AppKit 标准 `.toggleSidebar` toolbar item，配合 full-size titlebar 和 sidebar material，保持 macOS 原生展开/收起体验。
-4. “详情区展开/折叠”这类布局控制已进入壳层 toolbar，但 toolbar host 还没有独立成文件。
+4. “详情区展开/折叠”这类布局控制已进入壳层 toolbar，toolbar host 已独立到 `Shell/Toolbar/WorkspaceToolbarHost.swift`。
 
 ## 9. 状态层规划
 
