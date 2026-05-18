@@ -223,6 +223,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         NSWorkspace.shared.open(reference.url)
     }
 
+    @objc func showCurrentInspector(_ sender: Any?) {
+        WorkspaceInspectorPresenter.show()
+    }
+
     @objc func saveCurrentImage(_ sender: Any?) {
         appContext.toolbarContext.saveCurrentImage(for: currentModuleID)
         refreshToolbarState()
@@ -289,6 +293,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return currentModuleID == .localLibrary
         case #selector(openCurrentReference(_:)):
             return currentReference != nil
+        case #selector(showCurrentInspector(_:)):
+            return canInspectCurrentItem
         case #selector(saveCurrentImage(_:)):
             return canSaveCurrentImage
         case #selector(resetCurrentZoom(_:)):
@@ -426,6 +432,13 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case .local(let localSnapshot):
             return localSnapshot.canResetZoom
         }
+    }
+
+    private var canInspectCurrentItem: Bool {
+        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            return false
+        }
+        return snapshot.hasSelection
     }
 
     private var canFavoriteCurrentItem: Bool {

@@ -202,6 +202,13 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Get Info",
+                action: #selector(WorkspaceSplitViewController.showCurrentInspector(_:)),
+                keyEquivalent: "i"
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Save Image...",
                 action: #selector(WorkspaceSplitViewController.saveCurrentImage(_:)),
                 keyEquivalent: "s"
