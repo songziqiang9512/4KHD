@@ -177,6 +177,12 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         refreshToolbarState()
     }
 
+    @objc func shareCurrentContent(_ sender: Any?) {
+        let items = appContext.toolbarContext.shareItems(for: currentModuleID)
+        guard !items.isEmpty else { return }
+        SharingPresenter.show(items: items, of: view, preferredEdge: .maxY)
+    }
+
     @objc func importLocalFolder(_ sender: Any?) {
         appContext.importRootFolder()
     }
@@ -187,6 +193,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return searchFieldIsAvailable
         case #selector(refreshCurrentContent(_:)):
             return canRefreshCurrentModule
+        case #selector(shareCurrentContent(_:)):
+            return canShareCurrentModule
         case #selector(importLocalFolder(_:)):
             return true
         case #selector(toggleWorkspaceSidebar(_:)):
@@ -266,6 +274,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return !gallerySnapshot.isRefreshing
         case .local(let localSnapshot):
             return !localSnapshot.isRefreshing && localSnapshot.hasSelection
+        }
+    }
+
+    private var canShareCurrentModule: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let gallerySnapshot):
+            return gallerySnapshot.canShare
+        case .local(let localSnapshot):
+            return localSnapshot.canShare
         }
     }
 

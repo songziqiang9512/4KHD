@@ -98,6 +98,13 @@ private enum MainMenuBuilder {
                 keyEquivalent: "o"
             )
         )
+        menu.addItem(
+            NSMenuItem(
+                title: "Share...",
+                action: #selector(WorkspaceSplitViewController.shareCurrentContent(_:)),
+                keyEquivalent: "s"
+            )
+        )
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
