@@ -128,6 +128,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         sidebarController.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
 
         contentItem.holdingPriority = NSLayoutConstraint.Priority(255)
+        contentItem.minimumThickness = SplitState.minimumContentWidth
         if #available(macOS 26.0, *) {
             contentItem.automaticallyAdjustsSafeAreaInsets = true
         }
