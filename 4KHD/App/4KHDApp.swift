@@ -14,6 +14,7 @@ private enum FourKHDApplicationMain {
 final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     private var appContext: WorkspaceAppContext?
     private var windowController: WorkspaceWindowController?
+    private var preferencesWindowController: WorkspacePreferencesWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -37,6 +38,19 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         windowController?.saveStateToUserDefaults()
+    }
+
+    @objc func showPreferences(_ sender: Any?) {
+        guard let appContext else { return }
+        if preferencesWindowController == nil {
+            preferencesWindowController = WorkspacePreferencesWindowController(
+                toolbarContext: appContext.toolbarContext
+            )
+        }
+        preferencesWindowController?.refresh()
+        preferencesWindowController?.showWindow(sender)
+        preferencesWindowController?.window?.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -62,6 +76,14 @@ private enum MainMenuBuilder {
                 keyEquivalent: ""
             )
         )
+        menu.addItem(.separator())
+        let settingsItem = NSMenuItem(
+            title: "Settings...",
+            action: #selector(FourKHDAppDelegate.showPreferences(_:)),
+            keyEquivalent: ","
+        )
+        settingsItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
         let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         let servicesMenu = NSMenu(title: "Services")

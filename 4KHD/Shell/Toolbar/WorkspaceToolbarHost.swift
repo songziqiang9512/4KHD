@@ -27,6 +27,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var shareItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
+    private var cacheLimitObserver: NSObjectProtocol?
     private var isObservingToolbarState = false
     private let refreshQueue = WorkspaceCoalescingQueue(
         name: "Workspace Toolbar Refresh",
@@ -52,10 +53,22 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         detailObserverID = appContext.detailPaneController.addObserver { [weak self] _ in
             self?.scheduleRefresh()
         }
+        cacheLimitObserver = NotificationCenter.default.addObserver(
+            forName: OnlineCacheLimit.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateCacheLimitItem()
+            }
+        }
         observeToolbarState()
     }
 
     deinit {
+        if let cacheLimitObserver {
+            NotificationCenter.default.removeObserver(cacheLimitObserver)
+        }
         if let routeObserverID {
             Task { @MainActor [appContext] in
                 appContext.routeController.removeObserver(id: routeObserverID)
@@ -302,9 +315,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func selectCacheLimit(_ sender: NSMenuItem) {
         guard let limit = sender.representedObject as? OnlineCacheLimit else { return }
-        UserDefaults.standard.set(limit.rawValue, forKey: OnlineCacheLimit.defaultsKey)
-        RemoteImagePipeline.shared.applyCacheLimit(limit)
-        (cacheLimitItem as? NSMenuToolbarItem)?.menu = makeCacheLimitMenu()
+        OnlineCacheLimit.apply(limit)
     }
 
     private var currentModuleID: WorkspaceModuleID {
@@ -464,6 +475,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             accessibilityDescription: isPresented ? "隐藏详情区" : "显示详情区"
         )
         item.toolTip = isPresented ? "隐藏右侧详情区" : "显示右侧详情区"
+    }
+
+    private func updateCacheLimitItem() {
+        (cacheLimitItem as? NSMenuToolbarItem)?.menu = makeCacheLimitMenu()
     }
 
     private func makeCacheLimitMenu() -> NSMenu {

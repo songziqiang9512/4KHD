@@ -38,6 +38,14 @@ enum OnlineCacheLimit: String, CaseIterable, Identifiable {
         let rawValue = UserDefaults.standard.string(forKey: defaultsKey) ?? OnlineCacheLimit.gb1.rawValue
         return OnlineCacheLimit(rawValue: rawValue) ?? .gb1
     }
+
+    static func apply(_ limit: OnlineCacheLimit) {
+        UserDefaults.standard.set(limit.rawValue, forKey: defaultsKey)
+        RemoteImagePipeline.shared.applyCacheLimit(limit)
+        NotificationCenter.default.post(name: didChangeNotification, object: limit)
+    }
+
+    static let didChangeNotification = Notification.Name("OnlineCacheLimitDidChangeNotification")
 }
 
 final class RemoteImagePipeline {
