@@ -587,6 +587,13 @@ extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
 
     func sidebarViewController(
         _ controller: WorkspaceSidebarViewController,
+        didRequestImportLocalFolderAt url: URL
+    ) {
+        appContext.localLibraryStore.importRootFolder(url)
+    }
+
+    func sidebarViewController(
+        _ controller: WorkspaceSidebarViewController,
         didRequestRemoveLocalFolder folder: LocalFolderNode
     ) {
         appContext.localLibraryStore.removeFolder(folder)

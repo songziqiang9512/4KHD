@@ -7,6 +7,10 @@ protocol WorkspaceSidebarViewControllerDelegate: AnyObject {
     func sidebarViewControllerDidRequestLocalImport(_ controller: WorkspaceSidebarViewController)
     func sidebarViewController(
         _ controller: WorkspaceSidebarViewController,
+        didRequestImportLocalFolderAt url: URL
+    )
+    func sidebarViewController(
+        _ controller: WorkspaceSidebarViewController,
         didRequestRemoveLocalFolder folder: LocalFolderNode
     )
     func sidebarViewController(
@@ -70,6 +74,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         }
         outlineView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(forRow: row)
+        }
+        outlineView.registerForDraggedTypes([.fileURL])
+        dataSource.localFolderDropHandler = { [weak self] url in
+            guard let self else { return }
+            delegate?.sidebarViewController(self, didRequestImportLocalFolderAt: url)
         }
         scrollView.documentView = outlineView
 

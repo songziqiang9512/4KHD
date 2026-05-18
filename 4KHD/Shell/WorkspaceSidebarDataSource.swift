@@ -4,6 +4,7 @@ import AppKit
 final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     private(set) var nodes: [WorkspaceSidebarNode] = []
     private var childrenByNode: [WorkspaceSidebarNode: [WorkspaceSidebarNode]] = [:]
+    var localFolderDropHandler: ((URL) -> Void)?
 
     func reload(localRoots: [LocalLibraryRoot]) {
         childrenByNode = [:]
@@ -58,6 +59,26 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         return !children(of: node).isEmpty
     }
 
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        validateDrop info: NSDraggingInfo,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int
+    ) -> NSDragOperation {
+        localFolderURL(from: info.draggingPasteboard) == nil ? [] : .copy
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        acceptDrop info: NSDraggingInfo,
+        item: Any?,
+        childIndex index: Int
+    ) -> Bool {
+        guard let url = localFolderURL(from: info.draggingPasteboard) else { return false }
+        localFolderDropHandler?(url)
+        return true
+    }
+
     private func makeFolderNode(_ folder: LocalFolderNode) -> WorkspaceSidebarNode {
         let node = WorkspaceSidebarNode.localFolder(folder)
         childrenByNode[node] = folder.folders.map(makeFolderNode)
@@ -87,6 +108,26 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
             if let childPath = pathToNode(from: child, where: predicate) {
                 return [node] + childPath
             }
+        }
+        return nil
+    }
+
+    private func localFolderURL(from pasteboard: NSPasteboard) -> URL? {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: options) ?? []
+        for object in objects {
+            let url: URL
+            if let fileURL = object as? URL {
+                url = fileURL
+            } else if let fileURL = object as? NSURL {
+                url = fileURL as URL
+            } else {
+                continue
+            }
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                continue
+            }
+            return url
         }
         return nil
     }
