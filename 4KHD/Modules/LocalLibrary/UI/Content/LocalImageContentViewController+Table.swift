@@ -105,6 +105,10 @@ final class LocalImageListTableView: NSTableView {
     var contextMenuProvider: ((Int) -> NSMenu?)?
     var quickLookHandler: (() -> Bool)?
 
+    override func accessibilityLabel() -> String? {
+        "Local Image List"
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let row = row(at: convert(event.locationInWindow, from: nil))
         return contextMenuProvider?(row)

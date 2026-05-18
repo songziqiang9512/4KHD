@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 @MainActor
-final class GalleryContentViewController: NSViewController {
+final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private enum Row: Hashable {
         case group(String)
         case item(GalleryItem.ID)
@@ -50,6 +50,15 @@ final class GalleryContentViewController: NSViewController {
         super.viewDidLoad()
         reloadContent()
         observeState()
+    }
+
+    func focus() {
+        switch preferences.layout {
+        case .list:
+            tableView.window?.makeFirstResponderUnlessDescendantIsFirstResponder(tableView)
+        case .grid:
+            gridView.focus()
+        }
     }
 
     private func setupTable() {
@@ -490,6 +499,10 @@ final class GalleryContentTableView: NSTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func accessibilityLabel() -> String? {
+        "4KHD Gallery List"
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)

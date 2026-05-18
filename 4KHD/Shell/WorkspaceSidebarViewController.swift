@@ -13,7 +13,7 @@ protocol WorkspaceSidebarViewControllerDelegate: AnyObject {
 }
 
 @MainActor
-final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDelegate {
+final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDelegate, WorkspaceFocusable {
     private let appContext: WorkspaceAppContext
     private let dataSource = WorkspaceSidebarDataSource()
     private let rootView = NSView()
@@ -23,6 +23,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private var isObservingLocalLibrary = false
     private var expandedNodeIDs: Set<String> = ["group:线上", "group:本地"]
     private var isApplyingExpandedNodeIDs = false
+    private let reloadQueue = WorkspaceCoalescingQueue(
+        name: "Workspace Sidebar Reload",
+        interval: 0.05,
+        maxInterval: 0.25
+    )
     weak var delegate: WorkspaceSidebarViewControllerDelegate?
 
     init(appContext: WorkspaceAppContext) {
@@ -92,6 +97,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         selectCurrentRoute()
     }
 
+    func focus() {
+        outlineView.window?.makeFirstResponderUnlessDescendantIsFirstResponder(outlineView)
+    }
+
     func restoreExpandedNodeIDs(_ nodeIDs: [String]) {
         expandedNodeIDs = Set(nodeIDs)
         guard isViewLoaded else { return }
@@ -103,6 +112,24 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         guard let node = item as? WorkspaceSidebarNode else { return false }
         if case .group = node { return true }
         return false
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        selectionIndexesForProposedSelection proposedSelectionIndexes: IndexSet
+    ) -> IndexSet {
+        for index in proposedSelectionIndexes {
+            guard let node = outlineView.item(atRow: index) as? WorkspaceSidebarNode else { continue }
+            if isGroupNode(node) {
+                return outlineView.selectedRowIndexes
+            }
+        }
+        return proposedSelectionIndexes
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        guard let node = item as? WorkspaceSidebarNode else { return true }
+        return !isGroupNode(node)
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
@@ -182,6 +209,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         return image
     }
 
+    private func isGroupNode(_ node: WorkspaceSidebarNode) -> Bool {
+        if case .group = node {
+            return true
+        }
+        return false
+    }
+
     @objc private func selectionDidChange(_ sender: Any?) {
         let selectedRow = outlineView.selectedRow
         guard selectedRow >= 0,
@@ -225,21 +259,30 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isObservingLocalLibrary = false
-                self.reload()
+                self.scheduleReload()
                 self.observeLocalLibrary()
             }
         }
     }
 
+    private func scheduleReload() {
+        reloadQueue.add(id: "reload") { [weak self] in
+            self?.reload()
+        }
+    }
+
     private func selectCurrentRoute() {
         let route = appContext.routeController.route
-        for row in 0 ..< outlineView.numberOfRows {
-            guard let node = outlineView.item(atRow: row) as? WorkspaceSidebarNode else { continue }
-            if routeMatches(route, node: node) {
-                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                return
-            }
+        guard let path = dataSource.pathToNode(where: { routeMatches(route, node: $0) }),
+              let selectedNode = path.last else {
+            outlineView.deselectAll(nil)
+            return
         }
+        revealPath(path)
+        let row = outlineView.row(forItem: selectedNode)
+        guard row >= 0 else { return }
+        outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        outlineView.scrollRowToVisible(row)
     }
 
     private func applyExpandedNodeIDs() {
@@ -252,6 +295,27 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
                 outlineView.collapseItem(node)
             }
         }
+    }
+
+    private func revealPath(_ path: [WorkspaceSidebarNode]) {
+        let parentNodes = path.dropLast()
+        guard !parentNodes.isEmpty else { return }
+
+        let previousExpandedNodeIDs = expandedNodeIDs
+        isApplyingExpandedNodeIDs = true
+        for node in parentNodes {
+            outlineView.expandItem(node)
+            expandedNodeIDs.insert(node.stateIdentifier)
+        }
+        isApplyingExpandedNodeIDs = false
+
+        guard expandedNodeIDs != previousExpandedNodeIDs else { return }
+        delegate?.sidebarViewController(
+            self,
+            didChangeExpandedNodeIDs: dataSource.expandableNodes()
+                .filter { expandedNodeIDs.contains($0.stateIdentifier) }
+                .map(\.stateIdentifier)
+        )
     }
 
     private func saveExpandedNodeIDsFromOutlineView() {

@@ -4,6 +4,10 @@ import AppKit
 final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrollerHiding {
     var keyboardContextProvider: (() -> WorkspaceKeyboardContext)?
 
+    override func accessibilityLabel() -> String? {
+        "Workspace Sidebar"
+    }
+
     override func viewWillStartLiveResize() {
         workspaceWillStartLiveResize()
         super.viewWillStartLiveResize()

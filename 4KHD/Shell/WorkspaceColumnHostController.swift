@@ -43,3 +43,13 @@ final class WorkspaceColumnHostController: NSViewController {
         ])
     }
 }
+
+extension WorkspaceColumnHostController: WorkspaceFocusable {
+    func focus() {
+        if let focusable = contentController as? WorkspaceFocusable {
+            focusable.focus()
+            return
+        }
+        view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
+    }
+}

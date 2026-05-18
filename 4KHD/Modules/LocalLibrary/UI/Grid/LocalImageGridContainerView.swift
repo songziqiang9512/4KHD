@@ -81,6 +81,10 @@ final class LocalImageGridContainerView: NSView {
         collectionView.collectionViewLayout?.invalidateLayout()
     }
 
+    func focus() {
+        window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView)
+    }
+
     func update(
         items: [(originalIndex: Int, image: LocalImageItem)],
         metadataByImageID: [LocalImageItem.ID: LocalImageMetadata],

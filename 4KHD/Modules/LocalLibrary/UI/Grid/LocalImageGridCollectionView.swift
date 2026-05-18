@@ -13,6 +13,10 @@ final class LocalImageGridCollectionView: NSCollectionView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    override func accessibilityLabel() -> String? {
+        "Local Image Grid"
+    }
+
     override func mouseDown(with event: NSEvent) {
         focusHandler?()
         window?.makeFirstResponder(self)

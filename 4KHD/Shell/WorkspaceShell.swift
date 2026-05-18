@@ -77,6 +77,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
                 },
                 toggleDetailPane: { [weak self] in
                     self?.toggleWorkspaceDetailPane(nil)
+                },
+                focusSidebar: { [weak self] in
+                    self?.focusSidebarColumn() ?? false
+                },
+                focusContent: { [weak self] in
+                    self?.focusContentColumn() ?? false
+                },
+                focusDetail: { [weak self] in
+                    self?.focusDetailColumn() ?? false
                 }
             )
         )
@@ -145,6 +154,56 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         appContext.detailPaneController.toggle()
     }
 
+    @objc func navigateToSidebar(_ sender: Any?) {
+        _ = focusSidebarColumn()
+    }
+
+    @objc func navigateToContent(_ sender: Any?) {
+        _ = focusContentColumn()
+    }
+
+    @objc func navigateToDetail(_ sender: Any?) {
+        _ = focusDetailColumn()
+    }
+
+    @objc func moveFocusToSearchField(_ sender: Any?) {
+        _ = focusSearchField()
+    }
+
+    @objc func refreshCurrentContent(_ sender: Any?) {
+        appContext.toolbarContext.refresh(for: currentModuleID)
+        refreshToolbarState()
+    }
+
+    @objc func importLocalFolder(_ sender: Any?) {
+        appContext.importRootFolder()
+    }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(moveFocusToSearchField(_:)):
+            return searchFieldIsAvailable
+        case #selector(refreshCurrentContent(_:)):
+            return canRefreshCurrentModule
+        case #selector(importLocalFolder(_:)):
+            return true
+        case #selector(toggleWorkspaceSidebar(_:)):
+            updateToggleSidebarValidationItem(item)
+            return true
+        case #selector(toggleWorkspaceDetailPane(_:)):
+            updateToggleDetailPaneValidationItem(item)
+            return true
+        case #selector(navigateToSidebar(_:)):
+            return !sidebarItem.isCollapsed
+        case #selector(navigateToContent(_:)):
+            return !contentItem.isCollapsed
+        case #selector(navigateToDetail(_:)):
+            return !detailItem.isCollapsed
+        default:
+            return true
+        }
+    }
+
     func saveStateToUserDefaults() {
         saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
     }
@@ -162,6 +221,62 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         toolbarMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleToolbarPointer(event)
             return event
+        }
+    }
+
+    private func focusSidebarColumn() -> Bool {
+        guard !sidebarItem.isCollapsed else { return false }
+        sidebarController.focus()
+        return true
+    }
+
+    private func focusContentColumn() -> Bool {
+        guard !contentItem.isCollapsed else { return false }
+        contentController.focus()
+        return true
+    }
+
+    private func focusDetailColumn() -> Bool {
+        guard !detailItem.isCollapsed else { return false }
+        detailController.focus()
+        return true
+    }
+
+    private func focusSearchField() -> Bool {
+        (view.window?.toolbar as? WorkspaceToolbarHost)?.focusSearchField() ?? false
+    }
+
+    private func refreshToolbarState() {
+        (view.window?.toolbar as? WorkspaceToolbarHost)?.refreshVisibleState()
+    }
+
+    private var searchFieldIsAvailable: Bool {
+        (view.window?.toolbar as? WorkspaceToolbarHost)?.searchFieldIsAvailable == true
+    }
+
+    private var currentModuleID: WorkspaceModuleID {
+        appContext.routeController.route.moduleID
+    }
+
+    private var canRefreshCurrentModule: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let gallerySnapshot):
+            return !gallerySnapshot.isRefreshing
+        case .local(let localSnapshot):
+            return !localSnapshot.isRefreshing && localSnapshot.hasSelection
+        }
+    }
+
+    private func updateToggleSidebarValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        guard let menuItem = item as? NSMenuItem else { return }
+        menuItem.title = sidebarItem.isCollapsed ? "Show Sidebar" : "Hide Sidebar"
+    }
+
+    private func updateToggleDetailPaneValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        let isPresented = !detailItem.isCollapsed
+        if let menuItem = item as? NSMenuItem {
+            menuItem.title = isPresented ? "Hide Detail" : "Show Detail"
+            menuItem.state = isPresented ? .on : .off
         }
     }
 
@@ -444,6 +559,15 @@ extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
             },
             toggleDetailPane: { [weak self] in
                 self?.toggleWorkspaceDetailPane(nil)
+            },
+            focusSidebar: { [weak self] in
+                self?.focusSidebarColumn() ?? false
+            },
+            focusContent: { [weak self] in
+                self?.focusContentColumn() ?? false
+            },
+            focusDetail: { [weak self] in
+                self?.focusDetailColumn() ?? false
             }
         )
     }

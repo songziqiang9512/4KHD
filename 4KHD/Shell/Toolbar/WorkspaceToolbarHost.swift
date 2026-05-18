@@ -22,19 +22,29 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var refreshItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
+    private let refreshQueue = WorkspaceCoalescingQueue(
+        name: "Workspace Toolbar Refresh",
+        interval: 0.05,
+        maxInterval: 0.1
+    )
+
+    var searchFieldIsAvailable: Bool {
+        searchItem?.searchField.window != nil
+    }
 
     init(appContext: WorkspaceAppContext, splitController: WorkspaceSplitViewController) {
         self.appContext = appContext
         self.splitController = splitController
         super.init(identifier: "WorkspaceToolbar")
         displayMode = .iconOnly
-        allowsUserCustomization = false
+        allowsUserCustomization = true
+        autosavesConfiguration = true
         delegate = self
         routeObserverID = appContext.routeController.addObserver { [weak self] _ in
-            self?.refresh()
+            self?.scheduleRefresh()
         }
         detailObserverID = appContext.detailPaneController.addObserver { [weak self] _ in
-            self?.refresh()
+            self?.scheduleRefresh()
         }
     }
 
@@ -195,6 +205,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
     }
 
+    func focusSearchField() -> Bool {
+        guard let searchField = searchItem?.searchField else { return false }
+        searchField.window?.makeFirstResponder(searchField)
+        return true
+    }
+
+    func refreshVisibleState() {
+        refresh()
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let searchField = notification.object as? NSSearchField,
               searchField === searchItem?.searchField else { return }
@@ -233,6 +253,12 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private var currentModuleID: WorkspaceModuleID {
         appContext.routeController.route.moduleID
+    }
+
+    private func scheduleRefresh() {
+        refreshQueue.add(id: "refresh") { [weak self] in
+            self?.refresh()
+        }
     }
 
     private func refresh() {

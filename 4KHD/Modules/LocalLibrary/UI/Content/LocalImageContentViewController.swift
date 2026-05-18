@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 @MainActor
-final class LocalImageContentViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+final class LocalImageContentViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, WorkspaceFocusable {
     typealias Entry = (originalIndex: Int, image: LocalImageItem)
 
     let localLibrary: LocalLibraryStore
@@ -55,6 +55,15 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         super.viewDidLoad()
         reloadContent()
         observeState()
+    }
+
+    func focus() {
+        switch preferences.layout {
+        case .list:
+            tableView.window?.makeFirstResponderUnlessDescendantIsFirstResponder(tableView)
+        case .grid:
+            gridView.focus()
+        }
     }
 
     private func setupGridView() {

@@ -93,6 +93,14 @@ private enum MainMenuBuilder {
         let menu = NSMenu(title: "File")
         menu.addItem(
             NSMenuItem(
+                title: "Import Folder...",
+                action: #selector(WorkspaceSplitViewController.importLocalFolder(_:)),
+                keyEquivalent: "o"
+            )
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
                 title: "Close",
                 action: #selector(NSWindow.performClose(_:)),
                 keyEquivalent: "w"
@@ -112,6 +120,14 @@ private enum MainMenuBuilder {
         menu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         menu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         menu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
+                title: "Find",
+                action: #selector(WorkspaceSplitViewController.moveFocusToSearchField(_:)),
+                keyEquivalent: "f"
+            )
+        )
         item.submenu = menu
         return item
     }
@@ -128,9 +144,46 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Refresh",
+                action: #selector(WorkspaceSplitViewController.refreshCurrentContent(_:)),
+                keyEquivalent: "r"
+            )
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
                 title: "Toggle Sidebar",
                 action: #selector(WorkspaceSplitViewController.toggleWorkspaceSidebar(_:)),
                 keyEquivalent: ""
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
+                title: "Toggle Detail",
+                action: #selector(WorkspaceSplitViewController.toggleWorkspaceDetailPane(_:)),
+                keyEquivalent: "\\"
+            )
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
+                title: "Focus Sidebar",
+                action: #selector(WorkspaceSplitViewController.navigateToSidebar(_:)),
+                keyEquivalent: "1"
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
+                title: "Focus Content",
+                action: #selector(WorkspaceSplitViewController.navigateToContent(_:)),
+                keyEquivalent: "2"
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
+                title: "Focus Detail",
+                action: #selector(WorkspaceSplitViewController.navigateToDetail(_:)),
+                keyEquivalent: "3"
             )
         )
         item.submenu = menu

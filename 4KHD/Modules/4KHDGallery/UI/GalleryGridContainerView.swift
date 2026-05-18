@@ -33,6 +33,10 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         updateItemSize()
     }
 
+    func focus() {
+        window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView)
+    }
+
     func update(
         items: [GalleryItem],
         selectedItemID: GalleryItem.ID?,
@@ -202,6 +206,10 @@ final class GalleryGridCollectionView: NSCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func accessibilityLabel() -> String? {
+        "4KHD Gallery Grid"
+    }
 
     override func keyDown(with event: NSEvent) {
         let handled = WorkspaceKeyboardHandler.keyDown(

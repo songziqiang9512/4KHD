@@ -4,6 +4,9 @@ import AppKit
 struct WorkspaceKeyboardContext {
     var toggleSidebar: (() -> Void)?
     var toggleDetailPane: (() -> Void)?
+    var focusSidebar: (() -> Bool)?
+    var focusContent: (() -> Bool)?
+    var focusDetail: (() -> Bool)?
     var stepSelection: ((Int) -> Bool)?
     var quickLook: (() -> Bool)?
     var toggleImmersive: (() -> Bool)?
@@ -35,6 +38,12 @@ enum WorkspaceKeyboardHandler {
             case "\\":
                 context.toggleDetailPane?()
                 return true
+            case "1":
+                return context.focusSidebar?() ?? false
+            case "2":
+                return context.focusContent?() ?? false
+            case "3":
+                return context.focusDetail?() ?? false
             default:
                 break
             }

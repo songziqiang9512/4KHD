@@ -30,6 +30,15 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         return result
     }
 
+    func pathToNode(where predicate: (WorkspaceSidebarNode) -> Bool) -> [WorkspaceSidebarNode]? {
+        for node in nodes {
+            if let path = pathToNode(from: node, where: predicate) {
+                return path
+            }
+        }
+        return nil
+    }
+
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let node = item as? WorkspaceSidebarNode else {
             return nodes.count
@@ -65,5 +74,20 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         for child in children {
             appendExpandableNodes(from: child, to: &result)
         }
+    }
+
+    private func pathToNode(
+        from node: WorkspaceSidebarNode,
+        where predicate: (WorkspaceSidebarNode) -> Bool
+    ) -> [WorkspaceSidebarNode]? {
+        if predicate(node) {
+            return [node]
+        }
+        for child in children(of: node) {
+            if let childPath = pathToNode(from: child, where: predicate) {
+                return [node] + childPath
+            }
+        }
+        return nil
     }
 }

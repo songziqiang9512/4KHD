@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 @MainActor
-final class GalleryImageDetailViewController: NSViewController {
+final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusable {
     private let library: FourKHDGalleryStore
     private let immersive: ImmersiveController
     private let detailInteraction: GalleryDetailInteractionController
@@ -85,6 +85,10 @@ final class GalleryImageDetailViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(view)
+    }
+
+    func focus() {
+        view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
     }
 
     private func setupView() {

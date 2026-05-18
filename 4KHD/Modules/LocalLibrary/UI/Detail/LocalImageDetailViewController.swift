@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 @MainActor
-final class LocalImageDetailViewController: NSViewController {
+final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable {
     private let localLibrary: LocalLibraryStore
     private let immersive: ImmersiveController
     private let detailInteraction: LocalDetailInteractionController
@@ -60,6 +60,10 @@ final class LocalImageDetailViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(view)
+    }
+
+    func focus() {
+        view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
     }
 
     func handleKeyDown(_ event: NSEvent) -> Bool {
