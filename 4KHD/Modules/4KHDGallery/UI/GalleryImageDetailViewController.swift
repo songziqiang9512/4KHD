@@ -201,6 +201,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             makeToolButton("arrow.up.left.and.arrow.down.right", "沉浸模式", #selector(toggleImmersive)),
             makeToolButton("rectangle.bottomthird.inset.filled", "缩略图", #selector(toggleFilmstrip)),
             makeToolButton("safari", "原网页", #selector(openOriginalPage)),
+            makeToolButton("square.and.arrow.up", "共享", #selector(shareOriginalPage)),
             makeToolButton("square.and.arrow.down", "保存", #selector(saveImage))
         ]
     }
@@ -388,6 +389,11 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     @objc private func openOriginalPage() {
         guard let item = library.selectedItem else { return }
         NSWorkspace.shared.open(item.detailURL)
+    }
+
+    @objc private func shareOriginalPage() {
+        guard let item = library.selectedItem else { return }
+        SharingPresenter.show(items: [item.detailURL], of: toolChrome, preferredEdge: .maxY)
     }
 
     @objc private func saveImage() {

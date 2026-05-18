@@ -36,6 +36,12 @@ extension GalleryContentViewController {
             representedObject: item.detailURL,
             symbolName: "doc.on.doc"
         ))
+        menu.addItem(menuItem(
+            "共享...",
+            action: #selector(shareDetailURLFromMenu(_:)),
+            representedObject: item.detailURL,
+            symbolName: "square.and.arrow.up"
+        ))
 
         return menu
     }
@@ -67,6 +73,11 @@ extension GalleryContentViewController {
     @objc func copyDetailURLFromMenu(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         writeURLToPasteboard(url)
+    }
+
+    @objc func shareDetailURLFromMenu(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        SharingPresenter.show(items: [url], of: view, preferredEdge: .maxX)
     }
 
     private func addFavoriteGroupMenuItems(

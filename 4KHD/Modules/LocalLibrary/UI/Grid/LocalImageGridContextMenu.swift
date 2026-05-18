@@ -23,6 +23,12 @@ extension LocalImageGridContainerView {
             representedObject: image
         ))
         menu.addItem(makeMenuItem(
+            title: "共享...",
+            symbolName: "square.and.arrow.up",
+            action: #selector(shareImage(_:)),
+            representedObject: image
+        ))
+        menu.addItem(makeMenuItem(
             title: "详细信息",
             symbolName: "info.circle",
             action: #selector(showInfo(_:)),
@@ -75,6 +81,14 @@ extension LocalImageGridContainerView {
     @objc private func showInfo(_ sender: NSMenuItem) {
         guard let image = sender.representedObject as? LocalImageItem else { return }
         onShowInfo?(image)
+    }
+
+    @objc private func shareImage(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
+        let index = entries.firstIndex { $0.image.id == image.id }
+        let indexPath = index.map { IndexPath(item: $0, section: 0) }
+        let rect = indexPath.flatMap { collectionView.item(at: $0)?.view.frame }
+        SharingPresenter.show(items: [image.url as NSURL], relativeTo: rect, of: collectionView, preferredEdge: .maxX)
     }
 
     @objc private func revealInFinder(_ sender: NSMenuItem) {

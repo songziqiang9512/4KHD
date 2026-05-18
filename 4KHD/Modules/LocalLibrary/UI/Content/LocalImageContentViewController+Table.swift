@@ -41,6 +41,12 @@ extension LocalImageContentViewController {
             representedObject: image
         ))
         menu.addItem(makeMenuItem(
+            title: "共享...",
+            symbolName: "square.and.arrow.up",
+            action: #selector(shareImage(_:)),
+            representedObject: image
+        ))
+        menu.addItem(makeMenuItem(
             title: "详细信息",
             symbolName: "info.circle",
             action: #selector(showSelectedInfo(_:)),
@@ -121,6 +127,13 @@ extension LocalImageContentViewController {
     @objc private func showSelectedInfo(_ sender: NSMenuItem) {
         guard let image = sender.representedObject as? LocalImageItem else { return }
         showInfo(for: image)
+    }
+
+    @objc private func shareImage(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
+        let row = filteredEntries.firstIndex { $0.image.id == image.id }
+        let rect = row.map { tableView.rect(ofRow: $0) }
+        SharingPresenter.show(items: [image.url as NSURL], relativeTo: rect, of: tableView, preferredEdge: .maxX)
     }
 
     @objc private func revealInFinder(_ sender: NSMenuItem) {

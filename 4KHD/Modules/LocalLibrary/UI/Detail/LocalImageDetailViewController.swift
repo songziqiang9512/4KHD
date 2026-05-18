@@ -176,6 +176,7 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             ("arrow.up.left.and.arrow.down.right", "大图模式", #selector(toggleImmersive)),
             ("folder", "在 Finder 中显示", #selector(revealInFinder)),
             ("eye", "快速预览", #selector(quickLookImage)),
+            ("square.and.arrow.up", "共享", #selector(shareImage)),
             ("info.circle", "详细信息", #selector(toggleInfo)),
             ("square.and.arrow.down", "保存副本", #selector(saveImage))
         ]
@@ -361,6 +362,11 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
 
     @objc func quickLookImage() {
         quickLookSelected()
+    }
+
+    @objc func shareImage() {
+        guard let image = localLibrary.selectedImage else { return }
+        SharingPresenter.show(items: [image.url as NSURL], of: toolChrome, preferredEdge: .maxY)
     }
 
     @objc func toggleInfo() {
