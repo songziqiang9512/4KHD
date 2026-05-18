@@ -19,15 +19,46 @@ extension LocalImageContentViewController {
             localLibrary.selectImage(at: filteredEntries[row].originalIndex)
         }
 
+        let image = filteredEntries[row].image
         let menu = NSMenu(title: "LocalImageListMenu")
         menu.autoenablesItems = false
-        menu.addItem(makeMenuItem(title: "设置为桌面壁纸", symbolName: "photo.fill", action: #selector(setDesktopWallpaper)))
+        menu.addItem(makeMenuItem(
+            title: "设置为桌面壁纸",
+            symbolName: "photo.fill",
+            action: #selector(setDesktopWallpaper(_:)),
+            representedObject: image
+        ))
         menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "快速预览", symbolName: "eye", action: #selector(contextQuickLook)))
-        menu.addItem(makeMenuItem(title: "详细信息", symbolName: "info.circle", action: #selector(showSelectedInfo)))
-        menu.addItem(makeMenuItem(title: "在 Finder 中显示", symbolName: "folder", action: #selector(revealInFinder)))
-        menu.addItem(makeMenuItem(title: "复制路径", symbolName: "doc.on.doc", action: #selector(copyPath)))
-        menu.addItem(makeMenuItem(title: "打开文件", symbolName: "arrow.up.right.square", action: #selector(openFile)))
+        menu.addItem(makeMenuItem(
+            title: "快速预览",
+            symbolName: "eye",
+            action: #selector(contextQuickLook(_:)),
+            representedObject: image
+        ))
+        menu.addItem(makeMenuItem(
+            title: "详细信息",
+            symbolName: "info.circle",
+            action: #selector(showSelectedInfo(_:)),
+            representedObject: image
+        ))
+        menu.addItem(makeMenuItem(
+            title: "在 Finder 中显示",
+            symbolName: "folder",
+            action: #selector(revealInFinder(_:)),
+            representedObject: image
+        ))
+        menu.addItem(makeMenuItem(
+            title: "复制路径",
+            symbolName: "doc.on.doc",
+            action: #selector(copyPath(_:)),
+            representedObject: image
+        ))
+        menu.addItem(makeMenuItem(
+            title: "打开文件",
+            symbolName: "arrow.up.right.square",
+            action: #selector(openFile(_:)),
+            representedObject: image
+        ))
         return menu
     }
 
@@ -52,9 +83,15 @@ extension LocalImageContentViewController {
         alert.runModal()
     }
 
-    private func makeMenuItem(title: String, symbolName: String, action: Selector) -> NSMenuItem {
+    private func makeMenuItem(
+        title: String,
+        symbolName: String,
+        action: Selector,
+        representedObject: Any
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
+        item.representedObject = representedObject
         item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: title)
         return item
     }
@@ -66,33 +103,34 @@ extension LocalImageContentViewController {
         return localLibrary.selectedImage
     }
 
-    @objc private func setDesktopWallpaper() {
-        guard let image = selectedImageForMenu() else { return }
+    @objc private func setDesktopWallpaper(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
         LocalDesktopWallpaperSetter.setDesktopWallpaper(image.url)
     }
 
-    @objc private func contextQuickLook() {
-        _ = quickLookSelected()
+    @objc private func contextQuickLook(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
+        LocalQuickLookController.shared.open(url: image.url)
     }
 
-    @objc private func showSelectedInfo() {
-        guard let image = selectedImageForMenu() else { return }
+    @objc private func showSelectedInfo(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
         showInfo(for: image)
     }
 
-    @objc private func revealInFinder() {
-        guard let image = selectedImageForMenu() else { return }
+    @objc private func revealInFinder(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
         NSWorkspace.shared.activateFileViewerSelecting([image.url])
     }
 
-    @objc private func copyPath() {
-        guard let image = selectedImageForMenu() else { return }
+    @objc private func copyPath(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(image.url.path, forType: .string)
     }
 
-    @objc private func openFile() {
-        guard let image = selectedImageForMenu() else { return }
+    @objc private func openFile(_ sender: NSMenuItem) {
+        guard let image = sender.representedObject as? LocalImageItem else { return }
         NSWorkspace.shared.open(image.url)
     }
 
