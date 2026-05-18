@@ -320,19 +320,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         LocalQuickLookController.shared.open(url: image.url)
     }
 
-    private func showInfo(for image: LocalImageItem) {
-        let metadata = metadataByImageID[image.id]
-        let alert = NSAlert()
-        alert.messageText = image.title
-        alert.informativeText = [
-            formattedResolution(metadata),
-            formattedSecondaryMetadata(metadata),
-            image.url.path
-        ]
-        .compactMap { $0 }
-        .joined(separator: "\n")
-        alert.addButton(withTitle: "关闭")
-        alert.runModal()
+    private func showInfo(for _: LocalImageItem) {
+        WorkspaceInspectorPresenter.show()
     }
 
     @objc private func previousImage() {

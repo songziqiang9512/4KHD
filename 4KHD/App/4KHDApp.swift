@@ -24,6 +24,12 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
 
         let appContext = WorkspaceAppAssembly.makeAppContext()
         self.appContext = appContext
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showInspector(_:)),
+            name: WorkspaceInspectorPresenter.showNotification,
+            object: nil
+        )
 
         let windowController = WorkspaceWindowController(appContext: appContext)
         self.windowController = windowController
