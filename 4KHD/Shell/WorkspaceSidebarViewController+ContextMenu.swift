@@ -3,7 +3,7 @@ import AppKit
 extension WorkspaceSidebarViewController {
     func makeContextMenu(forRow row: Int) -> NSMenu? {
         guard let node = nodeForSidebarRow(row) else {
-            return nil
+            return importMenu()
         }
 
         switch node {
