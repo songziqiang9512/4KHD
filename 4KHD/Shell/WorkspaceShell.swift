@@ -156,6 +156,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         appContext.detailPaneController.toggle()
     }
 
+    @objc func toggleImmersiveMode(_ sender: Any?) {
+        immersive.toggle()
+    }
+
     @objc func navigateToSidebar(_ sender: Any?) {
         _ = focusSidebarColumn()
     }
@@ -306,6 +310,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case #selector(toggleWorkspaceDetailPane(_:)):
             updateToggleDetailPaneValidationItem(item)
             return true
+        case #selector(toggleImmersiveMode(_:)):
+            updateImmersiveValidationItem(item)
+            return currentReference != nil
         case #selector(navigateToSidebar(_:)):
             return !sidebarItem.isCollapsed
         case #selector(navigateToContent(_:)):
@@ -492,6 +499,12 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             menuItem.title = isPresented ? "Hide Detail" : "Show Detail"
             menuItem.state = isPresented ? .on : .off
         }
+    }
+
+    private func updateImmersiveValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        guard let menuItem = item as? NSMenuItem else { return }
+        menuItem.title = immersive.isImmersive ? "Exit Immersive Mode" : "Enter Immersive Mode"
+        menuItem.state = immersive.isImmersive ? .on : .off
     }
 
     private func bootstrapIfNeeded() {

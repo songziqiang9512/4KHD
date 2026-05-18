@@ -241,6 +241,13 @@ private enum MainMenuBuilder {
                 keyEquivalent: "\\"
             )
         )
+        menu.addItem(
+            NSMenuItem(
+                title: "Enter Immersive Mode",
+                action: #selector(WorkspaceSplitViewController.toggleImmersiveMode(_:)),
+                keyEquivalent: ""
+            )
+        )
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
