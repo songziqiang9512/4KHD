@@ -88,7 +88,7 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
 
     private func setupView() {
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.backgroundColor = NSColor.clear.cgColor
 
         zoomableImageView.onDisplayed = { [weak self] in
             self?.updateFilmstripVisibility()

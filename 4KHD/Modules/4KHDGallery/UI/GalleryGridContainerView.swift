@@ -127,8 +127,10 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     private func setupView() {
         scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
         scrollView.automaticallyAdjustsContentInsets = true
         scrollView.hasVerticalScroller = true
+        scrollView.contentView.drawsBackground = false
         scrollView.documentView = collectionView
 
         gridLayout.minimumInteritemSpacing = 8

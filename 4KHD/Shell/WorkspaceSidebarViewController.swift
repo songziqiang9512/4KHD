@@ -25,7 +25,6 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private let appContext: WorkspaceAppContext
     private let dataSource = WorkspaceSidebarDataSource()
     private let rootView = NSView()
-    private let materialView = NSVisualEffectView()
     private let outlineView = WorkspaceSidebarOutlineView()
     private let scrollView = NSScrollView()
     private var isObservingLocalLibrary = false
@@ -49,13 +48,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     }
 
     override func loadView() {
-        materialView.material = .sidebar
-        materialView.blendingMode = .behindWindow
-        materialView.state = .active
-
         scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.automaticallyAdjustsContentInsets = true
+        scrollView.autohidesScrollers = true
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
+        scrollView.contentView.drawsBackground = false
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("MainColumn"))
         outlineView.addTableColumn(column)
@@ -82,19 +81,12 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         }
         scrollView.documentView = outlineView
 
-        rootView.addSubview(materialView)
         rootView.addSubview(scrollView)
-        materialView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            materialView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            materialView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            materialView.topAnchor.constraint(equalTo: rootView.topAnchor),
-            materialView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-
             scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: rootView.safeAreaLayoutGuide.topAnchor, constant: 38),
+            scrollView.topAnchor.constraint(equalTo: rootView.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
         ])
         view = rootView

@@ -3,10 +3,15 @@ import AppKit
 @MainActor
 final class WorkspaceColumnHostController: NSViewController {
     private let respectsSafeAreaTop: Bool
+    private let backgroundMaterial: NSVisualEffectView.Material?
     private var contentController: NSViewController?
 
-    init(respectsSafeAreaTop: Bool = false) {
+    init(
+        respectsSafeAreaTop: Bool = false,
+        backgroundMaterial: NSVisualEffectView.Material? = nil
+    ) {
         self.respectsSafeAreaTop = respectsSafeAreaTop
+        self.backgroundMaterial = backgroundMaterial
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -16,7 +21,15 @@ final class WorkspaceColumnHostController: NSViewController {
     }
 
     override func loadView() {
-        view = NSView()
+        guard let backgroundMaterial else {
+            view = NSView()
+            return
+        }
+        let materialView = NSVisualEffectView()
+        materialView.material = backgroundMaterial
+        materialView.blendingMode = .withinWindow
+        materialView.state = .active
+        view = materialView
     }
 
     func setContentController(_ controller: NSViewController) {

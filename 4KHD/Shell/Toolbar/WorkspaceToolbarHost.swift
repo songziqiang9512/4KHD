@@ -151,13 +151,20 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return item
         case ItemID.layout:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            let control = NSSegmentedControl(labels: ["列表", "网格"], trackingMode: .selectOne, target: self, action: #selector(layoutChanged(_:)))
+            let listImage = NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "列表") ?? NSImage()
+            let gridImage = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "网格") ?? NSImage()
+            let control = NSSegmentedControl(
+                images: [listImage, gridImage],
+                trackingMode: .selectOne,
+                target: self,
+                action: #selector(layoutChanged(_:))
+            )
             control.translatesAutoresizingMaskIntoConstraints = false
-            control.segmentStyle = .texturedRounded
-            control.setWidth(48, forSegment: 0)
-            control.setWidth(48, forSegment: 1)
+            control.segmentStyle = .automatic
+            control.setWidth(32, forSegment: 0)
+            control.setWidth(32, forSegment: 1)
             control.toolTip = "切换列表/网格"
-            control.widthAnchor.constraint(equalToConstant: 104).isActive = true
+            control.widthAnchor.constraint(equalToConstant: 72).isActive = true
             control.heightAnchor.constraint(equalToConstant: 28).isActive = true
             item.view = control
             item.label = "布局"

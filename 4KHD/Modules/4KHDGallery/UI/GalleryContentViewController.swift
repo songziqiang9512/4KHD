@@ -63,8 +63,10 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
 
     private func setupTable() {
         tableScrollView.drawsBackground = false
+        tableScrollView.borderType = .noBorder
         tableScrollView.automaticallyAdjustsContentInsets = true
         tableScrollView.hasVerticalScroller = true
+        tableScrollView.contentView.drawsBackground = false
         tableScrollView.documentView = tableView
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("GalleryItem"))
@@ -73,6 +75,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableView.rowHeight = 96
         tableView.intercellSpacing = NSSize(width: 0, height: 3)
         tableView.usesAlternatingRowBackgroundColors = false
+        tableView.backgroundColor = .controlBackgroundColor
         tableView.style = .plain
         tableView.dataSource = self
         tableView.delegate = self

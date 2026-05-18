@@ -93,7 +93,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
     private func setupView() {
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.backgroundColor = NSColor.clear.cgColor
 
         emptyLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         emptyLabel.textColor = .secondaryLabelColor

@@ -22,9 +22,8 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         window.styleMask.insert([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
         window.isOpaque = true
         window.backgroundColor = .windowBackgroundColor
-        window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.titlebarSeparatorStyle = .shadow
+        window.titlebarSeparatorStyle = .automatic
         window.toolbarStyle = .unified
         super.init(window: window)
         window.delegate = self

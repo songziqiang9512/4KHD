@@ -80,8 +80,10 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
 
     private func setupTableView() {
         scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
         scrollView.automaticallyAdjustsContentInsets = true
         scrollView.hasVerticalScroller = true
+        scrollView.contentView.drawsBackground = false
         scrollView.documentView = tableView
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Image"))
@@ -90,6 +92,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         tableView.rowHeight = 84
         tableView.intercellSpacing = NSSize(width: 0, height: 4)
         tableView.usesAlternatingRowBackgroundColors = false
+        tableView.backgroundColor = .controlBackgroundColor
         tableView.style = .plain
         tableView.dataSource = self
         tableView.delegate = self

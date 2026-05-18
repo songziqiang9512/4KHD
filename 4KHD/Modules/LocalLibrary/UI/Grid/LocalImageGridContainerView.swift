@@ -14,9 +14,11 @@ final class LocalImageGridContainerView: NSView {
     let scrollView: NSScrollView = {
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
         scrollView.automaticallyAdjustsContentInsets = true
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
+        scrollView.contentView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         return scrollView
     }()
