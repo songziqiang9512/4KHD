@@ -36,6 +36,30 @@ extension WorkspaceSidebarViewController {
         NSPasteboard.general.setString(folder.url.path, forType: .string)
     }
 
+    @objc func removeLocalFolderFromSidebarMenu(_ sender: NSMenuItem) {
+        guard let folder = sender.representedObject as? LocalFolderNode else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "从本地库移除目录？"
+        alert.informativeText = "这只会从侧边栏和本地库索引中移除该目录，不会删除磁盘上的文件。"
+        alert.addButton(withTitle: "移除")
+        alert.addButton(withTitle: "取消")
+
+        if let window = view.window {
+            alert.beginSheetModal(for: window) { [weak self] response in
+                guard response == .alertFirstButtonReturn else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    delegate?.sidebarViewController(self, didRequestRemoveLocalFolder: folder)
+                }
+            }
+            return
+        }
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        delegate?.sidebarViewController(self, didRequestRemoveLocalFolder: folder)
+    }
+
     private func importMenu() -> NSMenu {
         let menu = NSMenu(title: "SidebarImportMenu")
         let item = NSMenuItem(
@@ -67,6 +91,13 @@ extension WorkspaceSidebarViewController {
             title: "复制路径",
             symbolName: "doc.on.doc",
             action: #selector(copyLocalFolderPathFromSidebarMenu(_:)),
+            representedObject: folder
+        ))
+        menu.addItem(.separator())
+        menu.addItem(menuItem(
+            title: "从本地库移除...",
+            symbolName: "trash",
+            action: #selector(removeLocalFolderFromSidebarMenu(_:)),
             representedObject: folder
         ))
         return menu

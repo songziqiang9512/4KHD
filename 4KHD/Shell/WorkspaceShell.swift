@@ -587,6 +587,16 @@ extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
 
     func sidebarViewController(
         _ controller: WorkspaceSidebarViewController,
+        didRequestRemoveLocalFolder folder: LocalFolderNode
+    ) {
+        appContext.localLibraryStore.removeFolder(folder)
+        if appContext.routeController.route.moduleID == .localLibrary {
+            appContext.routeController.applyCurrentRoute()
+        }
+    }
+
+    func sidebarViewController(
+        _ controller: WorkspaceSidebarViewController,
         didChangeExpandedNodeIDs expandedNodeIDs: [String]
     ) {
         expandedSidebarNodeIDs = expandedNodeIDs
