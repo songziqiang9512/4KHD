@@ -64,6 +64,9 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             guard let self else { return WorkspaceKeyboardContext() }
             return self.delegate?.sidebarViewControllerKeyboardContext(self) ?? WorkspaceKeyboardContext()
         }
+        outlineView.contextMenuProvider = { [weak self] row in
+            self?.makeContextMenu(forRow: row)
+        }
         scrollView.documentView = outlineView
 
         rootView.addSubview(materialView)
@@ -106,6 +109,15 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         guard isViewLoaded else { return }
         applyExpandedNodeIDs()
         selectCurrentRoute()
+    }
+
+    func nodeForSidebarRow(_ row: Int) -> WorkspaceSidebarNode? {
+        guard row >= 0 else { return nil }
+        return outlineView.item(atRow: row) as? WorkspaceSidebarNode
+    }
+
+    func requestLocalImportFromContextMenu() {
+        delegate?.sidebarViewControllerDidRequestLocalImport(self)
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
