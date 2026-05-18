@@ -110,6 +110,7 @@ final class LocalImageListTableView: NSTableView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        window?.makeFirstResponder(self)
         let row = row(at: convert(event.locationInWindow, from: nil))
         return contextMenuProvider?(row)
     }

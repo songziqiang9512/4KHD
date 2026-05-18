@@ -442,11 +442,9 @@ final class GalleryContentTableView: NSTableView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
-        if row >= 0 {
-            selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        }
         return contextMenuProvider?(row)
     }
 
