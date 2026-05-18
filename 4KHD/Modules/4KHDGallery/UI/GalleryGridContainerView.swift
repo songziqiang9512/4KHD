@@ -4,6 +4,7 @@ import AppKit
 final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     var onSelect: ((GalleryItem) -> Void)?
     var onNeedsMore: (() -> Void)?
+    var contextMenuProvider: ((GalleryItem) -> NSMenu?)?
 
     private let scrollView = NSScrollView()
     private let collectionView = GalleryGridCollectionView()
@@ -134,6 +135,9 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         collectionView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacent(delta: delta) ?? false
         }
+        collectionView.contextMenuProvider = { [weak self] indexPath in
+            self?.makeContextMenu(for: indexPath)
+        }
         collectionView.register(GalleryGridItemView.self, forItemWithIdentifier: GalleryGridItemView.reuseID)
         collectionView.register(GalleryGridFooterItem.self, forItemWithIdentifier: GalleryGridFooterItem.reuseID)
 
@@ -200,15 +204,36 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         onSelect?(items[next])
         return true
     }
+
+    private func makeContextMenu(for indexPath: IndexPath?) -> NSMenu? {
+        guard let indexPath,
+              items.indices.contains(indexPath.item) else { return nil }
+
+        let item = items[indexPath.item]
+        selectedItemID = item.id
+        isApplyingSelection = true
+        collectionView.selectionIndexPaths = [indexPath]
+        isApplyingSelection = false
+        refreshVisibleSelection()
+        onSelect?(item)
+        return contextMenuProvider?(item)
+    }
 }
 
 final class GalleryGridCollectionView: NSCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
+    var contextMenuProvider: ((IndexPath?) -> NSMenu?)?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func accessibilityLabel() -> String? {
         "4KHD Gallery Grid"
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        window?.makeFirstResponder(self)
+        let point = convert(event.locationInWindow, from: nil)
+        return contextMenuProvider?(indexPathForItem(at: point))
     }
 
     override func keyDown(with event: NSEvent) {

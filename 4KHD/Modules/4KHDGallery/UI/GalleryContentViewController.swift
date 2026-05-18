@@ -90,6 +90,9 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         gridView.onNeedsMore = { [weak self] in
             self?.library.loadMoreListIfNeeded()
         }
+        gridView.contextMenuProvider = { [weak self] item in
+            self?.makeContextMenu(for: item)
+        }
     }
 
     func reloadContent() {

@@ -7,7 +7,10 @@ extension GalleryContentViewController {
               let item = rowItems[id] else {
             return nil
         }
+        return makeContextMenu(for: item)
+    }
 
+    func makeContextMenu(for item: GalleryItem) -> NSMenu? {
         let menu = NSMenu()
         menu.addItem(
             withTitle: library.isFavorite(item) ? "取消收藏" : "收藏",
