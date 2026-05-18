@@ -16,6 +16,7 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: WorkspaceWindowController?
     private var preferencesWindowController: WorkspacePreferencesWindowController?
     private var keyboardShortcutsWindowController: WorkspaceKeyboardShortcutsWindowController?
+    private var inspectorWindowController: WorkspaceInspectorWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -27,6 +28,7 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         let windowController = WorkspaceWindowController(appContext: appContext)
         self.windowController = windowController
         windowController.showWindow(nil)
+        restoreInspectorIfNeeded(appContext: appContext)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -39,6 +41,7 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         windowController?.saveStateToUserDefaults()
+        inspectorWindowController?.saveState()
     }
 
     @objc func showMainWindow(_ sender: Any?) {
@@ -69,12 +72,30 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc func showInspector(_ sender: Any?) {
+        guard let appContext else { return }
+        showInspector(sender, appContext: appContext)
+    }
+
     @objc func openApplicationSupportFolder(_ sender: Any?) {
         AppStorageFolders.open(AppStorageFolders.applicationSupport)
     }
 
     @objc func openImageCacheFolder(_ sender: Any?) {
         AppStorageFolders.open(AppStorageFolders.imageCache)
+    }
+
+    private func restoreInspectorIfNeeded(appContext: WorkspaceAppContext) {
+        guard WorkspaceInspectorWindowController.shouldOpenAtStartup else { return }
+        showInspector(nil, appContext: appContext)
+    }
+
+    private func showInspector(_ sender: Any?, appContext: WorkspaceAppContext) {
+        if inspectorWindowController == nil {
+            inspectorWindowController = WorkspaceInspectorWindowController(appContext: appContext)
+        }
+        inspectorWindowController?.showWindow(sender)
+        inspectorWindowController?.window?.makeKeyAndOrderFront(sender)
     }
 }
 
@@ -403,6 +424,14 @@ private enum MainMenuBuilder {
         )
         mainWindowItem.target = NSApp.delegate as AnyObject?
         menu.addItem(mainWindowItem)
+        let inspectorItem = NSMenuItem(
+            title: "Inspector",
+            action: #selector(FourKHDAppDelegate.showInspector(_:)),
+            keyEquivalent: "i"
+        )
+        inspectorItem.keyEquivalentModifierMask = [.command, .option]
+        inspectorItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(inspectorItem)
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
