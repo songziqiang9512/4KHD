@@ -28,6 +28,7 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        window?.makeFirstResponder(self)
         let row = row(at: convert(event.locationInWindow, from: nil))
         if row >= 0, delegate?.outlineView?(self, shouldSelectItem: item(atRow: row) as Any) != false {
             selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
