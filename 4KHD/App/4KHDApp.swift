@@ -100,6 +100,13 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Favorite",
+                action: #selector(WorkspaceSplitViewController.toggleCurrentFavorite(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Open Original",
                 action: #selector(WorkspaceSplitViewController.openCurrentReference(_:)),
                 keyEquivalent: ""

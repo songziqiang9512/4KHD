@@ -147,6 +147,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             _ = library.canLoadMoreList
             _ = library.isRefreshingList
             _ = library.activeSearchQuery
+            _ = library.favorites.favorites
             _ = preferences.layout
             _ = detailPane.isPresented
         } onChange: { [weak self] in

@@ -340,6 +340,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = gallerySnapshot.searchText
             _ = gallerySnapshot.layout
             _ = gallerySnapshot.isRefreshing
+            _ = gallerySnapshot.canFavorite
+            _ = gallerySnapshot.isFavorite
             _ = gallerySnapshot.canShare
         case .local(let localSnapshot):
             _ = localSnapshot.searchText

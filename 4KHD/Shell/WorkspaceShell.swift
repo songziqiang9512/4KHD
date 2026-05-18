@@ -177,6 +177,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         refreshToolbarState()
     }
 
+    @objc func toggleCurrentFavorite(_ sender: Any?) {
+        appContext.toolbarContext.toggleFavorite(for: currentModuleID)
+        refreshToolbarState()
+    }
+
     @objc func setContentListLayout(_ sender: Any?) {
         setContentLayout(isList: true)
     }
@@ -234,6 +239,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return searchFieldIsAvailable
         case #selector(refreshCurrentContent(_:)):
             return canRefreshCurrentModule
+        case #selector(toggleCurrentFavorite(_:)):
+            updateFavoriteValidationItem(item)
+            return canFavoriteCurrentItem
         case #selector(setContentListLayout(_:)):
             updateLayoutValidationItem(item, isList: true)
             return true
@@ -359,6 +367,24 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case .local(let localSnapshot):
             return localSnapshot.canShare
         }
+    }
+
+    private var canFavoriteCurrentItem: Bool {
+        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            return false
+        }
+        return snapshot.canFavorite
+    }
+
+    private func updateFavoriteValidationItem(_ item: NSValidatedUserInterfaceItem) {
+        guard let menuItem = item as? NSMenuItem else { return }
+        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            menuItem.title = "Favorite"
+            menuItem.state = .off
+            return
+        }
+        menuItem.title = snapshot.isFavorite ? "Unfavorite" : "Favorite"
+        menuItem.state = snapshot.isFavorite ? .on : .off
     }
 
     private func updateLayoutValidationItem(_ item: NSValidatedUserInterfaceItem, isList: Bool) {

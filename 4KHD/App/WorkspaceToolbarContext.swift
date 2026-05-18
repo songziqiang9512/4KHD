@@ -9,6 +9,8 @@ enum WorkspaceToolbarSnapshot {
         let searchText: String
         let layout: GalleryContentLayout
         let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
         let canShare: Bool
     }
 
@@ -90,12 +92,15 @@ final class WorkspaceToolbarContext {
     func snapshot(for moduleID: WorkspaceModuleID) -> WorkspaceToolbarSnapshot {
         switch moduleID {
         case .fourKHDGallery:
+            let selectedItem = galleryStore.selectedItem
             return .gallery(
                 .init(
                     searchText: galleryStore.searchText,
                     layout: galleryPreferences.layout,
                     isRefreshing: galleryStore.isRefreshingList,
-                    canShare: galleryStore.selectedItem != nil
+                    canFavorite: selectedItem != nil,
+                    isFavorite: selectedItem.map { galleryStore.isFavorite($0) } ?? false,
+                    canShare: selectedItem != nil
                 )
             )
         case .localLibrary:
@@ -177,5 +182,11 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             return localLibraryStore.selectedImage.map { .file($0.url) }
         }
+    }
+
+    func toggleFavorite(for moduleID: WorkspaceModuleID) {
+        guard case .fourKHDGallery = moduleID,
+              let item = galleryStore.selectedItem else { return }
+        galleryStore.toggleFavorite(for: item)
     }
 }
