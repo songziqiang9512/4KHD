@@ -271,7 +271,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
     private func updateToggleSidebarValidationItem(_ item: NSValidatedUserInterfaceItem) {
         guard let menuItem = item as? NSMenuItem else { return }
-        menuItem.title = sidebarItem.isCollapsed ? "Show Sidebar" : "Hide Sidebar"
+        let isPresented = !sidebarItem.isCollapsed
+        menuItem.title = isPresented ? "Hide Sidebar" : "Show Sidebar"
+        menuItem.state = isPresented ? .on : .off
     }
 
     private func updateToggleDetailPaneValidationItem(_ item: NSValidatedUserInterfaceItem) {
@@ -482,6 +484,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
         guard !detailItem.isCollapsed,
               let widths = currentSplitViewWidths(),
+              widths[1] >= Int(SplitState.minimumContentWidth),
               widths[2] >= Int(detailItem.minimumThickness) else { return }
         saveWindowStateToUserDefaults(widths: widths, includeHiddenDetailWidth: true)
     }
@@ -507,8 +510,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         guard sidebarWidth.isFinite,
               contentWidth.isFinite,
               detailWidth.isFinite,
-              contentWidth > 0,
-              detailWidth > 0 else { return nil }
+              contentWidth >= SplitState.minimumContentWidth,
+              detailWidth >= detailItem.minimumThickness else { return nil }
 
         return [sidebarWidth, contentWidth, detailWidth].map { Int(floor($0)) }
     }
