@@ -14,6 +14,7 @@ enum WorkspaceToolbarSnapshot {
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
+        let canResetZoom: Bool
         let canShare: Bool
     }
 
@@ -27,6 +28,7 @@ enum WorkspaceToolbarSnapshot {
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
+        let canResetZoom: Bool
         let canShare: Bool
     }
 }
@@ -117,6 +119,7 @@ final class WorkspaceToolbarContext {
                         galleryStore.selectedImageIndex < max(item.imageCount - 1, 0)
                     } ?? false,
                     canSaveImage: selectedItem != nil && galleryStore.selectedSlot?.knownURL != nil,
+                    canResetZoom: galleryStore.selectedSlot != nil,
                     canShare: selectedItem != nil
                 )
             )
@@ -134,6 +137,7 @@ final class WorkspaceToolbarContext {
                     canSelectPreviousImage: selectedImageIndex > 0,
                     canSelectNextImage: selectedImageIndex < imageCount - 1,
                     canSaveImage: localLibraryStore.selectedImage != nil,
+                    canResetZoom: localLibraryStore.selectedImage != nil,
                     canShare: localLibraryStore.selectedImage != nil
                 )
             )
@@ -230,6 +234,15 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             guard let image = localLibraryStore.selectedImage else { return }
             localDetailInteraction.save(image: image)
+        }
+    }
+
+    func resetZoom(for moduleID: WorkspaceModuleID) {
+        switch moduleID {
+        case .fourKHDGallery:
+            galleryDetailInteraction.resetZoom()
+        case .localLibrary:
+            localDetailInteraction.resetZoom()
         }
     }
 }

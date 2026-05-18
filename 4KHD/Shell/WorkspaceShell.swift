@@ -224,6 +224,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         refreshToolbarState()
     }
 
+    @objc func resetCurrentZoom(_ sender: Any?) {
+        appContext.toolbarContext.resetZoom(for: currentModuleID)
+        refreshToolbarState()
+    }
+
     @objc func copyCurrentReference(_ sender: Any?) {
         currentReference?.writeToPasteboard()
     }
@@ -282,6 +287,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return currentReference != nil
         case #selector(saveCurrentImage(_:)):
             return canSaveCurrentImage
+        case #selector(resetCurrentZoom(_:)):
+            return canResetCurrentZoom
         case #selector(copyCurrentReference(_:)):
             updateCopyReferenceValidationItem(item)
             return currentReference != nil
@@ -402,6 +409,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return gallerySnapshot.canSaveImage
         case .local(let localSnapshot):
             return localSnapshot.canSaveImage
+        }
+    }
+
+    private var canResetCurrentZoom: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let gallerySnapshot):
+            return gallerySnapshot.canResetZoom
+        case .local(let localSnapshot):
+            return localSnapshot.canResetZoom
         }
     }
 

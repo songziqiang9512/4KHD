@@ -205,6 +205,13 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
+                title: "Actual Size",
+                action: #selector(WorkspaceSplitViewController.resetCurrentZoom(_:)),
+                keyEquivalent: "0"
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Previous Image",
                 action: #selector(WorkspaceSplitViewController.selectPreviousImage(_:)),
                 keyEquivalent: ""
