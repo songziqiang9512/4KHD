@@ -9,6 +9,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     private let filmstripVisibility: FilmstripVisibilityController
     private let zoomableImageView = LocalZoomableImageView()
     private let filmstripView = LocalImageFilmstripView()
+    private let previousButton = DetailNavigationButton(symbolName: "chevron.left", accessibilityDescription: "上一张")
+    private let nextButton = DetailNavigationButton(symbolName: "chevron.right", accessibilityDescription: "下一张")
     private let statusChrome = DetailOverlayChromeView(cornerRadius: 12)
     private let statusLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "没有可显示图片")
@@ -96,6 +98,11 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             self?.localLibrary.selectImage(at: index)
         }
 
+        previousButton.target = self
+        previousButton.action = #selector(previousImage)
+        nextButton.target = self
+        nextButton.action = #selector(nextImage)
+
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         statusLabel.textColor = .labelColor
         statusLabel.alignment = .center
@@ -107,7 +114,7 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
 
-        for subview in [zoomableImageView, filmstripView, statusChrome, emptyLabel] {
+        for subview in [zoomableImageView, filmstripView, previousButton, nextButton, statusChrome, emptyLabel] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -129,6 +136,16 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             filmstripView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filmstripView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             filmstripHeight,
+
+            previousButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            previousButton.centerYAnchor.constraint(equalTo: zoomableImageView.centerYAnchor),
+            previousButton.widthAnchor.constraint(equalToConstant: 40),
+            previousButton.heightAnchor.constraint(equalToConstant: 40),
+
+            nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            nextButton.centerYAnchor.constraint(equalTo: zoomableImageView.centerYAnchor),
+            nextButton.widthAnchor.constraint(equalToConstant: 40),
+            nextButton.heightAnchor.constraint(equalToConstant: 40),
 
             statusChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             statusChrome.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -16),
@@ -170,6 +187,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             currentImageID = nil
             zoomableImageView.setImageURL(nil)
             emptyLabel.isHidden = false
+            previousButton.isHidden = true
+            nextButton.isHidden = true
             filmstripView.isHidden = true
             statusChrome.isHidden = true
             updateFilmstripLayout(shouldShow: false)
@@ -177,6 +196,10 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         }
 
         emptyLabel.isHidden = true
+        previousButton.isHidden = false
+        nextButton.isHidden = false
+        previousButton.isEnabled = localLibrary.selectedImageIndex > 0
+        nextButton.isEnabled = localLibrary.selectedImageIndex < localLibrary.selectedImages.count - 1
 
         if currentImageID != image.id {
             currentImageID = image.id
@@ -238,6 +261,14 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
 
     private func showInfo(for _: LocalImageItem) {
         WorkspaceInspectorPresenter.show()
+    }
+
+    @objc private func previousImage() {
+        localLibrary.stepImage(-1)
+    }
+
+    @objc private func nextImage() {
+        localLibrary.stepImage(1)
     }
 
 }

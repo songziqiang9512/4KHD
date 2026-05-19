@@ -11,7 +11,6 @@ final class ImmersiveController {
     var isImmersive: Bool = false
     var peekRevealing: Bool = false
     var isToolbarVisible: Bool = true
-    @ObservationIgnored private var peekHideWorkItem: DispatchWorkItem?
 
     func toggle() {
         set(!isImmersive)
@@ -19,41 +18,15 @@ final class ImmersiveController {
 
     func set(_ on: Bool) {
         if on {
-            peekHideWorkItem?.cancel()
             isImmersive = true
             peekRevealing = false
             isToolbarVisible = false
         } else {
-            peekHideWorkItem?.cancel()
             isImmersive = false
             peekRevealing = false
             isToolbarVisible = true
         }
         notifyObservers()
-    }
-
-    func revealColumns() {
-        guard isImmersive else { return }
-        peekHideWorkItem?.cancel()
-        peekRevealing = true
-        notifyObservers()
-    }
-
-    func handleColumnHover(_ hovering: Bool) {
-        guard isImmersive else { return }
-        peekHideWorkItem?.cancel()
-        if hovering {
-            peekRevealing = true
-            notifyObservers()
-            return
-        }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.isImmersive else { return }
-            self.peekRevealing = false
-            self.notifyObservers()
-        }
-        peekHideWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
     func handleToolbarPointer(isNearTop: Bool) {

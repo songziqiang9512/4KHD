@@ -6,8 +6,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private enum ItemID {
         static let sidebarTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.sidebarTrackingSeparator")
         static let search = NSToolbarItem.Identifier("WorkspaceToolbar.search")
-        static let previousImage = NSToolbarItem.Identifier("WorkspaceToolbar.previousImage")
-        static let nextImage = NSToolbarItem.Identifier("WorkspaceToolbar.nextImage")
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let localSort = NSToolbarItem.Identifier("WorkspaceToolbar.localSort")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
@@ -98,8 +96,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .flexibleSpace,
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
-            ItemID.previousImage,
-            ItemID.nextImage,
             ItemID.layout,
             ItemID.localSort,
             ItemID.refresh,
@@ -131,10 +127,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.localSort)
             identifiers.append(ItemID.importFolder)
         }
-        identifiers += [
-            ItemID.previousImage,
-            ItemID.nextImage
-        ]
         if currentModuleID == .fourKHDGallery {
             identifiers.append(ItemID.favorite)
         }
@@ -189,26 +181,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             item.searchField.action = #selector(searchFieldChanged(_:))
             searchItem = item
             updateSearchField()
-            return item
-        case ItemID.previousImage:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.target = self
-            item.action = #selector(selectPreviousImage(_:))
-            item.label = "上一张"
-            item.paletteLabel = "上一张"
-            item.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "上一张")
-            item.toolTip = "上一张"
-            item.visibilityPriority = .high
-            return item
-        case ItemID.nextImage:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.target = self
-            item.action = #selector(selectNextImage(_:))
-            item.label = "下一张"
-            item.paletteLabel = "下一张"
-            item.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "下一张")
-            item.toolTip = "下一张"
-            item.visibilityPriority = .high
             return item
         case ItemID.layout:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -361,10 +333,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case ItemID.previousImage:
-            canSelectPreviousImage
-        case ItemID.nextImage:
-            canSelectNextImage
         case ItemID.refresh:
             canRefreshCurrentModule
         case ItemID.localSort:
@@ -418,16 +386,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func refreshContent(_ sender: Any?) {
         appContext.toolbarContext.refresh(for: currentModuleID)
-        refresh()
-    }
-
-    @objc private func selectPreviousImage(_ sender: Any?) {
-        appContext.toolbarContext.stepImage(-1, for: currentModuleID)
-        refresh()
-    }
-
-    @objc private func selectNextImage(_ sender: Any?) {
-        appContext.toolbarContext.stepImage(1, for: currentModuleID)
         refresh()
     }
 
@@ -704,24 +662,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return !gallerySnapshot.isRefreshing
         case .local(let localSnapshot):
             return !localSnapshot.isRefreshing && localSnapshot.hasSelection
-        }
-    }
-
-    private var canSelectPreviousImage: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canSelectPreviousImage
-        case .local(let snapshot):
-            return snapshot.canSelectPreviousImage
-        }
-    }
-
-    private var canSelectNextImage: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canSelectNextImage
-        case .local(let snapshot):
-            return snapshot.canSelectNextImage
         }
     }
 

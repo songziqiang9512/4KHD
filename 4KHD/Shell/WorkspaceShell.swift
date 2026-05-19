@@ -637,9 +637,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
               window.isKeyWindow else { return }
         let topDistance = max(window.frame.height - event.locationInWindow.y, 0)
         immersive.handleToolbarPointer(isNearTop: topDistance <= 72)
-        if event.locationInWindow.x <= 6 {
-            immersive.revealColumns()
-        }
     }
 }
 

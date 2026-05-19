@@ -11,6 +11,8 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     private let imageView = GalleryZoomableImageView()
     private let filmstripView = GalleryFilmstripView()
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
+    private let previousButton = DetailNavigationButton(symbolName: "chevron.left", accessibilityDescription: "上一张")
+    private let nextButton = DetailNavigationButton(symbolName: "chevron.right", accessibilityDescription: "下一张")
     private let counterChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let counterLabel = NSTextField(labelWithString: "")
     private let statusChrome = DetailOverlayChromeView(cornerRadius: 11)
@@ -109,7 +111,12 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         statusChrome.addSubview(statusLabel)
 
-        for subview in [imageView, emptyLabel, counterChrome, statusChrome, filmstripView] {
+        previousButton.target = self
+        previousButton.action = #selector(previousImage)
+        nextButton.target = self
+        nextButton.action = #selector(nextImage)
+
+        for subview in [imageView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -131,6 +138,16 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+
+            previousButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            previousButton.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
+            previousButton.widthAnchor.constraint(equalToConstant: 40),
+            previousButton.heightAnchor.constraint(equalToConstant: 40),
+
+            nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            nextButton.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
+            nextButton.widthAnchor.constraint(equalToConstant: 40),
+            nextButton.heightAnchor.constraint(equalToConstant: 40),
 
             counterChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             counterChrome.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -12),
@@ -185,6 +202,8 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         guard let item = library.selectedItem, let slot = library.selectedSlot else {
             imageView.isHidden = true
             emptyLabel.isHidden = false
+            previousButton.isHidden = true
+            nextButton.isHidden = true
             counterChrome.isHidden = true
             statusChrome.isHidden = true
             filmstripView.isHidden = true
@@ -194,6 +213,10 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
         imageView.isHidden = false
         emptyLabel.isHidden = true
+        previousButton.isHidden = false
+        nextButton.isHidden = false
+        previousButton.isEnabled = library.selectedImageIndex > 0
+        nextButton.isEnabled = library.selectedImageIndex < max(item.imageCount - 1, 0)
         counterChrome.isHidden = false
 
         if currentItemID != item.id {
@@ -277,6 +300,14 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
                 }
             )
         )
+    }
+
+    @objc private func previousImage() {
+        library.stepImage(-1)
+    }
+
+    @objc private func nextImage() {
+        library.stepImage(1)
     }
 
     private var placeholderItem: GalleryItem {
