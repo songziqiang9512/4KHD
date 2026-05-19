@@ -8,15 +8,15 @@ enum LocalImageThumbnailLoadResult {
 }
 
 enum LocalImageGridAnimation {
-    static let cardHoverScale: CGFloat = 1.025
-    static let cardPressedScale: CGFloat = 0.96
-    static let cardHoverExpandDuration: CFTimeInterval = 0.18
-    static let cardHoverCollapseDuration: CFTimeInterval = 0.20
-    static let cardPressDownDuration: CFTimeInterval = 0.08
-    static let cardPressUpDuration: CFTimeInterval = 0.12
+    static let cardHoverScale = WorkspaceThumbnailGridCardAnimation.cardHoverScale
+    static let cardPressedScale = WorkspaceThumbnailGridCardAnimation.cardPressedScale
+    static let cardHoverExpandDuration = WorkspaceThumbnailGridCardAnimation.cardHoverExpandDuration
+    static let cardHoverCollapseDuration = WorkspaceThumbnailGridCardAnimation.cardHoverCollapseDuration
+    static let cardPressDownDuration = WorkspaceThumbnailGridCardAnimation.cardPressDownDuration
+    static let cardPressUpDuration = WorkspaceThumbnailGridCardAnimation.cardPressUpDuration
     static let minimumPressVisualDuration: TimeInterval = 0.05
-    static let cardEnterTiming = CAMediaTimingFunction(controlPoints: 0.22, 0.86, 0.26, 1.0)
-    static let cardExitTiming = CAMediaTimingFunction(controlPoints: 0.26, 0.64, 0.30, 1.0)
+    static let cardEnterTiming = WorkspaceThumbnailGridCardAnimation.cardEnterTiming
+    static let cardExitTiming = WorkspaceThumbnailGridCardAnimation.cardExitTiming
 }
 
 final class LocalImageAppearanceAwareView: NSView {

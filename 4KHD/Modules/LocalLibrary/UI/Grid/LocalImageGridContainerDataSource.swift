@@ -24,6 +24,7 @@ extension LocalImageGridContainerView: NSCollectionViewDataSource {
         let entry = entries[indexPath.item]
         item.configure(
             image: entry.image,
+            metadata: entry.metadata,
             fileExists: entry.metadata?.fileExists ?? true,
             isSelected: entry.image.id == selectedImageID
         ) { completion in

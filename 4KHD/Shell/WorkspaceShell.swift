@@ -32,6 +32,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var didBootstrap = false
     private var didRestoreSplitViewState = false
     private var isRestoringSplitViewState = false
+    private var isApplyingRememberedSidebarWidth = false
     private var lastVisibleSplitViewWidths: [Int]?
     private var lastSidebarWidth: Int?
     private var activeSplitDividerIndex: Int?
@@ -480,9 +481,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {
+        if isRestoringSplitViewState || isApplyingRememberedSidebarWidth {
+            splitResizeStateSaveQueue.add(id: "split-widths") { [weak self] in
+                self?.saveSplitViewStateAfterResize()
+            }
+            return
+        }
+
         if activeSplitDividerIndex == 0 {
             cacheCurrentSidebarWidth()
-        } else {
+        } else if activeSplitDividerIndex == 1 {
             restoreRememberedSidebarWidthIfNeeded()
         }
         splitResizeStateSaveQueue.add(id: "split-widths") { [weak self] in
@@ -612,6 +620,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
         let targetWidth = splitLayoutController.clampedSidebarWidth(CGFloat(lastSidebarWidth))
         guard abs(currentSidebarWidth - targetWidth) >= 1 else { return }
+        isApplyingRememberedSidebarWidth = true
+        defer { isApplyingRememberedSidebarWidth = false }
         splitView.setPosition(targetWidth, ofDividerAt: 0)
     }
 

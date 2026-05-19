@@ -1,4 +1,5 @@
 import AppKit
+import Nuke
 
 @MainActor
 final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
@@ -8,7 +9,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     private let scrollView = NSScrollView()
     private let collectionView = GalleryGridCollectionView()
-    private let gridLayout = NSCollectionViewFlowLayout()
+    private let gridLayout = WorkspaceThumbnailWaterfallLayout()
     private var items: [GalleryItem] = []
     private var selectedItemID: GalleryItem.ID?
     private var showsFooter = false
@@ -21,6 +22,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var isApplyingSelection = false
     private var lastAppliedItemIDs: [GalleryItem.ID] = []
     private var lastShowsFooter = false
+    private var lastLayoutWidth: CGFloat = 0
+    private var aspectRatiosByItemID: [GalleryItem.ID: CGFloat] = [:]
     private var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
@@ -63,6 +66,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let previousFooterState = (self.isRefreshing, self.canLoadMore)
         let nextItemIDs = items.map(\.id)
         let contentChanged = nextItemIDs != lastAppliedItemIDs || showsFooter != lastShowsFooter
+        let nextItemIDSet = Set(nextItemIDs)
 
         self.items = items
         self.selectedItemID = selectedItemID
@@ -73,6 +77,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.canLoadMore = canLoadMore
         self.isFavorite = isFavorite
         self.isCached = isCached
+        aspectRatiosByItemID = aspectRatiosByItemID.filter { nextItemIDSet.contains($0.key) }
 
         let itemSizeChanged = updateItemSize()
         if contentChanged {
@@ -121,7 +126,10 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             item: galleryItem,
             isSelected: galleryItem.id == selectedItemID,
             isFavorite: isFavorite(galleryItem),
-            isCached: isCached(galleryItem)
+            isCached: isCached(galleryItem),
+            onImageAspectRatioResolved: { [weak self] ratio in
+                self?.updateAspectRatio(ratio, for: galleryItem.id)
+            }
         )
         return item
     }
@@ -168,13 +176,19 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
+                self?.collectionView.clearVisibleHoverState()
                 self?.updateItemSize()
             }
         }
 
-        gridLayout.minimumInteritemSpacing = 8
-        gridLayout.minimumLineSpacing = 10
+        gridLayout.columnSpacing = 8
+        gridLayout.rowSpacing = 10
         gridLayout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        gridLayout.aspectRatioProvider = { [weak self] indexPath in
+            guard let self else { return 16.0 / 9.0 }
+            guard indexPath.item < self.items.count else { return 3.0 }
+            return self.aspectRatiosByItemID[self.items[indexPath.item].id] ?? 0.74
+        }
 
         collectionView.collectionViewLayout = gridLayout
         collectionView.backgroundColors = [.clear]
@@ -206,20 +220,23 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     @discardableResult
     private func updateItemSize() -> Bool {
         let visibleWidth = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : bounds.width
-        let insetWidth = gridLayout.sectionInset.left + gridLayout.sectionInset.right
-        let availableWidth = max(visibleWidth - insetWidth, preferredCardMinimumWidth)
-        let estimatedColumns = max(
-            Int((availableWidth + gridLayout.minimumInteritemSpacing) / (preferredCardMinimumWidth + gridLayout.minimumInteritemSpacing)),
-            1
-        )
-        let columns = max(estimatedColumns, preferredColumnCount ?? 1)
-        let totalSpacing = CGFloat(columns - 1) * gridLayout.minimumInteritemSpacing
-        let width = floor((availableWidth - totalSpacing) / CGFloat(columns))
-        let nextSize = NSSize(width: width, height: max(width / 0.74 + 76, 230))
-        guard gridLayout.itemSize != nextSize else { return false }
-        gridLayout.itemSize = nextSize
+        let widthChanged = abs(visibleWidth - lastLayoutWidth) > 0.5
+        let columnPreferenceChanged = gridLayout.preferredColumnCount != preferredColumnCount
+        let cardWidthPreferenceChanged = abs(gridLayout.preferredCardMinimumWidth - preferredCardMinimumWidth) > 0.001
+        guard widthChanged || columnPreferenceChanged || cardWidthPreferenceChanged else { return false }
+        lastLayoutWidth = visibleWidth
+        gridLayout.preferredColumnCount = preferredColumnCount
+        gridLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
         gridLayout.invalidateLayout()
         return true
+    }
+
+    private func updateAspectRatio(_ ratio: CGFloat, for itemID: GalleryItem.ID) {
+        guard ratio.isFinite, ratio > 0 else { return }
+        let clampedRatio = max(gridLayout.minAspectRatio, min(gridLayout.maxAspectRatio, ratio))
+        guard abs((aspectRatiosByItemID[itemID] ?? 0.74) - clampedRatio) > 0.01 else { return }
+        aspectRatiosByItemID[itemID] = clampedRatio
+        collectionView.collectionViewLayout?.invalidateLayout()
     }
 
     private struct BadgeSignature: Equatable {
@@ -304,11 +321,44 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 final class GalleryGridCollectionView: NSCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
     var contextMenuProvider: ((IndexPath?) -> NSMenu?)?
+    private var hoverTrackingArea: NSTrackingArea?
+    private var lastHoveredIndexPath: IndexPath?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func accessibilityLabel() -> String? {
         "4KHD Gallery Grid"
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let tracking = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(tracking)
+        hoverTrackingArea = tracking
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let hoveredIndexPath = indexPathForItem(at: point)
+        if hoveredIndexPath != lastHoveredIndexPath {
+            lastHoveredIndexPath = hoveredIndexPath
+            syncVisibleHoverState(windowLocation: event.locationInWindow)
+        }
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        lastHoveredIndexPath = nil
+        clearVisibleHoverState()
+        super.mouseExited(with: event)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -335,7 +385,21 @@ final class GalleryGridCollectionView: NSCollectionView {
 
     override func viewDidEndLiveResize() {
         workspaceDidEndLiveResize()
+        syncVisibleHoverState(windowLocation: window?.mouseLocationOutsideOfEventStream)
         super.viewDidEndLiveResize()
+    }
+
+    func clearVisibleHoverState() {
+        lastHoveredIndexPath = nil
+        for item in visibleItems() {
+            (item as? GalleryGridItemView)?.clearHoverState()
+        }
+    }
+
+    private func syncVisibleHoverState(windowLocation: NSPoint?) {
+        for item in visibleItems() {
+            (item as? GalleryGridItemView)?.syncHoverState(windowLocation: windowLocation)
+        }
     }
 }
 
@@ -345,99 +409,122 @@ extension GalleryGridCollectionView: WorkspaceLiveResizeScrollerHiding {}
 final class GalleryGridItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("GalleryGridItemView")
 
-    private let coverView = GalleryRemoteImageView()
-    private let kindLabel = GalleryPillLabel()
-    private let imageCountLabel = NSTextField(labelWithString: "")
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let pageCountLabel = NSTextField(labelWithString: "")
-    private let favoriteIcon = NSImageView()
-    private let cachedIcon = NSImageView()
-    private let backgroundView = NSView()
+    private let cardView = WorkspaceThumbnailGridCardView()
+    private var imageTask: ImageTask?
+    private var representedID: GalleryItem.ID?
 
     override func loadView() {
         view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
         setupView()
     }
 
-    func configure(item: GalleryItem, isSelected: Bool, isFavorite: Bool, isCached: Bool) {
-        coverView.setImage(url: item.coverURL, maxPixelSize: 360)
-        kindLabel.configure(kind: item.kind)
-        imageCountLabel.stringValue = "\(item.imageCount)"
-        titleLabel.stringValue = item.title
-        pageCountLabel.stringValue = "\(item.pageCount) 页"
-        favoriteIcon.isHidden = !isFavorite
-        cachedIcon.isHidden = !isCached
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        imageTask?.cancel()
+        imageTask = nil
+        representedID = nil
+        cardView.resetForReuse()
+    }
+
+    func configure(
+        item: GalleryItem,
+        isSelected: Bool,
+        isFavorite: Bool,
+        isCached: Bool,
+        onImageAspectRatioResolved: @escaping (CGFloat) -> Void
+    ) {
+        representedID = item.id
+        cardView.setText(
+            title: item.title,
+            metadata: metadataText(for: item, isFavorite: isFavorite, isCached: isCached)
+        )
         applySelectionState(isSelected)
+        loadCover(for: item, onImageAspectRatioResolved: onImageAspectRatioResolved)
     }
 
     func applySelectionState(_ isSelected: Bool) {
-        backgroundView.layer?.backgroundColor = isSelected
-            ? NSColor.controlAccentColor.withAlphaComponent(0.12).cgColor
-            : NSColor.clear.cgColor
-        backgroundView.layer?.borderColor = isSelected
-            ? NSColor.controlAccentColor.cgColor
-            : NSColor.separatorColor.withAlphaComponent(0.7).cgColor
-        backgroundView.layer?.borderWidth = isSelected ? 1.5 : 0
+        cardView.applySelectionState(isSelected)
+    }
+
+    func syncHoverState(windowLocation: NSPoint?) {
+        cardView.syncHoverState(windowLocation: windowLocation)
+    }
+
+    func clearHoverState() {
+        cardView.clearHoverState()
     }
 
     private func setupView() {
-        backgroundView.wantsLayer = true
-        backgroundView.layer?.cornerRadius = 8
-        backgroundView.layer?.masksToBounds = true
-
-        coverView.mode = .aspectFill
-        coverView.cornerRadius = 5
-
-        imageCountLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-        imageCountLabel.textColor = .secondaryLabelColor
-
-        titleLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.maximumNumberOfLines = 2
-
-        pageCountLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        pageCountLabel.textColor = .secondaryLabelColor
-
-        favoriteIcon.image = NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: nil)
-        favoriteIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
-        favoriteIcon.contentTintColor = .secondaryLabelColor
-        cachedIcon.image = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: nil)
-        cachedIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
-        cachedIcon.contentTintColor = .secondaryLabelColor
-
-        let topMeta = NSStackView(views: [kindLabel, imageCountLabel])
-        topMeta.orientation = .horizontal
-        topMeta.alignment = .centerY
-        topMeta.spacing = 5
-
-        let spacer = NSView()
-        let bottomMeta = NSStackView(views: [pageCountLabel, spacer, favoriteIcon, cachedIcon])
-        bottomMeta.orientation = .horizontal
-        bottomMeta.alignment = .centerY
-        bottomMeta.spacing = 8
-
-        let stack = NSStackView(views: [coverView, topMeta, titleLabel, bottomMeta])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-
-        view.addSubview(backgroundView)
-        backgroundView.addSubview(stack)
-        backgroundView.translatesAutoresizingMaskIntoConstraints = false
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        coverView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(cardView)
+        cardView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            backgroundView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
-            backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor, constant: -8),
-            stack.topAnchor.constraint(equalTo: backgroundView.topAnchor, constant: 8),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: backgroundView.bottomAnchor, constant: -8),
-            coverView.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            coverView.heightAnchor.constraint(equalTo: coverView.widthAnchor, multiplier: 1 / 0.74)
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cardView.topAnchor.constraint(equalTo: view.topAnchor),
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+
+    private func loadCover(
+        for item: GalleryItem,
+        onImageAspectRatioResolved: @escaping (CGFloat) -> Void
+    ) {
+        imageTask?.cancel()
+        cardView.setImage(nil)
+        cardView.setMissingVisible(false)
+        guard let coverURL = item.coverURL else {
+            cardView.setPlaceholder("暂无缩略图", isVisible: true)
+            return
+        }
+
+        cardView.setPlaceholder("加载中...", isVisible: true)
+        let request = RemoteImagePipeline.shared.request(
+            for: coverURL,
+            priority: .low,
+            maxPixelSize: 512,
+            configureURLRequest: GalleryRequestFactory.configureImageRequest
+        )
+        imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
+            Task { @MainActor [weak self] in
+                guard let self, self.representedID == item.id else { return }
+                if let image {
+                    self.cardView.setImage(image)
+                    if image.size.width > 0, image.size.height > 0 {
+                        onImageAspectRatioResolved(image.size.width / image.size.height)
+                    }
+                } else {
+                    self.cardView.setPlaceholder("缩略图不可用", isVisible: true)
+                }
+            }
+        }
+    }
+
+    private func metadataText(for item: GalleryItem, isFavorite: Bool, isCached: Bool) -> String {
+        var parts = [
+            kindTitle(for: item.kind),
+            "\(item.imageCount) 张",
+            "\(item.pageCount) 页"
+        ]
+        if isFavorite {
+            parts.append("已收藏")
+        }
+        if isCached {
+            parts.append("已缓存")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func kindTitle(for kind: ContentKind) -> String {
+        switch kind {
+        case .gallery:
+            "图集"
+        case .recommended:
+            "推荐"
+        case .advertisement:
+            "广告"
+        }
     }
 }
 

@@ -138,7 +138,6 @@ final class LocalImageGridContainerView: NSView {
     private func setupView() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
-        LocalImageGridItemView.resetHoverTracking()
 
         scrollView.documentView = collectionView
         scrollView.contentView.postsBoundsChangedNotifications = true
@@ -147,6 +146,7 @@ final class LocalImageGridContainerView: NSView {
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
+            self?.collectionView.clearVisibleHoverState()
             self?.schedulePrefetch()
         }
         addSubview(scrollView)

@@ -10,11 +10,28 @@ final class LocalImageGridCollectionView: NSCollectionView {
     private var pressedCardIndexPath: IndexPath?
     private var pressedCardTimestamp: TimeInterval = 0
     private var pendingPressReleaseWorkItem: DispatchWorkItem?
+    private var hoverTrackingArea: NSTrackingArea?
+    private var lastHoveredIndexPath: IndexPath?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func accessibilityLabel() -> String? {
         "Local Image Grid"
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let tracking = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(tracking)
+        hoverTrackingArea = tracking
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -41,6 +58,22 @@ final class LocalImageGridCollectionView: NSCollectionView {
             self?.cardPressStateHandler?(indexPath, false)
             self?.pressedCardIndexPath = nil
         }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let hoveredIndexPath = indexPathForItem(at: point)
+        if hoveredIndexPath != lastHoveredIndexPath {
+            lastHoveredIndexPath = hoveredIndexPath
+            syncVisibleHoverState(windowLocation: event.locationInWindow)
+        }
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        lastHoveredIndexPath = nil
+        clearVisibleHoverState()
+        super.mouseExited(with: event)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -71,7 +104,21 @@ final class LocalImageGridCollectionView: NSCollectionView {
 
     override func viewDidEndLiveResize() {
         workspaceDidEndLiveResize()
+        syncVisibleHoverState(windowLocation: window?.mouseLocationOutsideOfEventStream)
         super.viewDidEndLiveResize()
+    }
+
+    func clearVisibleHoverState() {
+        lastHoveredIndexPath = nil
+        for item in visibleItems() {
+            (item as? LocalImageGridItemView)?.clearHoverState()
+        }
+    }
+
+    private func syncVisibleHoverState(windowLocation: NSPoint?) {
+        for item in visibleItems() {
+            (item as? LocalImageGridItemView)?.syncHoverState(windowLocation: windowLocation)
+        }
     }
 }
 
