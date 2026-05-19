@@ -38,6 +38,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var activeSplitDividerIndex: Int?
     private var splitViewWidthsBeforeSidebarDrag: [Int]?
     private var isNormalizingDraggedSidebarCollapse = false
+    private var isApplyingDetailPaneVisibility = false
     private var isApplyingImmersiveLayout = false
     private var sidebarCollapsedBeforeImmersive = false
     private var contentCollapsedBeforeImmersive = false
@@ -417,23 +418,30 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func applyDetailPaneVisibility(_ isPresented: Bool) {
+        if didRestoreSplitViewState, !isPresented {
+            rememberPresentedDetailSplitViewState()
+        }
         splitResizeStateSaveQueue.performCallsImmediately()
         cacheCurrentSidebarWidth()
-        if didRestoreSplitViewState {
-            if !isPresented {
-                if !saveVisibleSplitViewStateIfNeeded() {
-                    saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
-                }
-            } else {
-                saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
-            }
-        }
+
         guard !immersive.isImmersive else { return }
+
+        isApplyingDetailPaneVisibility = true
+        defer { isApplyingDetailPaneVisibility = false }
         detailItem.isCollapsed = !isPresented
+        splitView.adjustSubviews()
         if isPresented {
             splitLayoutController.restoreDetailWidthForPresentedDetail(preferredWidths: lastPresentedSplitViewWidths)
         }
-        splitView.adjustSubviews()
+
+        guard didRestoreSplitViewState else { return }
+        if isPresented {
+            if !saveVisibleSplitViewStateIfNeeded() {
+                saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
+            }
+        } else {
+            saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
+        }
     }
 
     private func applyImmersiveState(_ immersive: ImmersiveController) {
@@ -501,6 +509,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard !isApplyingDetailPaneVisibility else { return }
+
         if isRestoringSplitViewState || isApplyingRememberedSidebarWidth {
             splitResizeStateSaveQueue.add(id: "split-widths") { [weak self] in
                 self?.saveSplitViewStateAfterResize()
@@ -554,7 +564,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func rememberPresentedDetailSplitViewState() {
-        splitResizeStateSaveQueue.performCallsImmediately()
+        splitView.layoutSubtreeIfNeeded()
         cacheCurrentSidebarWidth()
         _ = saveVisibleSplitViewStateIfNeeded()
     }

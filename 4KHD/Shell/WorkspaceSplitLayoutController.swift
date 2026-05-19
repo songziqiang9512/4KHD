@@ -46,7 +46,7 @@ final class WorkspaceSplitLayoutController {
 
     func applyDefaultSplitViewWidths(isSidebarHidden: Bool = false) {
         let dividerThickness = splitView.dividerThickness
-        let windowWidth = splitView.bounds.width > 0 ? splitView.bounds.width : hostView.bounds.width
+        let windowWidth = resolvedWindowWidth()
         let sidebarWidth = isSidebarHidden ? 0 : WorkspaceSplitLayoutMetrics.defaultSidebarWidth
         let dividerTotal = isSidebarHidden ? dividerThickness : dividerThickness * 2
         let maxContentWidth = max(
@@ -156,7 +156,7 @@ final class WorkspaceSplitLayoutController {
         let detailWidth = CGFloat(widths[2])
         let dividerThickness = splitView.dividerThickness
         let dividerTotal = isSidebarHidden ? dividerThickness : dividerThickness * 2
-        let windowWidth = splitView.bounds.width > 0 ? splitView.bounds.width : hostView.bounds.width
+        let windowWidth = resolvedWindowWidth()
 
         guard sidebarWidth.isFinite,
               contentWidth.isFinite,
@@ -176,7 +176,7 @@ final class WorkspaceSplitLayoutController {
             currentWidth: currentSidebarWidth,
             storedWidth: storedSidebarWidth
         )
-        let windowWidth = splitView.bounds.width > 0 ? splitView.bounds.width : hostView.bounds.width
+        let windowWidth = resolvedWindowWidth()
         let dividerTotal = sidebarItem.isCollapsed ? dividerThickness : dividerThickness * 2
         let maximumDetailWidth = max(
             detailItem.minimumThickness,
@@ -202,6 +202,21 @@ final class WorkspaceSplitLayoutController {
             return storedWidth
         }
         return WorkspaceSplitLayoutMetrics.defaultSidebarWidth
+    }
+
+    private func resolvedWindowWidth() -> CGFloat {
+        let splitWidth = splitView.bounds.width
+        if splitWidth.isFinite, splitWidth > 0 {
+            return splitWidth
+        }
+        let hostWidth = hostView.bounds.width
+        if hostWidth.isFinite, hostWidth > 0 {
+            return hostWidth
+        }
+        return WorkspaceSplitLayoutMetrics.defaultSidebarWidth
+            + WorkspaceSplitLayoutMetrics.defaultContentWidth
+            + detailItem.minimumThickness
+            + splitView.dividerThickness * 2
     }
 
     private func width(_ value: CGFloat, minimum: CGFloat) -> CGFloat? {
