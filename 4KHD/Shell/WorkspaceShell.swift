@@ -518,7 +518,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return
         }
 
-        if activeSplitDividerIndex == 0, sidebarItem.isCollapsed, !isNormalizingDraggedSidebarCollapse {
+        if activeSplitDividerIndex == 0, splitLayoutController.isSidebarVisuallyHidden, !isNormalizingDraggedSidebarCollapse {
             normalizeDraggedSidebarCollapse()
             splitResizeStateSaveQueue.add(id: "split-widths") { [weak self] in
                 self?.saveSplitViewStateAfterResize()
@@ -594,7 +594,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             isFullScreen: view.window?.styleMask.contains(.fullScreen) ?? false,
             splitViewWidths: nextWidths,
             presentedSplitViewWidths: lastPresentedSplitViewWidths ?? nextWidths,
-            isSidebarHidden: isApplyingImmersiveLayout ? sidebarCollapsedBeforeImmersive : sidebarItem.isCollapsed,
+            isSidebarHidden: isApplyingImmersiveLayout ? sidebarCollapsedBeforeImmersive : splitLayoutController.isSidebarVisuallyHidden,
             isDetailPanePresented: appContext.detailPaneController.isPresented,
             expandedSidebarNodeIDs: expandedSidebarNodeIDs
         )
