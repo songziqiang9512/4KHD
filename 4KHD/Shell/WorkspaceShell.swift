@@ -33,11 +33,14 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var didRestoreSplitViewState = false
     private var isRestoringSplitViewState = false
     private var isApplyingRememberedSidebarWidth = false
-    private var lastVisibleSplitViewWidths: [Int]?
+    private var lastPresentedSplitViewWidths: [Int]?
     private var lastSidebarWidth: Int?
     private var activeSplitDividerIndex: Int?
     private var splitViewWidthsBeforeSidebarDrag: [Int]?
     private var isNormalizingDraggedSidebarCollapse = false
+    private var isApplyingImmersiveLayout = false
+    private var sidebarCollapsedBeforeImmersive = false
+    private var contentCollapsedBeforeImmersive = false
     private var expandedSidebarNodeIDs = WorkspaceWindowState.defaultExpandedSidebarNodeIDs
 
     var isSidebarCollapsed: Bool {
@@ -381,13 +384,13 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         didBootstrap = true
         if let state = windowStateStore.load() {
             expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
-            cacheVisibleSplitViewWidths(state.splitViewWidths)
+            cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
             cacheSidebarWidth(state.splitViewWidths.first)
             sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
             appContext.detailPaneController.setPresented(state.isDetailPanePresented)
         } else {
             let legacyWidths = windowStateStore.legacySplitViewWidths()
-            cacheVisibleSplitViewWidths(legacyWidths)
+            cachePresentedSplitViewWidths(legacyWidths)
             cacheSidebarWidth(legacyWidths?.first)
             sidebarController.restoreExpandedNodeIDs(expandedSidebarNodeIDs)
             appContext.detailPaneController.setPresented(windowStateStore.legacyDetailPanePresented())
@@ -428,7 +431,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         guard !immersive.isImmersive else { return }
         detailItem.isCollapsed = !isPresented
         if isPresented {
-            splitLayoutController.restoreDetailWidthForPresentedDetail(preferredWidths: lastVisibleSplitViewWidths)
+            splitLayoutController.restoreDetailWidthForPresentedDetail(preferredWidths: lastPresentedSplitViewWidths)
         }
         splitView.adjustSubviews()
     }
@@ -437,12 +440,19 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         view.window?.toolbar?.isVisible = !immersive.isImmersive || immersive.isToolbarVisible
         refreshToolbarState()
         if immersive.isImmersive {
+            if !isApplyingImmersiveLayout {
+                sidebarCollapsedBeforeImmersive = sidebarItem.isCollapsed
+                contentCollapsedBeforeImmersive = contentItem.isCollapsed
+                isApplyingImmersiveLayout = true
+            }
             setSidebarCollapsed(!immersive.peekRevealing, animated: true)
             contentItem.animator().isCollapsed = !immersive.peekRevealing
             detailItem.animator().isCollapsed = false
         } else {
-            setSidebarCollapsed(false, animated: true)
-            contentItem.animator().isCollapsed = false
+            guard isApplyingImmersiveLayout else { return }
+            isApplyingImmersiveLayout = false
+            setSidebarCollapsed(sidebarCollapsedBeforeImmersive, animated: true)
+            contentItem.animator().isCollapsed = contentCollapsedBeforeImmersive
             applyDetailPaneVisibility(appContext.detailPaneController.isPresented)
         }
     }
@@ -458,11 +468,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             self.isRestoringSplitViewState = true
             defer { self.isRestoringSplitViewState = false }
             if let state = self.windowStateStore.load(), state.splitViewWidths.count == 3 {
-                self.cacheVisibleSplitViewWidths(state.splitViewWidths)
+                self.cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
                 self.cacheSidebarWidth(state.splitViewWidths.first)
                 self.restoreSplitViewState(state)
             } else if let legacyWidths = self.windowStateStore.legacySplitViewWidths(), legacyWidths.count == 3 {
-                self.cacheVisibleSplitViewWidths(legacyWidths)
+                self.cachePresentedSplitViewWidths(legacyWidths)
                 self.cacheSidebarWidth(legacyWidths.first)
                 self.splitLayoutController.restoreSplitViewWidths(
                     legacyWidths,
@@ -477,7 +487,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private func restoreSplitViewState(_ state: WorkspaceWindowState) {
         restoreFullScreenState(state.isFullScreen)
         expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
-        cacheVisibleSplitViewWidths(state.splitViewWidths)
+        cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
         cacheSidebarWidth(state.splitViewWidths.first)
         sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
         splitLayoutController.restoreSplitViewWidths(state.splitViewWidths, isSidebarHidden: state.isSidebarHidden)
@@ -529,7 +539,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
               widths[2] >= Int(detailItem.minimumThickness) else { return false }
         let normalizedWidths = widthsByApplyingRememberedSidebarWidth(to: widths)
         guard normalizedWidths.first ?? 0 >= Int(sidebarItem.minimumThickness) else { return false }
-        cacheVisibleSplitViewWidths(normalizedWidths)
+        cachePresentedSplitViewWidths(normalizedWidths)
         cacheSidebarWidth(normalizedWidths.first)
         saveWindowStateToUserDefaults(widths: normalizedWidths, includeHiddenDetailWidth: true)
         return true
@@ -553,8 +563,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         widths: [Int]? = nil,
         includeHiddenDetailWidth: Bool
     ) {
-        let fallback = widthsByApplyingRememberedSidebarWidth(to: lastVisibleSplitViewWidths
-            ?? windowStateStore.load()?.splitViewWidths
+        let storedState = windowStateStore.load()
+        let fallback = widthsByApplyingRememberedSidebarWidth(to: lastPresentedSplitViewWidths
+            ?? storedState?.presentedSplitViewWidths
+            ?? storedState?.splitViewWidths
             ?? windowStateStore.legacySplitViewWidths()
             ?? [])
         let nextWidths: [Int]
@@ -571,20 +583,21 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         let state = WorkspaceWindowState(
             isFullScreen: view.window?.styleMask.contains(.fullScreen) ?? false,
             splitViewWidths: nextWidths,
-            isSidebarHidden: sidebarItem.isCollapsed,
+            presentedSplitViewWidths: lastPresentedSplitViewWidths ?? nextWidths,
+            isSidebarHidden: isApplyingImmersiveLayout ? sidebarCollapsedBeforeImmersive : sidebarItem.isCollapsed,
             isDetailPanePresented: appContext.detailPaneController.isPresented,
             expandedSidebarNodeIDs: expandedSidebarNodeIDs
         )
         windowStateStore.save(state)
     }
 
-    private func cacheVisibleSplitViewWidths(_ widths: [Int]?) {
+    private func cachePresentedSplitViewWidths(_ widths: [Int]?) {
         guard let widths,
               widths.count == 3,
               widths[0] >= Int(sidebarItem.minimumThickness),
               widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth),
               widths[2] >= Int(detailItem.minimumThickness) else { return }
-        lastVisibleSplitViewWidths = widths
+        lastPresentedSplitViewWidths = widths
     }
 
     private func cacheCurrentSidebarWidth() {
@@ -661,8 +674,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         guard !isNormalizingDraggedSidebarCollapse else { return }
         isNormalizingDraggedSidebarCollapse = true
         defer { isNormalizingDraggedSidebarCollapse = false }
-        let preferredWidths = splitViewWidthsBeforeSidebarDrag ?? lastVisibleSplitViewWidths
-        cacheVisibleSplitViewWidths(preferredWidths)
+        let preferredWidths = splitViewWidthsBeforeSidebarDrag ?? lastPresentedSplitViewWidths
+        cachePresentedSplitViewWidths(preferredWidths)
         cacheSidebarWidth(preferredWidths?.first)
         splitLayoutController.restoreContentWidthForHiddenSidebar(preferredWidths: preferredWidths)
     }

@@ -6,6 +6,7 @@ struct WorkspaceWindowState: Codable {
 
     var isFullScreen: Bool
     var splitViewWidths: [Int]
+    var presentedSplitViewWidths: [Int]?
     var isSidebarHidden: Bool
     var isDetailPanePresented: Bool
     var expandedSidebarNodeIDs: [String]
@@ -13,12 +14,14 @@ struct WorkspaceWindowState: Codable {
     init(
         isFullScreen: Bool,
         splitViewWidths: [Int],
+        presentedSplitViewWidths: [Int]? = nil,
         isSidebarHidden: Bool,
         isDetailPanePresented: Bool,
         expandedSidebarNodeIDs: [String]
     ) {
         self.isFullScreen = isFullScreen
         self.splitViewWidths = splitViewWidths
+        self.presentedSplitViewWidths = presentedSplitViewWidths
         self.isSidebarHidden = isSidebarHidden
         self.isDetailPanePresented = isDetailPanePresented
         self.expandedSidebarNodeIDs = expandedSidebarNodeIDs
@@ -28,6 +31,7 @@ struct WorkspaceWindowState: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isFullScreen = try container.decodeIfPresent(Bool.self, forKey: .isFullScreen) ?? false
         splitViewWidths = try container.decode([Int].self, forKey: .splitViewWidths)
+        presentedSplitViewWidths = try container.decodeIfPresent([Int].self, forKey: .presentedSplitViewWidths)
         isSidebarHidden = try container.decode(Bool.self, forKey: .isSidebarHidden)
         isDetailPanePresented = try container.decode(Bool.self, forKey: .isDetailPanePresented)
         expandedSidebarNodeIDs = try container.decodeIfPresent(

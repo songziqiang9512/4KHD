@@ -66,7 +66,13 @@ final class WorkspaceSplitLayoutController {
     }
 
     func restoreDetailWidthForPresentedDetail(preferredWidths: [Int]? = nil) {
-        for candidate in [preferredWidths, stateStore.load()?.splitViewWidths, stateStore.legacySplitViewWidths()] {
+        let storedState = stateStore.load()
+        for candidate in [
+            preferredWidths,
+            storedState?.presentedSplitViewWidths,
+            storedState?.splitViewWidths,
+            stateStore.legacySplitViewWidths()
+        ] {
             guard let widths = candidate,
                   widths.count == 3,
                   widths[2] >= Int(detailItem.minimumThickness) else { continue }
@@ -77,7 +83,13 @@ final class WorkspaceSplitLayoutController {
     }
 
     func restoreContentWidthForHiddenSidebar(preferredWidths: [Int]? = nil) {
-        for candidate in [preferredWidths, stateStore.load()?.splitViewWidths, stateStore.legacySplitViewWidths()] {
+        let storedState = stateStore.load()
+        for candidate in [
+            preferredWidths,
+            storedState?.presentedSplitViewWidths,
+            storedState?.splitViewWidths,
+            stateStore.legacySplitViewWidths()
+        ] {
             guard let widths = candidate,
                   widths.count == 3,
                   widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth) else { continue }

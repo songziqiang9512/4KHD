@@ -295,9 +295,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             outlineView.deselectAll(nil)
             return
         }
-        revealPath(path)
         let row = outlineView.row(forItem: selectedNode)
-        guard row >= 0 else { return }
+        guard row >= 0 else {
+            outlineView.deselectAll(nil)
+            return
+        }
         outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         outlineView.scrollRowToVisible(row)
     }
@@ -312,27 +314,6 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
                 outlineView.collapseItem(node)
             }
         }
-    }
-
-    private func revealPath(_ path: [WorkspaceSidebarNode]) {
-        let parentNodes = path.dropLast()
-        guard !parentNodes.isEmpty else { return }
-
-        let previousExpandedNodeIDs = expandedNodeIDs
-        isApplyingExpandedNodeIDs = true
-        for node in parentNodes {
-            outlineView.expandItem(node)
-            expandedNodeIDs.insert(node.stateIdentifier)
-        }
-        isApplyingExpandedNodeIDs = false
-
-        guard expandedNodeIDs != previousExpandedNodeIDs else { return }
-        delegate?.sidebarViewController(
-            self,
-            didChangeExpandedNodeIDs: dataSource.expandableNodes()
-                .filter { expandedNodeIDs.contains($0.stateIdentifier) }
-                .map(\.stateIdentifier)
-        )
     }
 
     private func saveExpandedNodeIDsFromOutlineView() {
