@@ -12,7 +12,7 @@ final class GalleryFeedStore {
             guard section != oldValue else { return }
             clearSearchState()
             selectFirstItemIfNeeded(force: true)
-            refreshFromNetwork()
+            refreshSectionIfNeeded()
         }
     }
     var selectedItemID: GalleryItem.ID?
@@ -29,6 +29,7 @@ final class GalleryFeedStore {
     @ObservationIgnored private var listRefreshTasks: [GallerySection: Task<Void, Never>] = [:]
     @ObservationIgnored private var listNextPageURLs: [GallerySection: URL] = [:]
     @ObservationIgnored private var pendingListLoadMoreSections: Set<GallerySection> = []
+    @ObservationIgnored private var autoRefreshAttemptedSections: Set<GallerySection> = []
 
     /// 由 `FourKHDGalleryStore` 注入；feed 负责把当前选中 item 快照传出去，避免协调者再回读派生状态。
     @ObservationIgnored var onSelectionChanged: ((GalleryItem?) -> Void)?
@@ -108,6 +109,7 @@ final class GalleryFeedStore {
             return
         }
         guard section.isNetworkBacked else { return }
+        autoRefreshAttemptedSections.insert(section)
         let currentSection = section
         listRefreshTasks[currentSection]?.cancel()
         isRefreshingList = true
@@ -281,6 +283,12 @@ final class GalleryFeedStore {
             pendingSearchLoadMore = false
             loadMoreSearchIfNeeded()
         }
+    }
+
+    private func refreshSectionIfNeeded() {
+        guard section.isNetworkBacked else { return }
+        guard autoRefreshAttemptedSections.insert(section).inserted else { return }
+        refreshFromNetwork()
     }
 
     private func clearSearchState() {
