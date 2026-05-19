@@ -34,6 +34,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var isRestoringSplitViewState = false
     private var lastVisibleSplitViewWidths: [Int]?
     private var lastSidebarWidth: Int?
+    private var activeSplitDividerIndex: Int?
     private var expandedSidebarNodeIDs = WorkspaceWindowState.defaultExpandedSidebarNodeIDs
 
     var isSidebarCollapsed: Bool {
@@ -113,14 +114,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func configureSplitItems() {
-        sidebarItem.holdingPriority = NSLayoutConstraint.Priority(600)
+        sidebarItem.holdingPriority = NSLayoutConstraint.Priority(260)
         sidebarItem.canCollapse = true
         sidebarItem.allowsFullHeightLayout = true
         sidebarItem.minimumThickness = WorkspaceSplitLayoutMetrics.minimumSidebarWidth
-        sidebarController.view.translatesAutoresizingMaskIntoConstraints = false
-        sidebarController.view.widthAnchor
-            .constraint(greaterThanOrEqualToConstant: WorkspaceSplitLayoutMetrics.minimumSidebarWidth)
-            .isActive = true
 
         contentItem.holdingPriority = NSLayoutConstraint.Priority(255)
         contentItem.minimumThickness = WorkspaceSplitLayoutMetrics.minimumContentWidth
@@ -284,7 +281,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         immersiveObserverID = immersive.addObserver { [weak self] immersive in
             self?.applyImmersiveState(immersive)
         }
-        toolbarMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+        toolbarMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDragged]
+        ) { [weak self] event in
+            self?.trackSplitDividerDrag(event)
             self?.handleToolbarPointer(event)
             return event
         }
@@ -480,6 +480,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {
+        if activeSplitDividerIndex == 0 {
+            cacheCurrentSidebarWidth()
+        } else {
+            restoreRememberedSidebarWidthIfNeeded()
+        }
         splitResizeStateSaveQueue.add(id: "split-widths") { [weak self] in
             self?.saveSplitViewStateAfterResize()
         }
@@ -565,6 +570,49 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         var nextWidths = widths
         nextWidths[0] = lastSidebarWidth
         return nextWidths
+    }
+
+    private func trackSplitDividerDrag(_ event: NSEvent) {
+        guard event.window == view.window else { return }
+        switch event.type {
+        case .leftMouseDown:
+            activeSplitDividerIndex = splitDividerIndex(at: event)
+        case .leftMouseDragged:
+            if activeSplitDividerIndex == nil {
+                activeSplitDividerIndex = splitDividerIndex(at: event)
+            }
+        case .leftMouseUp:
+            activeSplitDividerIndex = nil
+        default:
+            break
+        }
+    }
+
+    private func splitDividerIndex(at event: NSEvent) -> Int? {
+        guard splitView.arrangedSubviews.count >= 2 else { return nil }
+        let point = splitView.convert(event.locationInWindow, from: nil)
+        let tolerance = max(splitView.dividerThickness, 8)
+        for dividerIndex in 0..<(splitView.arrangedSubviews.count - 1) {
+            let dividerX = splitView.arrangedSubviews[dividerIndex].frame.maxX
+            if abs(point.x - dividerX) <= tolerance {
+                return dividerIndex
+            }
+        }
+        return nil
+    }
+
+    private func restoreRememberedSidebarWidthIfNeeded() {
+        guard !sidebarItem.isCollapsed,
+              let lastSidebarWidth,
+              splitView.arrangedSubviews.count == 3 else { return }
+
+        let currentSidebarWidth = splitView.arrangedSubviews[0].frame.width
+        guard currentSidebarWidth.isFinite,
+              abs(currentSidebarWidth - CGFloat(lastSidebarWidth)) >= 1 else { return }
+
+        let targetWidth = splitLayoutController.clampedSidebarWidth(CGFloat(lastSidebarWidth))
+        guard abs(currentSidebarWidth - targetWidth) >= 1 else { return }
+        splitView.setPosition(targetWidth, ofDividerAt: 0)
     }
 
     private func handleToolbarPointer(_ event: NSEvent) {

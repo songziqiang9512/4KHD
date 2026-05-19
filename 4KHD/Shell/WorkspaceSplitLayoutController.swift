@@ -110,6 +110,22 @@ final class WorkspaceSplitLayoutController {
         return [sidebarWidth, contentWidth, detailWidth].map { Int(floor($0)) }
     }
 
+    func clampedSidebarWidth(_ width: CGFloat) -> CGFloat {
+        guard !sidebarItem.isCollapsed,
+              splitView.arrangedSubviews.count == 3 else { return 0 }
+
+        let dividerTotal = splitView.dividerThickness * 2
+        let detailWidth = splitView.arrangedSubviews[2].frame.width
+        let maximumWidth = max(
+            sidebarItem.minimumThickness,
+            splitView.bounds.width
+                - WorkspaceSplitLayoutMetrics.minimumContentWidth
+                - detailWidth
+                - dividerTotal
+        )
+        return min(max(width, sidebarItem.minimumThickness), maximumWidth)
+    }
+
     private func canRestoreSplitViewWidths(_ widths: [Int], isSidebarHidden: Bool) -> Bool {
         guard widths.count == 3 else { return false }
 
