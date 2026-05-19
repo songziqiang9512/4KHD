@@ -16,6 +16,7 @@ enum WorkspaceToolbarSnapshot {
         let canSaveImage: Bool
         let canResetZoom: Bool
         let canShare: Bool
+        let isFilmstripPresented: Bool
     }
 
     struct LocalSnapshot {
@@ -30,6 +31,7 @@ enum WorkspaceToolbarSnapshot {
         let canSaveImage: Bool
         let canResetZoom: Bool
         let canShare: Bool
+        let isFilmstripPresented: Bool
     }
 }
 
@@ -83,6 +85,7 @@ final class WorkspaceToolbarContext {
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
+    private let filmstripVisibility: FilmstripVisibilityController
     private let importRootFolderAction: () -> Void
 
     init(
@@ -92,6 +95,7 @@ final class WorkspaceToolbarContext {
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
+        filmstripVisibility: FilmstripVisibilityController,
         importRootFolderAction: @escaping () -> Void
     ) {
         self.galleryStore = galleryStore
@@ -100,6 +104,7 @@ final class WorkspaceToolbarContext {
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
+        self.filmstripVisibility = filmstripVisibility
         self.importRootFolderAction = importRootFolderAction
     }
 
@@ -120,7 +125,8 @@ final class WorkspaceToolbarContext {
                     } ?? false,
                     canSaveImage: selectedItem != nil && galleryStore.selectedSlot?.knownURL != nil,
                     canResetZoom: galleryStore.selectedSlot != nil,
-                    canShare: selectedItem != nil
+                    canShare: selectedItem != nil,
+                    isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
         case .localLibrary:
@@ -138,7 +144,8 @@ final class WorkspaceToolbarContext {
                     canSelectNextImage: selectedImageIndex < imageCount - 1,
                     canSaveImage: localLibraryStore.selectedImage != nil,
                     canResetZoom: localLibraryStore.selectedImage != nil,
-                    canShare: localLibraryStore.selectedImage != nil
+                    canShare: localLibraryStore.selectedImage != nil,
+                    isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
         }
@@ -244,5 +251,9 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             localDetailInteraction.resetZoom()
         }
+    }
+
+    func toggleFilmstrip() {
+        filmstripVisibility.toggle()
     }
 }

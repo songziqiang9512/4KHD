@@ -42,6 +42,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         sidebarItem.isCollapsed
     }
 
+    var isImmersiveMode: Bool {
+        immersive.isImmersive
+    }
+
     init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
         sidebarController = WorkspaceSidebarViewController(appContext: appContext)
@@ -426,6 +430,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
     private func applyImmersiveState(_ immersive: ImmersiveController) {
         view.window?.toolbar?.isVisible = !immersive.isImmersive || immersive.isToolbarVisible
+        refreshToolbarState()
         if immersive.isImmersive {
             setSidebarCollapsed(!immersive.peekRevealing, animated: true)
             contentItem.animator().isCollapsed = !immersive.peekRevealing

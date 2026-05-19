@@ -11,15 +11,13 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     private let imageView = GalleryZoomableImageView()
     private let filmstripView = GalleryFilmstripView()
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
-    private let previousButton = NSButton()
-    private let nextButton = NSButton()
     private let counterChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let counterLabel = NSTextField(labelWithString: "")
     private let statusChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let statusLabel = NSTextField(labelWithString: "")
-    private let toolChrome = DetailOverlayChromeView()
-    private let toolStack = NSStackView()
     private var filmstripHeightConstraint: NSLayoutConstraint?
+    private var imageTopSafeAreaConstraint: NSLayoutConstraint?
+    private var imageTopFullBleedConstraint: NSLayoutConstraint?
     private var isObserving = false
     private var currentItemID: GalleryItem.ID?
     private var currentSlotID: ImageSlot.ID?
@@ -99,9 +97,6 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
 
-        setupStepButton(previousButton, imageName: "chevron.left", action: #selector(previousImage))
-        setupStepButton(nextButton, imageName: "chevron.right", action: #selector(nextImage))
-
         counterLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         counterLabel.textColor = .labelColor
         counterLabel.alignment = .center
@@ -114,17 +109,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         statusChrome.addSubview(statusLabel)
 
-        toolStack.orientation = .horizontal
-        toolStack.alignment = .centerY
-        toolStack.spacing = 8
-        toolStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
-        for item in makeToolButtons() {
-            toolStack.addArrangedSubview(item)
-        }
-        toolChrome.addSubview(toolStack)
-        toolStack.translatesAutoresizingMaskIntoConstraints = false
-
-        for subview in [imageView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, toolChrome, filmstripView] {
+        for subview in [imageView, emptyLabel, counterChrome, statusChrome, filmstripView] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -132,26 +117,20 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let filmstripHeightConstraint = filmstripView.heightAnchor.constraint(equalToConstant: 112)
+        let imageTopSafeAreaConstraint = imageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        let imageTopFullBleedConstraint = imageView.topAnchor.constraint(equalTo: view.topAnchor)
         self.filmstripHeightConstraint = filmstripHeightConstraint
+        self.imageTopSafeAreaConstraint = imageTopSafeAreaConstraint
+        self.imageTopFullBleedConstraint = imageTopFullBleedConstraint
 
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            imageView.topAnchor.constraint(equalTo: view.topAnchor),
+            imageTopSafeAreaConstraint,
             imageView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-
-            previousButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
-            previousButton.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
-            previousButton.widthAnchor.constraint(equalToConstant: 36),
-            previousButton.heightAnchor.constraint(equalToConstant: 36),
-
-            nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            nextButton.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
-            nextButton.widthAnchor.constraint(equalToConstant: 36),
-            nextButton.heightAnchor.constraint(equalToConstant: 36),
 
             counterChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             counterChrome.bottomAnchor.constraint(equalTo: filmstripView.topAnchor, constant: -12),
@@ -171,50 +150,11 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             statusLabel.trailingAnchor.constraint(equalTo: statusChrome.trailingAnchor, constant: -8),
             statusLabel.centerYAnchor.constraint(equalTo: statusChrome.centerYAnchor),
 
-            toolChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            toolChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            toolStack.leadingAnchor.constraint(equalTo: toolChrome.leadingAnchor),
-            toolStack.trailingAnchor.constraint(equalTo: toolChrome.trailingAnchor),
-            toolStack.topAnchor.constraint(equalTo: toolChrome.topAnchor),
-            toolStack.bottomAnchor.constraint(equalTo: toolChrome.bottomAnchor),
-
             filmstripView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             filmstripView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filmstripView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             filmstripHeightConstraint
         ])
-    }
-
-    private func setupStepButton(_ button: NSButton, imageName: String, action: Selector) {
-        button.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)
-        button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        button.bezelStyle = .circular
-        button.isBordered = true
-        button.target = self
-        button.action = action
-    }
-
-    private func makeToolButtons() -> [NSButton] {
-        [
-            makeToolButton("bookmark", "收藏", #selector(toggleFavorite)),
-            makeToolButton("1.magnifyingglass", "实际大小", #selector(resetZoom)),
-            makeToolButton("arrow.up.left.and.arrow.down.right", "沉浸模式", #selector(toggleImmersive)),
-            makeToolButton("rectangle.bottomthird.inset.filled", "缩略图", #selector(toggleFilmstrip)),
-            makeToolButton("safari", "原网页", #selector(openOriginalPage)),
-            makeToolButton("square.and.arrow.up", "共享", #selector(shareOriginalPage)),
-            makeToolButton("square.and.arrow.down", "保存", #selector(saveImage))
-        ]
-    }
-
-    private func makeToolButton(_ systemName: String, _ title: String, _ action: Selector) -> NSButton {
-        let button = NSButton(image: NSImage(systemSymbolName: systemName, accessibilityDescription: title) ?? NSImage(), target: self, action: action)
-        button.bezelStyle = .texturedRounded
-        button.isBordered = true
-        button.toolTip = title
-        button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        return button
     }
 
     private func observeState() {
@@ -245,11 +185,8 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         guard let item = library.selectedItem, let slot = library.selectedSlot else {
             imageView.isHidden = true
             emptyLabel.isHidden = false
-            previousButton.isHidden = true
-            nextButton.isHidden = true
             counterChrome.isHidden = true
             statusChrome.isHidden = true
-            toolChrome.isHidden = true
             filmstripView.isHidden = true
             updateFilmstripLayout(showsFilmstrip: false)
             return
@@ -257,11 +194,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
         imageView.isHidden = false
         emptyLabel.isHidden = true
-        previousButton.isHidden = false
-        nextButton.isHidden = false
         counterChrome.isHidden = false
-        previousButton.isEnabled = library.selectedImageIndex > 0
-        nextButton.isEnabled = true
 
         if currentItemID != item.id {
             currentItemID = item.id
@@ -281,7 +214,6 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         counterLabel.stringValue = "\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))"
         statusLabel.stringValue = detailStatusText
         statusChrome.isHidden = statusLabel.stringValue.isEmpty
-        toolChrome.isHidden = false
         let showsFilmstrip = filmstripVisibility.isPresented
         updateFilmstripLayout(showsFilmstrip: showsFilmstrip)
         filmstripView.update(
@@ -293,12 +225,18 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             resetTokenSeen = detailInteraction.resetToken
             imageView.resetZoom()
         }
-        updateToolButtons(item: item)
     }
 
     private func updateFilmstripLayout(showsFilmstrip: Bool) {
         filmstripView.isHidden = !showsFilmstrip
         filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
+        updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
+    }
+
+    private func updateImageTopConstraint(showsFilmstrip: Bool) {
+        let usesFullBleedTop = immersive.isImmersive && !showsFilmstrip
+        imageTopSafeAreaConstraint?.isActive = !usesFullBleedTop
+        imageTopFullBleedConstraint?.isActive = usesFullBleedTop
     }
 
     private var resetTokenSeen = UUID()
@@ -314,23 +252,6 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         if !isDetailReady { return "解析中" }
         if library.prefetchPageURL != nil { return "预取下一页" }
         return ""
-    }
-
-    private func updateToolButtons(item: GalleryItem) {
-        guard toolStack.arrangedSubviews.count >= 6 else { return }
-        if let favoriteButton = toolStack.arrangedSubviews[0] as? NSButton {
-            let imageName = library.isFavorite(item) ? "bookmark.fill" : "bookmark"
-            favoriteButton.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)
-            favoriteButton.toolTip = library.isFavorite(item) ? "取消收藏" : "收藏"
-        }
-        if let immersiveButton = toolStack.arrangedSubviews[2] as? NSButton {
-            let imageName = immersive.isImmersive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
-            immersiveButton.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)
-        }
-        if let filmstripButton = toolStack.arrangedSubviews[3] as? NSButton {
-            let imageName = filmstripVisibility.isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle"
-            filmstripButton.image = NSImage(systemSymbolName: imageName, accessibilityDescription: nil)
-        }
     }
 
     private func retryCurrentPage() {
@@ -356,49 +277,6 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
                 }
             )
         )
-    }
-
-    @objc private func previousImage() {
-        library.stepImage(-1)
-    }
-
-    @objc private func nextImage() {
-        library.stepImage(1)
-    }
-
-    @objc private func toggleFavorite() {
-        guard let item = library.selectedItem else { return }
-        library.toggleFavorite(for: item)
-        reloadDetail()
-    }
-
-    @objc private func resetZoom() {
-        detailInteraction.resetZoom()
-    }
-
-    @objc private func toggleImmersive() {
-        immersive.toggle()
-        reloadDetail()
-    }
-
-    @objc private func toggleFilmstrip() {
-        filmstripVisibility.toggle()
-        reloadDetail()
-    }
-
-    @objc private func openOriginalPage() {
-        guard let item = library.selectedItem else { return }
-        NSWorkspace.shared.open(item.detailURL)
-    }
-
-    @objc private func shareOriginalPage() {
-        guard let item = library.selectedItem else { return }
-        SharingPresenter.show(items: [item.detailURL], of: toolChrome, preferredEdge: .maxY)
-    }
-
-    @objc private func saveImage() {
-        guard let item = library.selectedItem, let slot = library.selectedSlot else { return }
-        detailInteraction.save(item: item, slot: slot)
     }
 
     private var placeholderItem: GalleryItem {

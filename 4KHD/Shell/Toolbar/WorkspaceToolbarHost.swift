@@ -5,11 +5,17 @@ import Observation
 final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemValidation, NSSearchFieldDelegate {
     private enum ItemID {
         static let sidebarTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.sidebarTrackingSeparator")
-        static let detailTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.detailTrackingSeparator")
         static let search = NSToolbarItem.Identifier("WorkspaceToolbar.search")
+        static let previousImage = NSToolbarItem.Identifier("WorkspaceToolbar.previousImage")
+        static let nextImage = NSToolbarItem.Identifier("WorkspaceToolbar.nextImage")
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let localSort = NSToolbarItem.Identifier("WorkspaceToolbar.localSort")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
+        static let favorite = NSToolbarItem.Identifier("WorkspaceToolbar.favorite")
+        static let resetZoom = NSToolbarItem.Identifier("WorkspaceToolbar.resetZoom")
+        static let immersive = NSToolbarItem.Identifier("WorkspaceToolbar.immersive")
+        static let filmstrip = NSToolbarItem.Identifier("WorkspaceToolbar.filmstrip")
+        static let detailActions = NSToolbarItem.Identifier("WorkspaceToolbar.detailActions")
         static let share = NSToolbarItem.Identifier("WorkspaceToolbar.share")
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
         static let cacheLimit = NSToolbarItem.Identifier("WorkspaceToolbar.cacheLimit")
@@ -24,11 +30,17 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var layoutControl: NSSegmentedControl?
     private weak var localSortItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
+    private weak var favoriteItem: NSToolbarItem?
+    private weak var resetZoomItem: NSToolbarItem?
+    private weak var immersiveItem: NSToolbarItem?
+    private weak var filmstripItem: NSToolbarItem?
+    private weak var detailActionsItem: NSMenuToolbarItem?
     private weak var shareItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private weak var cacheLimitItem: NSToolbarItem?
     private var cacheLimitObserver: NSObjectProtocol?
     private var isObservingToolbarState = false
+    private var lastDefaultItemIdentifiers: [NSToolbarItem.Identifier] = []
     private let refreshQueue = WorkspaceCoalescingQueue(
         name: "Workspace Toolbar Refresh",
         interval: 0.05,
@@ -44,8 +56,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         self.splitController = splitController
         super.init(identifier: "WorkspaceToolbar")
         displayMode = .iconOnly
-        allowsUserCustomization = true
-        autosavesConfiguration = true
+        allowsUserCustomization = false
+        autosavesConfiguration = false
         delegate = self
         routeObserverID = appContext.routeController.addObserver { [weak self] _ in
             self?.scheduleRefresh()
@@ -82,25 +94,63 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .flexibleSpace,
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
+            ItemID.previousImage,
+            ItemID.nextImage,
             ItemID.layout,
             ItemID.localSort,
             ItemID.refresh,
+            ItemID.favorite,
+            ItemID.resetZoom,
+            ItemID.immersive,
+            ItemID.filmstrip,
+            ItemID.detailActions,
             ItemID.share,
             ItemID.detailPane,
-            ItemID.detailTrackingSeparator,
             ItemID.cacheLimit,
             ItemID.importFolder,
-            .flexibleSpace,
             ItemID.search
         ]
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        defaultItemIdentifiers()
+    }
+
+    private func defaultItemIdentifiers() -> [NSToolbarItem.Identifier] {
+        var identifiers: [NSToolbarItem.Identifier] = [
+            .toggleSidebar,
+            ItemID.layout,
+            ItemID.refresh,
+            .flexibleSpace
+        ]
+        if currentModuleID == .localLibrary {
+            identifiers.append(ItemID.localSort)
+            identifiers.append(ItemID.importFolder)
+        }
+        identifiers += [
+            ItemID.previousImage,
+            ItemID.nextImage
+        ]
+        if currentModuleID == .fourKHDGallery {
+            identifiers.append(ItemID.favorite)
+        }
+        identifiers += [
+            ItemID.resetZoom,
+            ItemID.immersive,
+            ItemID.filmstrip,
+            ItemID.detailActions,
+            ItemID.share,
+            ItemID.detailPane
+        ]
+        if currentModuleID == .fourKHDGallery {
+            identifiers.append(ItemID.cacheLimit)
+        }
+        identifiers.append(ItemID.search)
+        return identifiers
     }
 
     func toolbar(
@@ -128,15 +178,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             )
             item.visibilityPriority = .high
             return item
-        case ItemID.detailTrackingSeparator:
-            guard let splitController else { return nil }
-            let item = NSTrackingSeparatorToolbarItem(
-                identifier: itemIdentifier,
-                splitView: splitController.splitView,
-                dividerIndex: 1
-            )
-            item.visibilityPriority = .high
-            return item
         case ItemID.search:
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "搜索"
@@ -148,6 +189,26 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             item.searchField.action = #selector(searchFieldChanged(_:))
             searchItem = item
             updateSearchField()
+            return item
+        case ItemID.previousImage:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(selectPreviousImage(_:))
+            item.label = "上一张"
+            item.paletteLabel = "上一张"
+            item.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "上一张")
+            item.toolTip = "上一张"
+            item.visibilityPriority = .high
+            return item
+        case ItemID.nextImage:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(selectNextImage(_:))
+            item.label = "下一张"
+            item.paletteLabel = "下一张"
+            item.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "下一张")
+            item.toolTip = "下一张"
+            item.visibilityPriority = .high
             return item
         case ItemID.layout:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -194,6 +255,57 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             item.visibilityPriority = .high
             refreshItem = item
             updateRefreshItem()
+            return item
+        case ItemID.favorite:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(toggleFavorite(_:))
+            item.label = "收藏"
+            item.paletteLabel = "收藏"
+            item.visibilityPriority = .standard
+            favoriteItem = item
+            updateFavoriteItem()
+            return item
+        case ItemID.resetZoom:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(resetZoom(_:))
+            item.label = "适合窗口"
+            item.paletteLabel = "适合窗口"
+            item.image = NSImage(systemSymbolName: "1.magnifyingglass", accessibilityDescription: "适合窗口")
+            item.toolTip = "适合窗口"
+            item.visibilityPriority = .standard
+            resetZoomItem = item
+            updateResetZoomItem()
+            return item
+        case ItemID.filmstrip:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(toggleFilmstrip(_:))
+            item.label = "缩略图"
+            item.paletteLabel = "缩略图"
+            item.visibilityPriority = .standard
+            filmstripItem = item
+            updateFilmstripItem()
+            return item
+        case ItemID.immersive:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(toggleImmersiveMode(_:))
+            item.label = "大图模式"
+            item.paletteLabel = "大图模式"
+            item.visibilityPriority = .high
+            immersiveItem = item
+            updateImmersiveItem()
+            return item
+        case ItemID.detailActions:
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "操作"
+            item.paletteLabel = "操作"
+            item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "操作")
+            item.visibilityPriority = .standard
+            detailActionsItem = item
+            updateDetailActionsItem()
             return item
         case ItemID.share:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -249,10 +361,24 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
+        case ItemID.previousImage:
+            canSelectPreviousImage
+        case ItemID.nextImage:
+            canSelectNextImage
         case ItemID.refresh:
             canRefreshCurrentModule
         case ItemID.localSort:
             currentModuleID == .localLibrary
+        case ItemID.favorite:
+            canFavoriteCurrentModule
+        case ItemID.resetZoom:
+            canResetCurrentZoom
+        case ItemID.filmstrip:
+            canUseFilmstrip
+        case ItemID.immersive:
+            true
+        case ItemID.detailActions:
+            appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.share:
             canShareCurrentModule
         default:
@@ -295,6 +421,36 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         refresh()
     }
 
+    @objc private func selectPreviousImage(_ sender: Any?) {
+        appContext.toolbarContext.stepImage(-1, for: currentModuleID)
+        refresh()
+    }
+
+    @objc private func selectNextImage(_ sender: Any?) {
+        appContext.toolbarContext.stepImage(1, for: currentModuleID)
+        refresh()
+    }
+
+    @objc private func toggleFavorite(_ sender: Any?) {
+        appContext.toolbarContext.toggleFavorite(for: currentModuleID)
+        refresh()
+    }
+
+    @objc private func resetZoom(_ sender: Any?) {
+        appContext.toolbarContext.resetZoom(for: currentModuleID)
+        refresh()
+    }
+
+    @objc private func toggleFilmstrip(_ sender: Any?) {
+        appContext.toolbarContext.toggleFilmstrip()
+        refresh()
+    }
+
+    @objc private func toggleImmersiveMode(_ sender: Any?) {
+        splitController?.toggleImmersiveMode(sender)
+        refresh()
+    }
+
     @objc private func shareContent(_ sender: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
         guard !items.isEmpty,
@@ -318,6 +474,30 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func importFolder(_ sender: Any?) {
         appContext.importRootFolder()
+    }
+
+    @objc private func openCurrentReference(_ sender: Any?) {
+        guard let reference = appContext.toolbarContext.currentReference(for: currentModuleID) else { return }
+        NSWorkspace.shared.open(reference.url)
+    }
+
+    @objc private func showCurrentInspector(_ sender: Any?) {
+        WorkspaceInspectorPresenter.show()
+    }
+
+    @objc private func saveCurrentImage(_ sender: Any?) {
+        appContext.toolbarContext.saveCurrentImage(for: currentModuleID)
+        refresh()
+    }
+
+    @objc private func revealCurrentFileInFinder(_ sender: Any?) {
+        guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+    }
+
+    @objc private func quickLookCurrentFile(_ sender: Any?) {
+        guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
+        LocalQuickLookController.shared.open(url: fileURL)
     }
 
     @objc private func selectCacheLimit(_ sender: NSMenuItem) {
@@ -365,6 +545,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = gallerySnapshot.canSaveImage
             _ = gallerySnapshot.canResetZoom
             _ = gallerySnapshot.canShare
+            _ = gallerySnapshot.isFilmstripPresented
         case .local(let localSnapshot):
             _ = localSnapshot.searchText
             _ = localSnapshot.layout
@@ -377,14 +558,21 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = localSnapshot.canSaveImage
             _ = localSnapshot.canResetZoom
             _ = localSnapshot.canShare
+            _ = localSnapshot.isFilmstripPresented
         }
     }
 
     private func refresh() {
+        syncToolbarItemIdentifiers()
         updateSearchField()
         updateLayoutControl()
         updateLocalSortItem()
         updateRefreshItem()
+        updateFavoriteItem()
+        updateResetZoomItem()
+        updateImmersiveItem()
+        updateFilmstripItem()
+        updateDetailActionsItem()
         updateShareItem()
         configureDetailPaneItem(detailPaneItem)
         validateVisibleItems()
@@ -441,6 +629,61 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
     }
 
+    private func updateFavoriteItem() {
+        guard let favoriteItem else { return }
+        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            favoriteItem.isEnabled = false
+            favoriteItem.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: "收藏")
+            favoriteItem.toolTip = "收藏"
+            return
+        }
+        favoriteItem.isEnabled = snapshot.canFavorite
+        favoriteItem.image = NSImage(
+            systemSymbolName: snapshot.isFavorite ? "bookmark.fill" : "bookmark",
+            accessibilityDescription: snapshot.isFavorite ? "取消收藏" : "收藏"
+        )
+        favoriteItem.toolTip = snapshot.isFavorite ? "取消收藏" : "收藏"
+    }
+
+    private func updateResetZoomItem() {
+        guard let resetZoomItem else { return }
+        resetZoomItem.isEnabled = canResetCurrentZoom
+    }
+
+    private func updateFilmstripItem() {
+        guard let filmstripItem else { return }
+        let isPresented: Bool
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            isPresented = snapshot.isFilmstripPresented
+            filmstripItem.isEnabled = snapshot.canResetZoom
+        case .local(let snapshot):
+            isPresented = snapshot.isFilmstripPresented
+            filmstripItem.isEnabled = snapshot.hasSelection
+        }
+        filmstripItem.image = NSImage(
+            systemSymbolName: isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle",
+            accessibilityDescription: isPresented ? "隐藏缩略图" : "显示缩略图"
+        )
+        filmstripItem.toolTip = isPresented ? "隐藏缩略图" : "显示缩略图"
+    }
+
+    private func updateImmersiveItem() {
+        guard let immersiveItem else { return }
+        let isImmersive = splitController?.isImmersiveMode == true
+        immersiveItem.image = NSImage(
+            systemSymbolName: isImmersive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+            accessibilityDescription: isImmersive ? "退出大图模式" : "进入大图模式"
+        )
+        immersiveItem.toolTip = isImmersive ? "退出大图模式" : "进入大图模式"
+    }
+
+    private func updateDetailActionsItem() {
+        guard let detailActionsItem else { return }
+        detailActionsItem.menu = makeDetailActionsMenu()
+        detailActionsItem.isEnabled = appContext.toolbarContext.currentReference(for: currentModuleID) != nil
+    }
+
     private func updateShareItem() {
         guard let shareItem else { return }
         let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
@@ -461,6 +704,58 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return !gallerySnapshot.isRefreshing
         case .local(let localSnapshot):
             return !localSnapshot.isRefreshing && localSnapshot.hasSelection
+        }
+    }
+
+    private var canSelectPreviousImage: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canSelectPreviousImage
+        case .local(let snapshot):
+            return snapshot.canSelectPreviousImage
+        }
+    }
+
+    private var canSelectNextImage: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canSelectNextImage
+        case .local(let snapshot):
+            return snapshot.canSelectNextImage
+        }
+    }
+
+    private var canFavoriteCurrentModule: Bool {
+        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            return false
+        }
+        return snapshot.canFavorite
+    }
+
+    private var canResetCurrentZoom: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canResetZoom
+        case .local(let snapshot):
+            return snapshot.canResetZoom
+        }
+    }
+
+    private var canSaveCurrentImage: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canSaveImage
+        case .local(let snapshot):
+            return snapshot.canSaveImage
+        }
+    }
+
+    private var canUseFilmstrip: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canResetZoom
+        case .local(let snapshot):
+            return snapshot.hasSelection
         }
     }
 
@@ -486,6 +781,63 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func updateCacheLimitItem() {
         (cacheLimitItem as? NSMenuToolbarItem)?.menu = makeCacheLimitMenu()
+    }
+
+    private func syncToolbarItemIdentifiers() {
+        let identifiers = defaultItemIdentifiers()
+        guard identifiers != lastDefaultItemIdentifiers else { return }
+        lastDefaultItemIdentifiers = identifiers
+
+        while !items.isEmpty {
+            removeItem(at: 0)
+        }
+        for (index, identifier) in identifiers.enumerated() {
+            insertItem(withItemIdentifier: identifier, at: index)
+        }
+    }
+
+    private func makeDetailActionsMenu() -> NSMenu {
+        let menu = NSMenu(title: "操作")
+        switch currentModuleID {
+        case .fourKHDGallery:
+            let openItem = NSMenuItem(title: "打开原网页", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
+            openItem.target = self
+            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: nil)
+            menu.addItem(openItem)
+
+            let saveItem = NSMenuItem(title: "保存图片...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+            saveItem.target = self
+            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
+            saveItem.isEnabled = canSaveCurrentImage
+            menu.addItem(saveItem)
+
+            let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
+            infoItem.target = self
+            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+            menu.addItem(infoItem)
+        case .localLibrary:
+            let saveItem = NSMenuItem(title: "保存副本...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+            saveItem.target = self
+            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
+            saveItem.isEnabled = canSaveCurrentImage
+            menu.addItem(saveItem)
+
+            let quickLookItem = NSMenuItem(title: "快速预览", action: #selector(quickLookCurrentFile(_:)), keyEquivalent: "")
+            quickLookItem.target = self
+            quickLookItem.image = NSImage(systemSymbolName: "eye", accessibilityDescription: nil)
+            menu.addItem(quickLookItem)
+
+            let revealItem = NSMenuItem(title: "在 Finder 中显示", action: #selector(revealCurrentFileInFinder(_:)), keyEquivalent: "")
+            revealItem.target = self
+            revealItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+            menu.addItem(revealItem)
+
+            let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
+            infoItem.target = self
+            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+            menu.addItem(infoItem)
+        }
+        return menu
     }
 
     private func makeCacheLimitMenu() -> NSMenu {
