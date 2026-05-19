@@ -36,6 +36,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var lastVisibleSplitViewWidths: [Int]?
     private var lastSidebarWidth: Int?
     private var activeSplitDividerIndex: Int?
+    private var splitViewWidthsBeforeSidebarDrag: [Int]?
     private var isNormalizingDraggedSidebarCollapse = false
     private var expandedSidebarNodeIDs = WorkspaceWindowState.defaultExpandedSidebarNodeIDs
 
@@ -523,9 +524,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
               let widths = splitLayoutController.currentSplitViewWidths(),
               widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth),
               widths[2] >= Int(detailItem.minimumThickness) else { return false }
-        cacheVisibleSplitViewWidths(widths)
-        cacheSidebarWidth(widths.first)
-        saveWindowStateToUserDefaults(widths: widths, includeHiddenDetailWidth: true)
+        let normalizedWidths = widthsByApplyingRememberedSidebarWidth(to: widths)
+        guard normalizedWidths.first ?? 0 >= Int(sidebarItem.minimumThickness) else { return false }
+        cacheVisibleSplitViewWidths(normalizedWidths)
+        cacheSidebarWidth(normalizedWidths.first)
+        saveWindowStateToUserDefaults(widths: normalizedWidths, includeHiddenDetailWidth: true)
         return true
     }
 
@@ -569,7 +572,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private func cacheVisibleSplitViewWidths(_ widths: [Int]?) {
         guard let widths,
               widths.count == 3,
-              sidebarItem.isCollapsed || widths[0] >= Int(sidebarItem.minimumThickness),
+              widths[0] >= Int(sidebarItem.minimumThickness),
               widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth),
               widths[2] >= Int(detailItem.minimumThickness) else { return }
         lastVisibleSplitViewWidths = widths
@@ -587,8 +590,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
     private func widthsByApplyingRememberedSidebarWidth(to widths: [Int]) -> [Int] {
         guard let lastSidebarWidth,
-              widths.count == 3,
-              !sidebarItem.isCollapsed else { return widths }
+              widths.count == 3 else { return widths }
         var nextWidths = widths
         nextWidths[0] = lastSidebarWidth
         return nextWidths
@@ -599,12 +601,19 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         switch event.type {
         case .leftMouseDown:
             activeSplitDividerIndex = splitDividerIndex(at: event)
+            if activeSplitDividerIndex == 0 {
+                splitViewWidthsBeforeSidebarDrag = splitLayoutController.currentSplitViewWidths()
+            }
         case .leftMouseDragged:
             if activeSplitDividerIndex == nil {
                 activeSplitDividerIndex = splitDividerIndex(at: event)
+                if activeSplitDividerIndex == 0 {
+                    splitViewWidthsBeforeSidebarDrag = splitLayoutController.currentSplitViewWidths()
+                }
             }
         case .leftMouseUp:
             activeSplitDividerIndex = nil
+            splitViewWidthsBeforeSidebarDrag = nil
         default:
             break
         }
@@ -643,7 +652,10 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         guard !isNormalizingDraggedSidebarCollapse else { return }
         isNormalizingDraggedSidebarCollapse = true
         defer { isNormalizingDraggedSidebarCollapse = false }
-        splitLayoutController.restoreDetailWidthForPresentedDetail(preferredWidths: lastVisibleSplitViewWidths)
+        let preferredWidths = splitViewWidthsBeforeSidebarDrag ?? lastVisibleSplitViewWidths
+        cacheVisibleSplitViewWidths(preferredWidths)
+        cacheSidebarWidth(preferredWidths?.first)
+        splitLayoutController.restoreContentWidthForHiddenSidebar(preferredWidths: preferredWidths)
     }
 
     private func handleToolbarPointer(_ event: NSEvent) {

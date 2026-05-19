@@ -75,6 +75,17 @@ final class WorkspaceSplitLayoutController {
         applyDefaultSplitViewWidths(isSidebarHidden: sidebarItem.isCollapsed)
     }
 
+    func restoreContentWidthForHiddenSidebar(preferredWidths: [Int]? = nil) {
+        for candidate in [preferredWidths, stateStore.load()?.splitViewWidths, stateStore.legacySplitViewWidths()] {
+            guard let widths = candidate,
+                  widths.count == 3,
+                  widths[1] >= Int(WorkspaceSplitLayoutMetrics.minimumContentWidth) else { continue }
+            restoreSplitViewWidths(widths, isSidebarHidden: true)
+            return
+        }
+        applyDefaultSplitViewWidths(isSidebarHidden: true)
+    }
+
     func currentSidebarWidth() -> Int? {
         guard !sidebarItem.isCollapsed,
               splitView.arrangedSubviews.count == 3 else { return nil }
