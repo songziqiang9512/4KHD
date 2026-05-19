@@ -152,6 +152,9 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     @objc func toggleWorkspaceDetailPane(_ sender: Any?) {
+        if appContext.detailPaneController.isPresented {
+            rememberPresentedDetailSplitViewState()
+        }
         appContext.detailPaneController.toggle()
     }
 
@@ -538,6 +541,12 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             return
         }
         saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)
+    }
+
+    private func rememberPresentedDetailSplitViewState() {
+        splitResizeStateSaveQueue.performCallsImmediately()
+        cacheCurrentSidebarWidth()
+        _ = saveVisibleSplitViewStateIfNeeded()
     }
 
     private func saveWindowStateToUserDefaults(
