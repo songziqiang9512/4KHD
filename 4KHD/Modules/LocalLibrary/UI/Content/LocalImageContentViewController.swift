@@ -136,7 +136,8 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                 items: filteredEntries,
                 metadataByImageID: metadataByImageID,
                 selectedImageID: localLibrary.selectedImage?.id,
-                preferredColumnCount: detailPane.gridColumnLimit,
+                minimumColumnCount: detailPane.minimumGridColumnCount,
+                maximumColumnCount: detailPane.maximumGridColumnCount,
                 preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
             )
         case .list:

@@ -37,6 +37,7 @@ enum GalleryFavoritesBridge {
             subtitle: record.subtitle,
             detailURL: detailURL,
             coverURL: coverURL,
+            coverAspectRatio: coverURL.flatMap(GalleryCoverAspectRatio.aspectRatio),
             imageCount: record.imageCount,
             pageCount: record.pageCount,
             pageURLs: pageURLs,

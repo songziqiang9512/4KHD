@@ -14,6 +14,8 @@ enum SiteListResolver {
     private static let queryPageRegex = regex(#"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>\s*([0-9,]+)\s*</a>"#)
     private static let detailURLRegex = regex(#"<a[^>]+href=["']([^"']+/content/[^"']+\.html)["']"#)
     private static let coverURLRegex = regex(#"<img[^>]+src=["']([^"']+)["']"#)
+    private static let coverWidthRegex = regex(#"<img[^>]+width=["']([0-9]+)["']"#)
+    private static let coverHeightRegex = regex(#"<img[^>]+height=["']([0-9]+)["']"#)
     private static let titleRegex = regex(#"<h2[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)</a>"#)
     private static let metadataRegex = regex(#"\[([^\]-]+)-(\d+)photos\]"#)
 
@@ -139,6 +141,7 @@ enum SiteListResolver {
             .flatMap(decodeHTML)
             .flatMap(URL.init(string:))
             .map(GalleryImageURLNormalizer.normalized)
+        let coverAspectRatio = coverAspectRatioFromHTML(html) ?? coverURL.flatMap(GalleryCoverAspectRatio.aspectRatio)
         let rawTitle = firstMatch(titleRegex, in: html)
             .map(stripTags)
             .flatMap(decodeHTML)?
@@ -161,11 +164,22 @@ enum SiteListResolver {
             subtitle: metadata.size.map { "4KHD 图集，\($0)" } ?? "4KHD 图集",
             detailURL: detailURL,
             coverURL: coverURL,
+            coverAspectRatio: coverAspectRatio,
             imageCount: metadata.imageCount ?? 0,
             pageCount: pageCount,
             pageURLs: pageURLs,
             sampleImageURLs: coverURL.map { [$0] } ?? []
         )
+    }
+
+    private static func coverAspectRatioFromHTML(_ html: String) -> Double? {
+        guard let width = firstMatch(coverWidthRegex, in: html).flatMap(Double.init),
+              let height = firstMatch(coverHeightRegex, in: html).flatMap(Double.init),
+              width > 0,
+              height > 0 else {
+            return nil
+        }
+        return width / height
     }
 
     private static func metadataFromTitle(_ rawTitle: String) -> (displayTitle: String, size: String?, imageCount: Int?) {

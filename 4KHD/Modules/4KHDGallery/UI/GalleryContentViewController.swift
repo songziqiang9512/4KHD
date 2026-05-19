@@ -126,7 +126,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             gridView.update(
                 items: library.visibleItems,
                 selectedItemID: library.selectedItemID,
-                preferredColumnCount: detailPane.gridColumnLimit,
+                minimumColumnCount: detailPane.minimumGridColumnCount,
+                maximumColumnCount: detailPane.maximumGridColumnCount,
                 preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth,
                 showsFooter: shouldShowFooter,
                 isRefreshing: library.isRefreshingList,

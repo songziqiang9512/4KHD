@@ -320,6 +320,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             subtitle: "",
             detailURL: URL(string: "https://www.4khd.com/")!,
             coverURL: nil,
+            coverAspectRatio: nil,
             imageCount: 0,
             pageCount: 0,
             pageURLs: [],

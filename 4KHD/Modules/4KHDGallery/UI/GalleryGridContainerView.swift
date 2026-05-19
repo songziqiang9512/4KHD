@@ -15,7 +15,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var showsFooter = false
     private var isRefreshing = false
     private var canLoadMore = false
-    private var preferredColumnCount: Int?
+    private var minimumColumnCount: Int?
+    private var maximumColumnCount: Int?
     private var preferredCardMinimumWidth: CGFloat = 160
     private var isFavorite: (GalleryItem) -> Bool = { _ in false }
     private var isCached: (GalleryItem) -> Bool = { _ in false }
@@ -24,6 +25,11 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var lastShowsFooter = false
     private var lastLayoutWidth: CGFloat = 0
     private var aspectRatiosByItemID: [GalleryItem.ID: CGFloat] = [:]
+    private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
+        name: "GalleryGridAspectRatioLayout",
+        interval: 0.03,
+        maxInterval: 0.1
+    )
     private var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
@@ -53,7 +59,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     func update(
         items: [GalleryItem],
         selectedItemID: GalleryItem.ID?,
-        preferredColumnCount: Int?,
+        minimumColumnCount: Int?,
+        maximumColumnCount: Int?,
         preferredCardMinimumWidth: CGFloat,
         showsFooter: Bool,
         isRefreshing: Bool,
@@ -64,13 +71,16 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let previousSelectedItemID = self.selectedItemID
         let previousBadgeSignature = visibleBadgeSignature()
         let previousFooterState = (self.isRefreshing, self.canLoadMore)
+        let previousItemIDs = lastAppliedItemIDs
+        let previousShowsFooter = lastShowsFooter
         let nextItemIDs = items.map(\.id)
-        let contentChanged = nextItemIDs != lastAppliedItemIDs || showsFooter != lastShowsFooter
+        let contentChanged = nextItemIDs != previousItemIDs || showsFooter != previousShowsFooter
         let nextItemIDSet = Set(nextItemIDs)
 
         self.items = items
         self.selectedItemID = selectedItemID
-        self.preferredColumnCount = preferredColumnCount
+        self.minimumColumnCount = minimumColumnCount
+        self.maximumColumnCount = maximumColumnCount
         self.preferredCardMinimumWidth = preferredCardMinimumWidth
         self.showsFooter = showsFooter
         self.isRefreshing = isRefreshing
@@ -83,11 +93,18 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         if contentChanged {
             lastAppliedItemIDs = nextItemIDs
             lastShowsFooter = showsFooter
-            collectionView.reloadData()
+            applyContentChange(
+                previousItemIDs: previousItemIDs,
+                previousShowsFooter: previousShowsFooter,
+                nextItemIDs: nextItemIDs,
+                showsFooter: showsFooter
+            )
         } else {
             let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
             let footerChanged = previousFooterState != (isRefreshing, canLoadMore)
-            if badgeChanged || footerChanged {
+            if footerChanged {
+                reloadFooterItem()
+            } else if badgeChanged {
                 reloadVisibleItems()
             } else if itemSizeChanged || previousSelectedItemID != selectedItemID {
                 refreshVisibleSelection()
@@ -187,7 +204,14 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         gridLayout.aspectRatioProvider = { [weak self] indexPath in
             guard let self else { return 16.0 / 9.0 }
             guard indexPath.item < self.items.count else { return 3.0 }
-            return self.aspectRatiosByItemID[self.items[indexPath.item].id] ?? 0.74
+            let item = self.items[indexPath.item]
+            if let ratio = self.aspectRatiosByItemID[item.id] {
+                return ratio
+            }
+            if let ratio = item.coverAspectRatio, ratio.isFinite, ratio > 0 {
+                return CGFloat(ratio)
+            }
+            return 0.74
         }
 
         collectionView.collectionViewLayout = gridLayout
@@ -221,22 +245,62 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private func updateItemSize() -> Bool {
         let visibleWidth = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : bounds.width
         let widthChanged = abs(visibleWidth - lastLayoutWidth) > 0.5
-        let columnPreferenceChanged = gridLayout.preferredColumnCount != preferredColumnCount
+        let minimumColumnPreferenceChanged = gridLayout.minimumColumnCount != minimumColumnCount
+        let columnPreferenceChanged = gridLayout.maximumColumnCount != maximumColumnCount
         let cardWidthPreferenceChanged = abs(gridLayout.preferredCardMinimumWidth - preferredCardMinimumWidth) > 0.001
-        guard widthChanged || columnPreferenceChanged || cardWidthPreferenceChanged else { return false }
+        guard widthChanged || minimumColumnPreferenceChanged || columnPreferenceChanged || cardWidthPreferenceChanged else { return false }
         lastLayoutWidth = visibleWidth
-        gridLayout.preferredColumnCount = preferredColumnCount
+        gridLayout.minimumColumnCount = minimumColumnCount
+        gridLayout.maximumColumnCount = maximumColumnCount
         gridLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
-        gridLayout.invalidateLayout()
+        performWithoutCollectionAnimation {
+            gridLayout.invalidateLayout()
+        }
         return true
     }
 
     private func updateAspectRatio(_ ratio: CGFloat, for itemID: GalleryItem.ID) {
         guard ratio.isFinite, ratio > 0 else { return }
         let clampedRatio = max(gridLayout.minAspectRatio, min(gridLayout.maxAspectRatio, ratio))
-        guard abs((aspectRatiosByItemID[itemID] ?? 0.74) - clampedRatio) > 0.01 else { return }
+        let modelRatio = items.first(where: { $0.id == itemID })?.coverAspectRatio.map { CGFloat($0) }
+        let currentRatio = aspectRatiosByItemID[itemID]
+            ?? modelRatio
+            ?? 0.74
+        guard abs(currentRatio - clampedRatio) > 0.01 else { return }
         aspectRatiosByItemID[itemID] = clampedRatio
-        collectionView.collectionViewLayout?.invalidateLayout()
+        aspectRatioLayoutQueue.add(id: "invalidate-layout") { [weak self] in
+            self?.performWithoutCollectionAnimation {
+                self?.collectionView.collectionViewLayout?.invalidateLayout()
+            }
+        }
+    }
+
+    private func applyContentChange(
+        previousItemIDs: [GalleryItem.ID],
+        previousShowsFooter: Bool,
+        nextItemIDs: [GalleryItem.ID],
+        showsFooter: Bool
+    ) {
+        let isAppendOnly = nextItemIDs.count > previousItemIDs.count
+            && previousShowsFooter == showsFooter
+            && Array(nextItemIDs.prefix(previousItemIDs.count)) == previousItemIDs
+
+        guard isAppendOnly else {
+            performWithoutCollectionAnimation {
+                collectionView.reloadData()
+            }
+            return
+        }
+
+        let oldItemCount = previousItemIDs.count
+        performWithoutCollectionAnimation {
+            collectionView.performBatchUpdates {
+                if oldItemCount < nextItemIDs.count {
+                    let indexPaths = Set((oldItemCount ..< nextItemIDs.count).map { IndexPath(item: $0, section: 0) })
+                    collectionView.insertItems(at: indexPaths)
+                }
+            }
+        }
     }
 
     private struct BadgeSignature: Equatable {
@@ -261,7 +325,29 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             indexPath.item < items.count + (showsFooter ? 1 : 0)
         })
         guard !visibleItems.isEmpty else { return }
-        collectionView.reloadItems(at: visibleItems)
+        performWithoutCollectionAnimation {
+            collectionView.reloadItems(at: visibleItems)
+        }
+    }
+
+    private func reloadFooterItem() {
+        guard showsFooter else { return }
+        let footerIndexPath = IndexPath(item: items.count, section: 0)
+        guard collectionView.indexPathsForVisibleItems().contains(footerIndexPath) else { return }
+        performWithoutCollectionAnimation {
+            collectionView.reloadItems(at: [footerIndexPath])
+        }
+    }
+
+    private func performWithoutCollectionAnimation(_ updates: () -> Void) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            updates()
+        }
+        CATransaction.commit()
     }
 
     private func syncSelection() {

@@ -8,7 +8,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     }
     var minAspectRatio: CGFloat = 0.25 { didSet { invalidateIfChanged(oldValue, minAspectRatio) } }
     var maxAspectRatio: CGFloat = 3.0 { didSet { invalidateIfChanged(oldValue, maxAspectRatio) } }
-    var preferredColumnCount: Int? { didSet { if oldValue != preferredColumnCount { invalidateLayout() } } }
+    var minimumColumnCount: Int? { didSet { if oldValue != minimumColumnCount { invalidateLayout() } } }
+    var maximumColumnCount: Int? { didSet { if oldValue != maximumColumnCount { invalidateLayout() } } }
     var preferredCardMinimumWidth: CGFloat = 136 {
         didSet { invalidateIfChanged(oldValue, preferredCardMinimumWidth) }
     }
@@ -79,7 +80,10 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     private func columnCount(for width: CGFloat) -> Int {
         let safeWidth = max(width, preferredCardMinimumWidth)
         let estimated = Int((safeWidth + columnSpacing) / (preferredCardMinimumWidth + columnSpacing))
-        return max(estimated, preferredColumnCount ?? 1, 1)
+        let minimum = max(minimumColumnCount ?? 1, 1)
+        let maximum = max(maximumColumnCount ?? Int.max, minimum)
+        let limited = min(max(estimated, minimum), maximum)
+        return max(limited, 1)
     }
 
     private func clampedAspectRatio(for indexPath: IndexPath) -> CGFloat {

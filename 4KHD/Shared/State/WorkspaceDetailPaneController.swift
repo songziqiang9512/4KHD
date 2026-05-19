@@ -24,7 +24,11 @@ final class WorkspaceDetailPaneController {
         isPresented ? 430 : 10_000
     }
 
-    var gridColumnLimit: Int? {
+    var minimumGridColumnCount: Int? {
+        isPresented ? 2 : nil
+    }
+
+    var maximumGridColumnCount: Int? {
         isPresented ? 2 : nil
     }
 

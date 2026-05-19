@@ -90,6 +90,7 @@ final class ApifyLibrary {
             .map(GalleryImageURLNormalizer.normalized)
         let title = payload.displayTitle ?? payload.rawTitle ?? payload.id
 
+        let coverURL = payload.coverURL.flatMap(URL.init(string:)).map(GalleryImageURLNormalizer.normalized) ?? samples.first
         return GalleryItem(
             id: payload.id,
             section: section,
@@ -98,7 +99,8 @@ final class ApifyLibrary {
             rawTitle: payload.rawTitle ?? title,
             subtitle: payload.subtitle ?? "4KHD 图集",
             detailURL: detail,
-            coverURL: payload.coverURL.flatMap(URL.init(string:)).map(GalleryImageURLNormalizer.normalized) ?? samples.first,
+            coverURL: coverURL,
+            coverAspectRatio: coverURL.flatMap(GalleryCoverAspectRatio.aspectRatio),
             imageCount: max(payload.imageCount ?? 0, samples.count),
             pageCount: max(payload.pageCount ?? 0, pageURLs.count, 1),
             pageURLs: pageURLs.isEmpty ? [detail] : pageURLs,

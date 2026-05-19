@@ -99,7 +99,8 @@ final class LocalImageGridContainerView: NSView {
         items: [(originalIndex: Int, image: LocalImageItem)],
         metadataByImageID: [LocalImageItem.ID: LocalImageMetadata],
         selectedImageID: LocalImageItem.ID?,
-        preferredColumnCount: Int?,
+        minimumColumnCount: Int?,
+        maximumColumnCount: Int?,
         preferredCardMinimumWidth: CGFloat
     ) {
         let newEntries = items.map { item in
@@ -111,11 +112,13 @@ final class LocalImageGridContainerView: NSView {
         }
         let ids = newEntries.map(\.image.id)
         let metadataChanged = hasMetadataChanges(newEntries)
-        let columnPreferenceChanged = waterfallLayout.preferredColumnCount != preferredColumnCount
+        let minimumColumnPreferenceChanged = waterfallLayout.minimumColumnCount != minimumColumnCount
+        let columnPreferenceChanged = waterfallLayout.maximumColumnCount != maximumColumnCount
         let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
         entries = newEntries
         self.selectedImageID = selectedImageID
-        waterfallLayout.preferredColumnCount = preferredColumnCount
+        waterfallLayout.minimumColumnCount = minimumColumnCount
+        waterfallLayout.maximumColumnCount = maximumColumnCount
         waterfallLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
 
         if ids != lastAppliedIDs {
@@ -127,7 +130,7 @@ final class LocalImageGridContainerView: NSView {
             collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
-        } else if columnPreferenceChanged || cardWidthPreferenceChanged {
+        } else if minimumColumnPreferenceChanged || columnPreferenceChanged || cardWidthPreferenceChanged {
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
         }
