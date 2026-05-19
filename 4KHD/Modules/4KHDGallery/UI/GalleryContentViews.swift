@@ -6,7 +6,6 @@ final class GalleryListRowView: NSTableCellView {
 
     private let coverView = GalleryRemoteImageView()
     private let kindLabel = GalleryPillLabel()
-    private let countLabel = NSTextField(labelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let favoriteIcon = NSImageView()
@@ -25,7 +24,7 @@ final class GalleryListRowView: NSTableCellView {
     func configure(item: GalleryItem, isFavorite: Bool, isCached: Bool) {
         coverView.setImage(url: item.coverURL, maxPixelSize: 180)
         kindLabel.configure(kind: item.kind)
-        countLabel.stringValue = "\(item.imageCount) 张 · \(item.pageCount) 页"
+        kindLabel.isHidden = item.kind == .gallery
         titleLabel.stringValue = item.title
         subtitleLabel.stringValue = item.subtitle
         favoriteIcon.isHidden = !isFavorite
@@ -35,9 +34,6 @@ final class GalleryListRowView: NSTableCellView {
     private func setupView() {
         coverView.cornerRadius = 5
         coverView.mode = .aspectFill
-
-        countLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        countLabel.textColor = .secondaryLabelColor
 
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.lineBreakMode = .byTruncatingTail
@@ -55,7 +51,7 @@ final class GalleryListRowView: NSTableCellView {
         cachedIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         cachedIcon.contentTintColor = .secondaryLabelColor
 
-        let countStack = NSStackView(views: [kindLabel, countLabel])
+        let countStack = NSStackView(views: [kindLabel])
         countStack.orientation = .horizontal
         countStack.alignment = .centerY
         countStack.spacing = 5

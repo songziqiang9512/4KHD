@@ -502,11 +502,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
     }
 
     private func metadataText(for item: GalleryItem, isFavorite: Bool, isCached: Bool) -> String {
-        var parts = [
-            kindTitle(for: item.kind),
-            "\(item.imageCount) 张",
-            "\(item.pageCount) 页"
-        ]
+        var parts: [String] = []
         if isFavorite {
             parts.append("已收藏")
         }
@@ -514,17 +510,6 @@ final class GalleryGridItemView: NSCollectionViewItem {
             parts.append("已缓存")
         }
         return parts.joined(separator: " · ")
-    }
-
-    private func kindTitle(for kind: ContentKind) -> String {
-        switch kind {
-        case .gallery:
-            "图集"
-        case .recommended:
-            "推荐"
-        case .advertisement:
-            "广告"
-        }
     }
 }
 

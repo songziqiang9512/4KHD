@@ -23,6 +23,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     var favoriteAuthorOverrides: [String: String] = [:]
     private var isObserving = false
     private var isApplyingSelection = false
+    private var lastAppliedRows: [Row] = []
+    private var lastVisibleListSignature: [Int: GalleryVisibleListRowSignature] = [:]
 
     init(
         library: FourKHDGalleryStore,
@@ -108,8 +110,17 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         switch preferences.layout {
         case .list:
             setActiveView(tableScrollView)
-            tableView.reloadData()
+            if rows != lastAppliedRows {
+                lastAppliedRows = rows
+                tableView.reloadData()
+            } else {
+                let visibleSignature = visibleListSignature()
+                if visibleSignature != lastVisibleListSignature {
+                    reloadVisibleListRows()
+                }
+            }
             syncTableSelection()
+            lastVisibleListSignature = visibleListSignature()
         case .grid:
             setActiveView(gridView)
             gridView.update(
@@ -273,6 +284,51 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         isApplyingSelection = false
     }
 
+    private func visibleListSignature() -> [Int: GalleryVisibleListRowSignature] {
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        guard visibleRows.length > 0 else { return [:] }
+        var signature: [Int: GalleryVisibleListRowSignature] = [:]
+        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) where rows.indices.contains(row) {
+            switch rows[row] {
+            case .group(let id):
+                signature[row] = GalleryVisibleListRowSignature(
+                    row: rows[row],
+                    title: rowGroups[id]?.author ?? "",
+                    subtitle: "\(rowGroups[id]?.items.count ?? 0)",
+                    isFavorite: false,
+                    isCached: false
+                )
+            case .item(let id):
+                guard let item = rowItems[id] else { continue }
+                signature[row] = GalleryVisibleListRowSignature(
+                    row: rows[row],
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    isFavorite: library.isFavorite(item),
+                    isCached: library.isCached(item)
+                )
+            case .footer:
+                signature[row] = GalleryVisibleListRowSignature(
+                    row: rows[row],
+                    title: "\(library.isRefreshingList)",
+                    subtitle: "\(library.canLoadMoreList)",
+                    isFavorite: false,
+                    isCached: false
+                )
+            }
+        }
+        return signature
+    }
+
+    private func reloadVisibleListRows() {
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        guard visibleRows.length > 0, tableView.numberOfColumns > 0 else { return }
+        let validRows = visibleRows.location..<(visibleRows.location + visibleRows.length)
+        let rowIndexes = IndexSet(validRows.filter { rows.indices.contains($0) })
+        guard !rowIndexes.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: rowIndexes, columnIndexes: IndexSet(integer: 0))
+    }
+
     private func selectAdjacentFromTable(delta: Int) -> Bool {
         guard preferences.layout == .list else {
             return false
@@ -365,6 +421,14 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? "未知作者" : normalized
     }
+}
+
+private struct GalleryVisibleListRowSignature: Equatable {
+    let row: GalleryContentViewController.Row
+    let title: String
+    let subtitle: String
+    let isFavorite: Bool
+    let isCached: Bool
 }
 
 extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelegate {

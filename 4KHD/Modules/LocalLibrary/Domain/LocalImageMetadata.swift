@@ -23,9 +23,6 @@ func formattedSecondaryMetadata(_ metadata: LocalImageMetadata?) -> String? {
     if let fileSize = metadata.fileSize {
         parts.append(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))
     }
-    if let modifiedDate = metadata.modifiedDate {
-        parts.append(modifiedDate.formatted(date: .numeric, time: .omitted))
-    }
     return parts.isEmpty ? nil : parts.joined(separator: " · ")
 }
 

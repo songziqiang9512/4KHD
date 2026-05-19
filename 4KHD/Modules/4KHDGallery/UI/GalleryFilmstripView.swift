@@ -28,13 +28,18 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     }
 
     func update(slots: [ImageSlot], selectedIndex: Int, showsLoadingTile: Bool) {
+        let previousSelectedIndex = self.selectedIndex
+        let slotIDsChanged = self.slots.map(\.id) != slots.map(\.id)
+        let loadingTileChanged = self.showsLoadingTile != showsLoadingTile
         self.slots = slots
         self.selectedIndex = selectedIndex
         self.showsLoadingTile = showsLoadingTile
-        collectionView.reloadData()
-        collectionView.selectionIndexPaths = slots.indices.contains(selectedIndex)
-            ? [IndexPath(item: selectedIndex, section: 0)]
-            : []
+        if slotIDsChanged || loadingTileChanged {
+            collectionView.reloadData()
+        } else if previousSelectedIndex != selectedIndex {
+            refreshVisibleSelection()
+        }
+        syncSelection()
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int {
@@ -125,6 +130,19 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         materialView.blendingMode = .withinWindow
         materialView.state = .active
     }
+
+    private func syncSelection() {
+        collectionView.selectionIndexPaths = slots.indices.contains(selectedIndex)
+            ? [IndexPath(item: selectedIndex, section: 0)]
+            : []
+    }
+
+    private func refreshVisibleSelection() {
+        for indexPath in collectionView.indexPathsForVisibleItems() {
+            guard let item = collectionView.item(at: indexPath) as? GalleryFilmstripItemView else { continue }
+            item.applySelection(indexPath.item == selectedIndex)
+        }
+    }
 }
 
 @MainActor
@@ -143,6 +161,10 @@ final class GalleryFilmstripItemView: NSCollectionViewItem {
     func configure(slot: ImageSlot, isSelected: Bool) {
         thumbnailView.setImage(url: slot.knownURL, maxPixelSize: 220)
         indexLabel.stringValue = "#\(slot.displayIndex)"
+        applySelection(isSelected)
+    }
+
+    func applySelection(_ isSelected: Bool) {
         view.layer?.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
         view.layer?.borderWidth = isSelected ? 2 : 0
     }

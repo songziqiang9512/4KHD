@@ -26,13 +26,14 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
     }
 
     func update(images: [LocalImageItem], selectedIndex: Int) {
+        let previousSelectedIndex = self.selectedIndex
         let idsChanged = self.images.map(\.id) != images.map(\.id)
         self.images = images
         self.selectedIndex = selectedIndex
         if idsChanged {
             collectionView.reloadData()
-        } else {
-            collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
+        } else if previousSelectedIndex != selectedIndex {
+            refreshVisibleSelection()
         }
         syncSelection()
     }
@@ -123,6 +124,13 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
         let indexPath = IndexPath(item: selectedIndex, section: 0)
         collectionView.selectItems(at: [indexPath], scrollPosition: .centeredHorizontally)
     }
+
+    private func refreshVisibleSelection() {
+        for indexPath in collectionView.indexPathsForVisibleItems() {
+            guard let item = collectionView.item(at: indexPath) as? LocalFilmstripItemView else { continue }
+            item.applySelection(indexPath.item == selectedIndex)
+        }
+    }
 }
 
 @MainActor
@@ -204,7 +212,7 @@ final class LocalFilmstripItemView: NSCollectionViewItem {
         ])
     }
 
-    private func applySelection(_ selected: Bool) {
+    func applySelection(_ selected: Bool) {
         view.layer?.borderWidth = selected ? 2 : 0
         view.layer?.borderColor = selected ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
     }

@@ -17,6 +17,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
     var filteredEntries: [Entry] = []
     private var observedImageIDs: [LocalImageItem.ID] = []
+    private var lastAppliedListSignature: [LocalImageListRowSignature] = []
     private var metadataTask: Task<Void, Never>?
     private var availabilityTask: Task<Void, Never>?
     private var isObserving = false
@@ -140,7 +141,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             )
         case .list:
             setActiveView(scrollView)
-            tableView.reloadData()
+            let signature = listSignature()
+            if signature != lastAppliedListSignature {
+                lastAppliedListSignature = signature
+                tableView.reloadData()
+            }
             syncTableSelection()
         }
     }
@@ -308,6 +313,19 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         isApplyingSelection = false
     }
 
+    private func listSignature() -> [LocalImageListRowSignature] {
+        filteredEntries.map { entry in
+            let metadata = metadataByImageID[entry.image.id]
+            return LocalImageListRowSignature(
+                id: entry.image.id,
+                title: entry.image.title,
+                resolution: formattedResolution(metadata),
+                secondaryMetadata: formattedSecondaryMetadata(metadata)
+                    ?? entry.image.url.deletingLastPathComponent().path
+            )
+        }
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int {
         filteredEntries.count
     }
@@ -322,4 +340,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         cell.configure(image: image, metadata: metadataByImageID[image.id])
         return cell
     }
+}
+
+private struct LocalImageListRowSignature: Equatable {
+    let id: LocalImageItem.ID
+    let title: String
+    let resolution: String?
+    let secondaryMetadata: String
 }

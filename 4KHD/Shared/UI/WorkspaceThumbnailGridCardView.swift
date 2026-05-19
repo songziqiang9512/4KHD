@@ -59,17 +59,21 @@ final class WorkspaceThumbnailGridCardView: NSView {
         gradientLayer.frame = infoOverlay.bounds
 
         let pad: CGFloat = 8
-        metadataLabel.sizeToFit()
-        metadataLabel.frame = NSRect(
-            x: pad,
-            y: pad + 2,
-            width: bounds.width - pad * 2,
-            height: metadataLabel.fittingSize.height
-        )
+        if metadataLabel.isHidden {
+            metadataLabel.frame = .zero
+        } else {
+            metadataLabel.sizeToFit()
+            metadataLabel.frame = NSRect(
+                x: pad,
+                y: pad + 2,
+                width: bounds.width - pad * 2,
+                height: metadataLabel.fittingSize.height
+            )
+        }
         titleLabel.sizeToFit()
         titleLabel.frame = NSRect(
             x: pad,
-            y: metadataLabel.frame.maxY + 2,
+            y: metadataLabel.isHidden ? pad + 2 : metadataLabel.frame.maxY + 2,
             width: bounds.width - pad * 2,
             height: titleLabel.fittingSize.height
         )
@@ -128,6 +132,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         placeholderLabel.isHidden = false
         titleLabel.stringValue = ""
         metadataLabel.stringValue = ""
+        metadataLabel.isHidden = false
         missingOverlay.isHidden = true
         infoOverlay.alphaValue = 0
         hoverOutline.alphaValue = 0
@@ -149,6 +154,8 @@ final class WorkspaceThumbnailGridCardView: NSView {
     func setText(title: String, metadata: String) {
         titleLabel.stringValue = title
         metadataLabel.stringValue = metadata
+        metadataLabel.isHidden = metadata.isEmpty
+        needsLayout = true
     }
 
     func setMissingVisible(_ isVisible: Bool) {
@@ -334,7 +341,10 @@ final class WorkspaceThumbnailGridCardView: NSView {
             ? NSColor.controlAccentColor.cgColor
             : NSColor.separatorColor.withAlphaComponent(isDark ? 0.55 : 0.42).cgColor
         layer?.borderWidth = isSelectedState ? 2 : 1
-        hoverOutline.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.86).cgColor
+        let hoverColor = isDark
+            ? NSColor.white.withAlphaComponent(0.88)
+            : NSColor.systemBlue.withAlphaComponent(0.86)
+        hoverOutline.layer?.borderColor = hoverColor.cgColor
     }
 
     override func viewDidChangeEffectiveAppearance() {
