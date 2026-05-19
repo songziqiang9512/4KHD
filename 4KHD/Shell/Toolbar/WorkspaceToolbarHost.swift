@@ -119,6 +119,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func defaultItemIdentifiers() -> [NSToolbarItem.Identifier] {
         var identifiers: [NSToolbarItem.Identifier] = [
             .toggleSidebar,
+            ItemID.sidebarTrackingSeparator,
             ItemID.layout,
             ItemID.refresh,
             .flexibleSpace
