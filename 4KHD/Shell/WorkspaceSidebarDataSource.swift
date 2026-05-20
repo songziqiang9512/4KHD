@@ -8,7 +8,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     private var childrenByNode: [WorkspaceSidebarNode: [WorkspaceSidebarNode]] = [:]
     private var localRootFolderIDs = Set<LocalFolderNode.ID>()
     var localFolderDropHandler: ((URL) -> Void)?
-    var localRootFolderReorderHandler: ((LocalFolderNode.ID, Int) -> Void)?
+    var localRootFolderOrderCommitHandler: (([LocalFolderNode.ID]) -> Void)?
 
     func reload(localRoots: [LocalLibraryRoot]) {
         childrenByNode = [:]
@@ -96,19 +96,48 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         item: Any?,
         childIndex index: Int
     ) -> Bool {
-        if let folderID = localRootFolderID(from: info.draggingPasteboard),
-           let destinationIndex = localDropIndex(
-               from: outlineView,
-               item: item,
-               childIndex: index,
-               draggingLocation: info.draggingLocation
-           ) {
-            localRootFolderReorderHandler?(folderID, destinationIndex)
+        if localRootFolderID(from: info.draggingPasteboard) != nil {
+            localRootFolderOrderCommitHandler?(currentLocalRootFolderIDs())
             return true
         }
         guard let url = localFolderURL(from: info.draggingPasteboard) else { return false }
         localFolderDropHandler?(url)
         return true
+    }
+
+    func currentLocalRootFolderIDs() -> [LocalFolderNode.ID] {
+        children(of: localRootGroup()).compactMap { node in
+            guard case .localFolder(let folder) = node,
+                  localRootFolderIDs.contains(folder.id) else { return nil }
+            return folder.id
+        }
+    }
+
+    func liveReorderLocalRootFolder(
+        id folderID: LocalFolderNode.ID,
+        to targetIndex: Int,
+        in outlineView: NSOutlineView
+    ) -> [LocalFolderNode.ID] {
+        let localGroup = localRootGroup()
+        guard var localRoots = childrenByNode[localGroup],
+              let sourceIndex = localRoots.firstIndex(where: { node in
+                  guard case .localFolder(let folder) = node else { return false }
+                  return folder.id == folderID && localRootFolderIDs.contains(folder.id)
+              }) else {
+            return currentLocalRootFolderIDs()
+        }
+        let insertionIndex = max(0, min(targetIndex, localRoots.count - 1))
+        guard sourceIndex != insertionIndex else {
+            return currentLocalRootFolderIDs()
+        }
+
+        let movedNode = localRoots.remove(at: sourceIndex)
+        localRoots.insert(movedNode, at: max(0, min(insertionIndex, localRoots.count)))
+        childrenByNode[localGroup] = localRoots
+        outlineView.beginUpdates()
+        outlineView.moveItem(at: sourceIndex, inParent: localGroup, to: insertionIndex, inParent: localGroup)
+        outlineView.endUpdates()
+        return currentLocalRootFolderIDs()
     }
 
     private func makeFolderNode(_ folder: LocalFolderNode) -> WorkspaceSidebarNode {

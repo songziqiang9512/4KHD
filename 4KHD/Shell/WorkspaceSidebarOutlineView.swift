@@ -4,6 +4,8 @@ import AppKit
 final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrollerHiding {
     var keyboardContextProvider: (() -> WorkspaceKeyboardContext)?
     var contextMenuProvider: ((Int) -> NSMenu?)?
+    var draggingUpdatedHandler: ((NSPoint) -> NSDragOperation)?
+    var draggingSessionEndedHandler: ((NSDragOperation) -> Void)?
 
     override func accessibilityLabel() -> String? {
         "Workspace Sidebar"
@@ -25,6 +27,20 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let operation = draggingUpdatedHandler?(sender.draggingLocation) ?? []
+        return operation == [] ? super.draggingUpdated(sender) : operation
+    }
+
+    override func draggingSession(
+        _ session: NSDraggingSession,
+        endedAt screenPoint: NSPoint,
+        operation: NSDragOperation
+    ) {
+        super.draggingSession(session, endedAt: screenPoint, operation: operation)
+        draggingSessionEndedHandler?(operation)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

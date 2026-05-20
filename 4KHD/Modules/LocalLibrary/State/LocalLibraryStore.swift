@@ -106,6 +106,19 @@ final class LocalLibraryStore {
         saveRootFolders()
     }
 
+    func reorderRootFolders(ids orderedIDs: [LocalFolderNode.ID]) {
+        let rootByFolderID = Dictionary(uniqueKeysWithValues: roots.map { ($0.tree.id, $0) })
+        let orderedRoots = orderedIDs.compactMap { rootByFolderID[$0] }
+        let orderedIDSet = Set(orderedIDs)
+        let remainingRoots = roots.filter { !orderedIDSet.contains($0.tree.id) }
+        let updatedRoots = orderedRoots + remainingRoots
+        guard updatedRoots.count == roots.count,
+              updatedRoots.map(\.id) != roots.map(\.id) else { return }
+        roots = updatedRoots
+        rootURLs = updatedRoots.map(\.url)
+        saveRootFolders()
+    }
+
     func selectImage(at index: Int) {
         guard selectedImages.indices.contains(index) else { return }
         selectedImageIndex = index
