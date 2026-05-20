@@ -36,3 +36,10 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
         return contextMenuProvider?(row)
     }
 }
+
+final class WorkspaceSidebarRowView: NSTableRowView {
+    override var isEmphasized: Bool {
+        get { false }
+        set {}
+    }
+}

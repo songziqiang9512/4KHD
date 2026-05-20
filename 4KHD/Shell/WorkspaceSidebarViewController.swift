@@ -28,6 +28,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private let outlineView = WorkspaceSidebarOutlineView()
     private let scrollView = NSScrollView()
     private var isObservingLocalLibrary = false
+    private var routeObserverID: UUID?
     private var expandedNodeIDs = Set(WorkspaceWindowState.defaultExpandedSidebarNodeIDs)
     private var isApplyingExpandedNodeIDs = false
     private let reloadQueue = WorkspaceCoalescingQueue(
@@ -67,6 +68,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         outlineView.target = self
         outlineView.action = #selector(selectionDidChange(_:))
         outlineView.doubleAction = #selector(doubleClick(_:))
+        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
         outlineView.keyboardContextProvider = { [weak self] in
             guard let self else { return WorkspaceKeyboardContext() }
             return self.delegate?.sidebarViewControllerKeyboardContext(self) ?? WorkspaceKeyboardContext()
@@ -74,10 +76,14 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         outlineView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(forRow: row)
         }
-        outlineView.registerForDraggedTypes([.fileURL])
+        outlineView.registerForDraggedTypes([.fileURL, WorkspaceSidebarDataSource.localFolderDragType])
         dataSource.localFolderDropHandler = { [weak self] url in
             guard let self else { return }
             delegate?.sidebarViewController(self, didRequestImportLocalFolderAt: url)
+        }
+        dataSource.localRootFolderReorderHandler = { [weak self] folderID, destinationIndex in
+            guard let self else { return }
+            appContext.localLibraryStore.reorderRootFolder(id: folderID, to: destinationIndex)
         }
         scrollView.documentView = outlineView
 
@@ -96,6 +102,17 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         super.viewDidLoad()
         reload()
         observeLocalLibrary()
+        routeObserverID = appContext.routeController.addObserver { [weak self] _ in
+            self?.selectCurrentRoute()
+        }
+    }
+
+    deinit {
+        if let routeObserverID {
+            Task { @MainActor [appContext] in
+                appContext.routeController.removeObserver(id: routeObserverID)
+            }
+        }
     }
 
     func reload() {
@@ -147,6 +164,18 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         guard let node = item as? WorkspaceSidebarNode else { return true }
         return !isGroupNode(node)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        guard let node = item as? WorkspaceSidebarNode,
+              !isGroupNode(node) else {
+            return nil
+        }
+        let identifier = NSUserInterfaceItemIdentifier("WorkspaceSidebarRowView")
+        let rowView = outlineView.makeView(withIdentifier: identifier, owner: self) as? WorkspaceSidebarRowView
+            ?? WorkspaceSidebarRowView()
+        rowView.identifier = identifier
+        return rowView
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
@@ -237,24 +266,23 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         let selectedRow = outlineView.selectedRow
         guard selectedRow >= 0,
               let node = outlineView.item(atRow: selectedRow) as? WorkspaceSidebarNode else { return }
+        let selectedRoute: WorkspaceRoute?
         switch node {
         case .gallery(let section):
-            delegate?.sidebarViewController(
-                self,
-                didSelect:
-                WorkspaceRoute(moduleID: .fourKHDGallery, itemID: section.rawValue)
-            )
+            selectedRoute = WorkspaceRoute(moduleID: .fourKHDGallery, itemID: section.rawValue)
         case .localFolder(let folder):
-            delegate?.sidebarViewController(
-                self,
-                didSelect:
-                WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
-            )
+            selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
         case .importLocal:
             delegate?.sidebarViewControllerDidRequestLocalImport(self)
+            selectedRoute = nil
         case .group:
-            break
+            selectedRoute = nil
         }
+        guard let selectedRoute,
+              appContext.routeController.route != selectedRoute else {
+            return
+        }
+        delegate?.sidebarViewController(self, didSelect: selectedRoute)
     }
 
     @objc private func doubleClick(_ sender: Any?) {
@@ -270,7 +298,6 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         isObservingLocalLibrary = true
         withObservationTracking {
             _ = appContext.localLibraryStore.roots
-            _ = appContext.localLibraryStore.selectedFolderID
             _ = appContext.localLibraryStore.isScanning
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in

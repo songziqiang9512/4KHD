@@ -90,6 +90,22 @@ final class LocalLibraryStore {
         selectedImageIndex = 0
     }
 
+    func reorderRootFolder(id: LocalFolderNode.ID, to destinationIndex: Int) {
+        guard let sourceIndex = roots.firstIndex(where: { $0.tree.id == id }) else { return }
+        var targetIndex = max(0, min(destinationIndex, roots.count))
+        if sourceIndex < targetIndex {
+            targetIndex -= 1
+        }
+        guard sourceIndex != targetIndex else { return }
+
+        var updatedRoots = roots
+        let movedRoot = updatedRoots.remove(at: sourceIndex)
+        updatedRoots.insert(movedRoot, at: max(0, min(targetIndex, updatedRoots.count)))
+        roots = updatedRoots
+        rootURLs = updatedRoots.map(\.url)
+        saveRootFolders()
+    }
+
     func selectImage(at index: Int) {
         guard selectedImages.indices.contains(index) else { return }
         selectedImageIndex = index

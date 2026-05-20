@@ -2,12 +2,17 @@ import AppKit
 
 @MainActor
 final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
+    static let localFolderDragType = NSPasteboard.PasteboardType("com.songziqiang.4khd.local-folder")
+
     private(set) var nodes: [WorkspaceSidebarNode] = []
     private var childrenByNode: [WorkspaceSidebarNode: [WorkspaceSidebarNode]] = [:]
+    private var localRootFolderIDs = Set<LocalFolderNode.ID>()
     var localFolderDropHandler: ((URL) -> Void)?
+    var localRootFolderReorderHandler: ((LocalFolderNode.ID, Int) -> Void)?
 
     func reload(localRoots: [LocalLibraryRoot]) {
         childrenByNode = [:]
+        localRootFolderIDs = Set(localRoots.map(\.tree.id))
         let online = WorkspaceSidebarNode.group("线上")
         let local = WorkspaceSidebarNode.group("本地")
         nodes = [online, local]
@@ -59,13 +64,30 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         return !children(of: node).isEmpty
     }
 
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> (any NSPasteboardWriting)? {
+        guard let node = item as? WorkspaceSidebarNode,
+              case .localFolder(let folder) = node,
+              localRootFolderIDs.contains(folder.id) else { return nil }
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(folder.id, forType: Self.localFolderDragType)
+        return pasteboardItem
+    }
+
     func outlineView(
         _ outlineView: NSOutlineView,
         validateDrop info: NSDraggingInfo,
         proposedItem item: Any?,
         proposedChildIndex index: Int
     ) -> NSDragOperation {
-        localFolderURL(from: info.draggingPasteboard) == nil ? [] : .copy
+        if localRootFolderID(from: info.draggingPasteboard) != nil {
+            return localDropIndex(
+                from: outlineView,
+                item: item,
+                childIndex: index,
+                draggingLocation: info.draggingLocation
+            ) == nil ? [] : .move
+        }
+        return localFolderURL(from: info.draggingPasteboard) == nil ? [] : .copy
     }
 
     func outlineView(
@@ -74,6 +96,16 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         item: Any?,
         childIndex index: Int
     ) -> Bool {
+        if let folderID = localRootFolderID(from: info.draggingPasteboard),
+           let destinationIndex = localDropIndex(
+               from: outlineView,
+               item: item,
+               childIndex: index,
+               draggingLocation: info.draggingLocation
+           ) {
+            localRootFolderReorderHandler?(folderID, destinationIndex)
+            return true
+        }
         guard let url = localFolderURL(from: info.draggingPasteboard) else { return false }
         localFolderDropHandler?(url)
         return true
@@ -110,6 +142,42 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
             }
         }
         return nil
+    }
+
+    private func localRootGroup() -> WorkspaceSidebarNode {
+        .group("本地")
+    }
+
+    private func localDropIndex(
+        from outlineView: NSOutlineView,
+        item: Any?,
+        childIndex index: Int,
+        draggingLocation: NSPoint
+    ) -> Int? {
+        let localGroup = localRootGroup()
+        if let node = item as? WorkspaceSidebarNode,
+           node == localGroup {
+            return max(0, min(index, children(of: localGroup).count))
+        }
+        guard let node = item as? WorkspaceSidebarNode,
+              case .localFolder(let folder) = node,
+              localRootFolderIDs.contains(folder.id),
+              let row = rowForNode(node, in: outlineView) else {
+            return nil
+        }
+        let rowRect = outlineView.rect(ofRow: row)
+        let location = outlineView.convert(draggingLocation, from: nil)
+        let rootIndex = children(of: localGroup).firstIndex(of: node) ?? 0
+        return location.y < rowRect.midY ? rootIndex + 1 : rootIndex
+    }
+
+    private func rowForNode(_ node: WorkspaceSidebarNode, in outlineView: NSOutlineView) -> Int? {
+        let row = outlineView.row(forItem: node)
+        return row >= 0 ? row : nil
+    }
+
+    private func localRootFolderID(from pasteboard: NSPasteboard) -> LocalFolderNode.ID? {
+        pasteboard.string(forType: Self.localFolderDragType)
     }
 
     private func localFolderURL(from pasteboard: NSPasteboard) -> URL? {
