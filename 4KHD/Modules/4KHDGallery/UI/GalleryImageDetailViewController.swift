@@ -5,6 +5,7 @@ import Observation
 final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusable {
     private let library: FourKHDGalleryStore
     private let immersive: ImmersiveController
+    private let detailPane: WorkspaceDetailPaneController
     private let detailInteraction: GalleryDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
     private let resolver = DetailImageResolver()
@@ -23,17 +24,20 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     private var isObserving = false
     private var currentItemID: GalleryItem.ID?
     private var currentSlotID: ImageSlot.ID?
+    private var currentImageURL: URL?
     private var detailFailed = false
     private var isDetailReady = false
 
     init(
         library: FourKHDGalleryStore,
         immersive: ImmersiveController,
+        detailPane: WorkspaceDetailPaneController,
         detailInteraction: GalleryDetailInteractionController,
         filmstripVisibility: FilmstripVisibilityController
     ) {
         self.library = library
         self.immersive = immersive
+        self.detailPane = detailPane
         self.detailInteraction = detailInteraction
         self.filmstripVisibility = filmstripVisibility
         super.init(nibName: nil, bundle: nil)
@@ -185,6 +189,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = library.prefetchPageURL
             _ = library.isFavorite(library.selectedItem ?? placeholderItem)
             _ = immersive.isImmersive
+            _ = detailPane.isPresented
             _ = detailInteraction.resetToken
             _ = detailInteraction.saveMessage
             _ = filmstripVisibility.isPresented
@@ -200,6 +205,13 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
     private func reloadDetail() {
         guard let item = library.selectedItem, let slot = library.selectedSlot else {
+            currentItemID = nil
+            currentSlotID = nil
+            currentImageURL = nil
+            resolver.cancel()
+            library.cancelOutstandingDetailPageLoads()
+            imageView.setImageURL(nil)
+            RemoteImagePipeline.shared.stopDetailPrefetching()
             imageView.isHidden = true
             emptyLabel.isHidden = false
             previousButton.isHidden = true
@@ -208,6 +220,18 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             statusChrome.isHidden = true
             filmstripView.isHidden = true
             updateFilmstripLayout(showsFilmstrip: false)
+            return
+        }
+
+        guard shouldLoadDetailContent else {
+            currentSlotID = nil
+            currentImageURL = nil
+            resolver.cancel()
+            library.cancelOutstandingDetailPageLoads()
+            imageView.setImageURL(nil)
+            RemoteImagePipeline.shared.stopDetailPrefetching()
+            detailFailed = false
+            isDetailReady = false
             return
         }
 
@@ -224,13 +248,15 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             detailInteraction.saveMessage = ""
             RemoteImagePipeline.shared.stopDetailPrefetching()
         }
-        if currentSlotID != slot.id {
+        if currentSlotID != slot.id || currentImageURL != slot.knownURL {
+            let shouldPreserveCurrentImage = currentSlotID == slot.id && currentImageURL != nil && slot.knownURL != nil
             currentSlotID = slot.id
+            currentImageURL = slot.knownURL
             detailFailed = false
             isDetailReady = false
             detailInteraction.saveMessage = ""
             resolver.resolve(pageURL: slot.pageURL)
-            imageView.setImageURL(slot.knownURL)
+            imageView.setImageURL(slot.knownURL, preservesCurrentImageUntilLoaded: shouldPreserveCurrentImage)
             RemoteImagePipeline.shared.prefetchDetailImages(library.upcomingKnownImageURLs)
         }
 
@@ -248,6 +274,10 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             resetTokenSeen = detailInteraction.resetToken
             imageView.resetZoom()
         }
+    }
+
+    private var shouldLoadDetailContent: Bool {
+        detailPane.isPresented || immersive.isImmersive
     }
 
     private func updateFilmstripLayout(showsFilmstrip: Bool) {

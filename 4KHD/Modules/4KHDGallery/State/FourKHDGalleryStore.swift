@@ -85,6 +85,10 @@ final class FourKHDGalleryStore {
     func selectImage(at index: Int) { detail.selectImage(at: index) }
     func stepImage(_ delta: Int) { detail.stepImage(delta) }
 
+    func cancelOutstandingDetailPageLoads() {
+        detail.cancelOutstandingDetailPageLoads()
+    }
+
     @discardableResult
     func ensureNextDetailPageLoaded(reason: DetailPageLoadReason) -> Bool {
         detail.ensureNextDetailPageLoaded(reason: reason)

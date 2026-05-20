@@ -38,12 +38,15 @@ final class GalleryZoomableImageView: NSView {
         }
     }
 
-    func setImageURL(_ url: URL?) {
+    func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
         imageTask?.cancel()
         guard loadedURL != url else { return }
         loadedURL = url
-        imageView.image = nil
-        showPlaceholder(title: "解析中", showsActions: false)
+        let shouldKeepCurrentImage = preservesCurrentImageUntilLoaded && imageView.image != nil
+        if !shouldKeepCurrentImage {
+            imageView.image = nil
+            showPlaceholder(title: "解析中", showsActions: false)
+        }
         guard let url else { return }
 
         let request = RemoteImagePipeline.shared.request(
@@ -55,7 +58,9 @@ final class GalleryZoomableImageView: NSView {
             Task { @MainActor [weak self] in
                 guard let self, self.loadedURL == url else { return }
                 guard let image else {
-                    self.showPlaceholder(title: "图片加载失败", showsActions: false)
+                    if !shouldKeepCurrentImage {
+                        self.showPlaceholder(title: "图片加载失败", showsActions: false)
+                    }
                     return
                 }
                 self.placeholderContainer.isHidden = true

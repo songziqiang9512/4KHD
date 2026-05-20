@@ -82,6 +82,7 @@ enum WorkspaceAppAssembly {
                         GalleryImageDetailViewController(
                             library: fourKHDGalleryStore,
                             immersive: context.immersive,
+                            detailPane: context.detailPaneController,
                             detailInteraction: galleryDetailInteraction,
                             filmstripVisibility: filmstripVisibility
                         )

@@ -32,6 +32,11 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
         extractionTask?.cancel()
     }
 
+    func cancel() {
+        pageURL = nil
+        cancelCurrentWork()
+    }
+
     func resolve(pageURL: URL, force: Bool = false) {
         self.pageURL = pageURL
         guard loadedPageURL != pageURL || force else { return }

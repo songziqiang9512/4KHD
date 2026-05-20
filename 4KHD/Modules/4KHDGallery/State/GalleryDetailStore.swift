@@ -79,6 +79,11 @@ final class GalleryDetailStore {
         selectImage(at: nextIndex)
     }
 
+    func cancelOutstandingDetailPageLoads() {
+        cancelOutstandingDetailPageTasks()
+        prefetchPageURL = nil
+    }
+
     // MARK: - 分页
 
     @discardableResult
