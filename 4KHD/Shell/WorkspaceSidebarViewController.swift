@@ -405,7 +405,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             liveLocalRootFolderIDs = dataSource.liveReorderLocalRootFolder(
                 id: draggedID,
-                to: destination,
+                toDropIndex: destination,
                 in: outlineView
             )
             updateLocalRootDraggingPresentation()
