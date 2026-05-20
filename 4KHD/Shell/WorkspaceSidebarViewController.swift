@@ -31,6 +31,9 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private var routeObserverID: UUID?
     private var expandedNodeIDs = Set(WorkspaceWindowState.defaultExpandedSidebarNodeIDs)
     private var isApplyingExpandedNodeIDs = false
+    private var liveLocalRootFolderID: LocalFolderNode.ID?
+    private var liveLocalRootFolderIDs: [LocalFolderNode.ID]?
+    private var lastLiveLocalRootDropDestination: Int?
     private let reloadQueue = WorkspaceCoalescingQueue(
         name: "Workspace Sidebar Reload",
         interval: 0.05,
@@ -69,6 +72,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         outlineView.action = #selector(selectionDidChange(_:))
         outlineView.doubleAction = #selector(doubleClick(_:))
         outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        outlineView.draggingDestinationFeedbackStyle = .none
+        outlineView.draggingUpdatedHandler = { [weak self] windowPoint in
+            self?.handleLocalRootFolderDragMoved(toWindowPoint: windowPoint)
+        }
         outlineView.keyboardContextProvider = { [weak self] in
             guard let self else { return WorkspaceKeyboardContext() }
             return self.delegate?.sidebarViewControllerKeyboardContext(self) ?? WorkspaceKeyboardContext()
@@ -190,7 +197,53 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         guard let node = draggedItems.first as? WorkspaceSidebarNode,
               case .localFolder(let folder) = node,
               appContext.localLibraryStore.roots.contains(where: { $0.tree.id == folder.id }) else { return }
+        liveLocalRootFolderID = folder.id
+        liveLocalRootFolderIDs = dataSource.currentLocalRootFolderIDs()
+        lastLiveLocalRootDropDestination = nil
         session.animatesToStartingPositionsOnCancelOrFail = false
+        let row = outlineView.row(forItem: node)
+        if row >= 0,
+           let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) as? WorkspaceSidebarRowView {
+            rowView.suppressSelectionDuringDrag = true
+            rowView.needsDisplay = true
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.updateLocalRootDraggingPresentation()
+        }
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        draggingImageForRowsWith dragRows: IndexSet,
+        tableColumns: [NSTableColumn],
+        event: NSEvent,
+        offset dragImageOffset: NSPointPointer
+    ) -> NSImage {
+        guard let row = dragRows.first,
+              let rowView = outlineView.rowView(atRow: row, makeIfNecessary: true) as? WorkspaceSidebarRowView else {
+            return NSImage(size: .zero)
+        }
+
+        let previousAlpha = rowView.alphaValue
+        let previousSuppression = rowView.suppressSelectionDuringDrag
+        rowView.alphaValue = 1
+        rowView.suppressSelectionDuringDrag = true
+        rowView.needsDisplay = true
+
+        let size = rowView.bounds.size
+        let image = NSImage(size: size)
+        image.lockFocus()
+        if let rep = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) {
+            rowView.cacheDisplay(in: rowView.bounds, to: rep)
+            image.addRepresentation(rep)
+        }
+        image.unlockFocus()
+
+        rowView.alphaValue = previousAlpha
+        rowView.suppressSelectionDuringDrag = previousSuppression
+        rowView.needsDisplay = true
+        dragImageOffset.pointee = NSPoint(x: 0, y: 0)
+        return image
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
@@ -327,6 +380,73 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private func finishLocalRootFolderDrag(operation: NSDragOperation) {
         if operation == .move {
             appContext.localLibraryStore.reorderRootFolders(ids: dataSource.currentLocalRootFolderIDs())
+        }
+        liveLocalRootFolderID = nil
+        liveLocalRootFolderIDs = nil
+        lastLiveLocalRootDropDestination = nil
+        updateLocalRootDraggingPresentation()
+    }
+
+    private func handleLocalRootFolderDragMoved(toWindowPoint windowPoint: NSPoint) {
+        guard let draggedID = liveLocalRootFolderID,
+              let folderIDs = liveLocalRootFolderIDs,
+              let sourceIndex = folderIDs.firstIndex(of: draggedID),
+              let targetIndex = localRootFolderDropIndex(forWindowPoint: windowPoint, folderIDs: folderIDs) else { return }
+        let clampedTarget = max(0, min(targetIndex, folderIDs.count))
+        var destination = clampedTarget
+        if sourceIndex < destination {
+            destination -= 1
+        }
+        guard sourceIndex != destination, destination >= 0, destination < folderIDs.count else { return }
+        guard lastLiveLocalRootDropDestination != destination else { return }
+        lastLiveLocalRootDropDestination = destination
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            liveLocalRootFolderIDs = dataSource.liveReorderLocalRootFolder(
+                id: draggedID,
+                to: destination,
+                in: outlineView
+            )
+            updateLocalRootDraggingPresentation()
+        }
+    }
+
+    private func localRootFolderDropIndex(
+        forWindowPoint windowPoint: NSPoint,
+        folderIDs: [LocalFolderNode.ID]
+    ) -> Int? {
+        let location = outlineView.convert(windowPoint, from: nil)
+        let row = outlineView.row(at: location)
+        guard row >= 0 else { return folderIDs.count }
+        guard let node = outlineView.item(atRow: row) as? WorkspaceSidebarNode else { return nil }
+        switch node {
+        case .group("本地"):
+            return folderIDs.count
+        case .localFolder(let folder):
+            guard let hoveredIndex = folderIDs.firstIndex(of: folder.id) else { return nil }
+            let rowRect = outlineView.rect(ofRow: row)
+            let insertAfterRow = location.y < rowRect.midY
+            let destination = insertAfterRow ? hoveredIndex + 1 : hoveredIndex
+            return max(0, min(destination, folderIDs.count))
+        default:
+            return nil
+        }
+    }
+
+    private func updateLocalRootDraggingPresentation() {
+        guard outlineView.numberOfRows > 0 else { return }
+        for row in 0..<outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? WorkspaceSidebarNode,
+                  case .localFolder(let folder) = node,
+                  let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) as? WorkspaceSidebarRowView else {
+                continue
+            }
+            let dragging = liveLocalRootFolderID == folder.id
+            rowView.alphaValue = 1
+            rowView.suppressSelectionDuringDrag = dragging
+            rowView.needsDisplay = true
+            outlineView.view(atColumn: 0, row: row, makeIfNecessary: false)?.alphaValue = dragging ? 0 : 1
         }
     }
 

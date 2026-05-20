@@ -4,8 +4,18 @@ import AppKit
 final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrollerHiding {
     var keyboardContextProvider: (() -> WorkspaceKeyboardContext)?
     var contextMenuProvider: ((Int) -> NSMenu?)?
-    var draggingUpdatedHandler: ((NSPoint) -> NSDragOperation)?
+    var draggingUpdatedHandler: ((NSPoint) -> Void)?
     var draggingSessionEndedHandler: ((NSDragOperation) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        draggingDestinationFeedbackStyle = .none
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
 
     override func accessibilityLabel() -> String? {
         "Workspace Sidebar"
@@ -30,8 +40,18 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let operation = draggingUpdatedHandler?(sender.draggingLocation) ?? []
-        return operation == [] ? super.draggingUpdated(sender) : operation
+        if sender.draggingPasteboard.string(forType: WorkspaceSidebarDataSource.localFolderDragType) != nil {
+            draggingUpdatedHandler?(sender.draggingLocation)
+            return .move
+        }
+        return super.draggingUpdated(sender)
+    }
+
+    override func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        .move
     }
 
     override func draggingSession(
@@ -54,8 +74,15 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
 }
 
 final class WorkspaceSidebarRowView: NSTableRowView {
+    var suppressSelectionDuringDrag = false
+
     override var isEmphasized: Bool {
         get { false }
         set {}
+    }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard !suppressSelectionDuringDrag else { return }
+        super.drawSelection(in: dirtyRect)
     }
 }
