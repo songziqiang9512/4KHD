@@ -4,7 +4,6 @@ import AppKit
 final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrollerHiding {
     var keyboardContextProvider: (() -> WorkspaceKeyboardContext)?
     var contextMenuProvider: ((Int) -> NSMenu?)?
-    var draggingUpdatedHandler: ((NSPoint) -> Void)?
     var draggingSessionEndedHandler: ((NSDragOperation) -> Void)?
 
     override init(frame frameRect: NSRect) {
@@ -40,10 +39,6 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        if sender.draggingPasteboard.string(forType: WorkspaceSidebarDataSource.localFolderDragType) != nil {
-            draggingUpdatedHandler?(sender.draggingLocation)
-            return .move
-        }
         return super.draggingUpdated(sender)
     }
 
