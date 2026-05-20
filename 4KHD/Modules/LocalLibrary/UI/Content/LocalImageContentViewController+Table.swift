@@ -218,8 +218,14 @@ final class LocalImageListCellView: NSTableCellView {
         titleLabel.stringValue = image.title
         resolutionLabel.stringValue = formattedResolution(metadata) ?? ""
         metadataLabel.stringValue = formattedSecondaryMetadata(metadata) ?? image.url.deletingLastPathComponent().path
-        thumbnailView.image = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
+        if let cached = LocalImageCache.shared.cachedImage(for: image.url, maxPixelSize: 160) {
+            thumbnailView.image = cached
+            imageTask?.cancel()
+            imageTask = nil
+            return
+        }
 
+        thumbnailView.image = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
         imageTask?.cancel()
         imageTask = Task { [weak self] in
             let loaded = await LocalImageCache.shared.image(for: image.url, maxPixelSize: 160)

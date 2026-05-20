@@ -26,7 +26,8 @@ extension LocalImageGridContainerView: NSCollectionViewDataSource {
             image: entry.image,
             metadata: entry.metadata,
             fileExists: entry.metadata?.fileExists ?? true,
-            isSelected: entry.image.id == selectedImageID
+            isSelected: entry.image.id == selectedImageID,
+            cachedThumbnail: LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512)
         ) { completion in
             guard FileManager.default.fileExists(atPath: entry.image.url.path) else {
                 completion(.missingFile)

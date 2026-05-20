@@ -123,6 +123,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
     }
 
     func resetForReuse() {
+        removeTransientAnimations()
         isHovering = false
         isPressingCard = false
         isSelectedState = false
@@ -197,6 +198,19 @@ final class WorkspaceThumbnailGridCardView: NSView {
         setHovering(false)
     }
 
+    func prepareForImmediateDisplay() {
+        removeTransientAnimations()
+        isHovering = false
+        isPressingCard = false
+        currentScale = 1
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.transform = CATransform3DIdentity
+        hoverOutline.alphaValue = 0
+        infoOverlay.alphaValue = 0
+        CATransaction.commit()
+    }
+
     private func setupView() {
         wantsLayer = true
         layer?.cornerRadius = 12
@@ -257,6 +271,15 @@ final class WorkspaceThumbnailGridCardView: NSView {
         addSubview(hoverOutline)
         addSubview(placeholderLabel)
         refreshAppearance()
+    }
+
+    private func removeTransientAnimations() {
+        layer?.removeAnimation(forKey: "workspace.grid.card.scale")
+        layer?.removeAllAnimations()
+        imageView.layer?.removeAllAnimations()
+        hoverOutline.layer?.removeAllAnimations()
+        infoOverlay.layer?.removeAllAnimations()
+        gradientLayer.removeAllAnimations()
     }
 
     private func setHovering(_ hovering: Bool) {

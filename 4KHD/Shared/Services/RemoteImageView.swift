@@ -170,18 +170,24 @@ final class RemoteImagePipeline {
 actor LocalImageCache {
     static let shared = LocalImageCache()
 
-    private let cache = NSCache<NSString, NSImage>()
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 700
+        cache.totalCostLimit = 640 * 1024 * 1024
+        return cache
+    }()
     private var inFlight: [String: Task<NSImage?, Never>] = [:]
     private var failedSignatures = Set<String>()
 
-    private init() {
-        cache.countLimit = 700
-        cache.totalCostLimit = 640 * 1024 * 1024
+    private init() {}
+
+    nonisolated func cachedImage(for url: URL, maxPixelSize: CGFloat?) -> NSImage? {
+        Self.cache.object(forKey: cacheKey(for: url, maxPixelSize: maxPixelSize) as NSString)
     }
 
     func image(for url: URL, maxPixelSize: CGFloat?) async -> NSImage? {
-        let key = "\(url.path)#\(Int(maxPixelSize ?? 0))"
-        if let cached = cache.object(forKey: key as NSString) {
+        let key = cacheKey(for: url, maxPixelSize: maxPixelSize)
+        if let cached = Self.cache.object(forKey: key as NSString) {
             return cached
         }
         let signature = failureSignature(for: url)
@@ -201,11 +207,15 @@ actor LocalImageCache {
 
         if let loaded {
             if let signature { failedSignatures.remove(signature) }
-            cache.setObject(loaded, forKey: key as NSString, cost: loaded.cacheCost)
+            Self.cache.setObject(loaded, forKey: key as NSString, cost: loaded.cacheCost)
         } else if let signature {
             failedSignatures.insert(signature)
         }
         return loaded
+    }
+
+    private nonisolated func cacheKey(for url: URL, maxPixelSize: CGFloat?) -> String {
+        "\(url.path)#\(Int(maxPixelSize ?? 0))"
     }
 
     private nonisolated func failureSignature(for url: URL) -> String? {
