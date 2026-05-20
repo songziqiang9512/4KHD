@@ -7,11 +7,13 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     private(set) var nodes: [WorkspaceSidebarNode] = []
     private var childrenByNode: [WorkspaceSidebarNode: [WorkspaceSidebarNode]] = [:]
     private var localRootFolderIDs = Set<LocalFolderNode.ID>()
+    private var lastLiveLocalRootDestination: Int?
     var localFolderDropHandler: ((URL) -> Void)?
     var localRootFolderOrderCommitHandler: (([LocalFolderNode.ID]) -> Void)?
 
     func reload(localRoots: [LocalLibraryRoot]) {
         childrenByNode = [:]
+        lastLiveLocalRootDestination = nil
         localRootFolderIDs = Set(localRoots.map(\.tree.id))
         let online = WorkspaceSidebarNode.group("线上")
         let local = WorkspaceSidebarNode.group("本地")
@@ -79,13 +81,19 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         proposedItem item: Any?,
         proposedChildIndex index: Int
     ) -> NSDragOperation {
-        if localRootFolderID(from: info.draggingPasteboard) != nil {
-            return localDropIndex(
+        if let folderID = localRootFolderID(from: info.draggingPasteboard) {
+            guard let destinationIndex = localDropIndex(
                 from: outlineView,
                 item: item,
                 childIndex: index,
                 draggingLocation: info.draggingLocation
-            ) == nil ? [] : .move
+            ) else { return [] }
+            outlineView.setDropItem(localRootGroup(), dropChildIndex: destinationIndex)
+            if lastLiveLocalRootDestination != destinationIndex {
+                lastLiveLocalRootDestination = destinationIndex
+                _ = liveReorderLocalRootFolder(id: folderID, toDropIndex: destinationIndex, in: outlineView)
+            }
+            return .move
         }
         return localFolderURL(from: info.draggingPasteboard) == nil ? [] : .copy
     }
@@ -97,6 +105,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         childIndex index: Int
     ) -> Bool {
         if localRootFolderID(from: info.draggingPasteboard) != nil {
+            lastLiveLocalRootDestination = nil
             localRootFolderOrderCommitHandler?(currentLocalRootFolderIDs())
             return true
         }
@@ -115,7 +124,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
 
     func liveReorderLocalRootFolder(
         id folderID: LocalFolderNode.ID,
-        to targetIndex: Int,
+        toDropIndex dropIndex: Int,
         in outlineView: NSOutlineView
     ) -> [LocalFolderNode.ID] {
         let localGroup = localRootGroup()
@@ -126,7 +135,11 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
               }) else {
             return currentLocalRootFolderIDs()
         }
-        let insertionIndex = max(0, min(targetIndex, localRoots.count - 1))
+        var insertionIndex = max(0, min(dropIndex, localRoots.count))
+        if sourceIndex < insertionIndex {
+            insertionIndex -= 1
+        }
+        insertionIndex = max(0, min(insertionIndex, localRoots.count - 1))
         guard sourceIndex != insertionIndex else {
             return currentLocalRootFolderIDs()
         }

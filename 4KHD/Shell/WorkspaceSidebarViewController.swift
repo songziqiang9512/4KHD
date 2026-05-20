@@ -31,9 +31,6 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private var routeObserverID: UUID?
     private var expandedNodeIDs = Set(WorkspaceWindowState.defaultExpandedSidebarNodeIDs)
     private var isApplyingExpandedNodeIDs = false
-    private var liveLocalRootFolderID: LocalFolderNode.ID?
-    private var liveLocalRootFolderIDs: [LocalFolderNode.ID]?
-    private var lastLiveLocalRootDropDestination: Int?
     private let reloadQueue = WorkspaceCoalescingQueue(
         name: "Workspace Sidebar Reload",
         interval: 0.05,
@@ -78,10 +75,6 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         }
         outlineView.contextMenuProvider = { [weak self] row in
             self?.makeContextMenu(forRow: row)
-        }
-        outlineView.draggingUpdatedHandler = { [weak self] windowPoint in
-            guard let self else { return [] }
-            return self.handleLocalRootFolderDragMoved(toWindowPoint: windowPoint)
         }
         outlineView.draggingSessionEndedHandler = { [weak self] operation in
             self?.finishLocalRootFolderDrag(operation: operation)
@@ -194,7 +187,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         willBeginAt screenPoint: NSPoint,
         forItems draggedItems: [Any]
     ) {
-        beginLocalRootFolderDrag(with: draggedItems)
+        guard let node = draggedItems.first as? WorkspaceSidebarNode,
+              case .localFolder(let folder) = node,
+              appContext.localLibraryStore.roots.contains(where: { $0.tree.id == folder.id }) else { return }
+        session.animatesToStartingPositionsOnCancelOrFail = false
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
@@ -328,70 +324,9 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         }
     }
 
-    private func handleLocalRootFolderDragMoved(toWindowPoint windowPoint: NSPoint) -> NSDragOperation {
-        guard let folderID = liveLocalRootFolderID,
-              let folderIDs = liveLocalRootFolderIDs,
-              let sourceIndex = folderIDs.firstIndex(of: folderID),
-              let destinationIndex = localRootDropIndex(forWindowPoint: windowPoint, folderIDs: folderIDs) else {
-            return []
-        }
-
-        let clampedTarget = max(0, min(destinationIndex, folderIDs.count))
-        var target = clampedTarget
-        if sourceIndex < target {
-            target -= 1
-        }
-        guard target >= 0, target <= folderIDs.count, sourceIndex != target else {
-            return .move
-        }
-        guard lastLiveLocalRootDropDestination != target else {
-            return .move
-        }
-        lastLiveLocalRootDropDestination = target
-        liveLocalRootFolderIDs = dataSource.liveReorderLocalRootFolder(id: folderID, to: target, in: outlineView)
-        return .move
-    }
-
-    private func beginLocalRootFolderDrag(with draggedItems: [Any]) {
-        guard let node = draggedItems.first as? WorkspaceSidebarNode,
-              case .localFolder(let folder) = node,
-              appContext.localLibraryStore.roots.contains(where: { $0.tree.id == folder.id }) else {
-            finishLocalRootFolderDrag(operation: [])
-            return
-        }
-        liveLocalRootFolderID = folder.id
-        liveLocalRootFolderIDs = dataSource.currentLocalRootFolderIDs()
-        lastLiveLocalRootDropDestination = nil
-    }
-
     private func finishLocalRootFolderDrag(operation: NSDragOperation) {
         if operation == .move {
             appContext.localLibraryStore.reorderRootFolders(ids: dataSource.currentLocalRootFolderIDs())
-        }
-        liveLocalRootFolderID = nil
-        liveLocalRootFolderIDs = nil
-        lastLiveLocalRootDropDestination = nil
-    }
-
-    private func localRootDropIndex(forWindowPoint windowPoint: NSPoint, folderIDs: [LocalFolderNode.ID]) -> Int? {
-        let localGroupRow = outlineView.row(forItem: WorkspaceSidebarNode.group("本地"))
-        guard localGroupRow >= 0 else { return nil }
-        let location = outlineView.convert(windowPoint, from: nil)
-        let row = outlineView.row(at: location)
-        if row < 0 {
-            return folderIDs.count
-        }
-        guard let node = outlineView.item(atRow: row) as? WorkspaceSidebarNode else { return nil }
-        switch node {
-        case .group("本地"):
-            return folderIDs.count
-        case .localFolder(let hoveredFolder):
-            guard folderIDs.contains(hoveredFolder.id) else { return nil }
-            let hoveredIndex = folderIDs.firstIndex(of: hoveredFolder.id) ?? 0
-            let rowRect = outlineView.rect(ofRow: row)
-            return location.y < rowRect.midY ? hoveredIndex + 1 : hoveredIndex
-        default:
-            return nil
         }
     }
 
