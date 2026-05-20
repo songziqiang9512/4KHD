@@ -255,7 +255,14 @@ final class LocalLibraryStore {
                 }
             } else if values.isRegularFile == true,
                       values.contentType?.conforms(to: .image) == true {
-                images.append(LocalImageItem(url: child.standardizedFileURL, title: child.lastPathComponent))
+                let imageURL = child.standardizedFileURL
+                let pixelSize = pixelSize(for: imageURL)
+                images.append(LocalImageItem(
+                    url: imageURL,
+                    title: child.lastPathComponent,
+                    pixelWidth: pixelSize?.width,
+                    pixelHeight: pixelSize?.height
+                ))
             }
         }
 

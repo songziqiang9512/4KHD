@@ -26,7 +26,10 @@ final class LocalImageGridContainerView: NSView {
 
     lazy var waterfallLayout: LocalImageGridLayout = {
         let layout = LocalImageGridLayout()
-        layout.aspectRatioProvider = { _ in 16.0 / 9.0 }
+        layout.aspectRatioProvider = { [weak self] indexPath in
+            guard let self, indexPath.item < self.entries.count else { return 16.0 / 9.0 }
+            return self.entries[indexPath.item].image.aspectRatio
+        }
         return layout
     }()
 
@@ -113,7 +116,7 @@ final class LocalImageGridContainerView: NSView {
             )
         }
         let ids = newEntries.map(\.image.id)
-        let visibleTextChanged = hasVisibleTextChanges(newEntries)
+        let metadataChanged = hasMetadataChanges(newEntries)
         let minimumColumnPreferenceChanged = waterfallLayout.minimumColumnCount != minimumColumnCount
         let columnPreferenceChanged = waterfallLayout.maximumColumnCount != maximumColumnCount
         let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
@@ -128,7 +131,7 @@ final class LocalImageGridContainerView: NSView {
             collectionView.reloadData()
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
-        } else if visibleTextChanged {
+        } else if metadataChanged {
             collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
             schedulePrefetch()
         } else if minimumColumnPreferenceChanged || columnPreferenceChanged || cardWidthPreferenceChanged {
@@ -162,26 +165,16 @@ final class LocalImageGridContainerView: NSView {
         ])
     }
 
-    private func hasVisibleTextChanges(_ newEntries: [Entry]) -> Bool {
+    private func hasMetadataChanges(_ newEntries: [Entry]) -> Bool {
         guard newEntries.count == entries.count else { return true }
         for (oldEntry, newEntry) in zip(entries, newEntries) {
             guard oldEntry.image.id == newEntry.image.id else { return true }
-            if metadataText(for: oldEntry) != metadataText(for: newEntry) { return true }
+            if oldEntry.metadata?.pixelWidth != newEntry.metadata?.pixelWidth { return true }
+            if oldEntry.metadata?.pixelHeight != newEntry.metadata?.pixelHeight { return true }
+            if formattedSecondaryMetadata(oldEntry.metadata) != formattedSecondaryMetadata(newEntry.metadata) { return true }
             if oldEntry.metadata?.fileExists != newEntry.metadata?.fileExists { return true }
         }
         return false
-    }
-
-    private func metadataText(for entry: Entry) -> String {
-        [
-            formattedResolution(entry.metadata),
-            formattedSecondaryMetadata(entry.metadata)
-        ]
-        .compactMap { value -> String? in
-            guard let value, !value.isEmpty else { return nil }
-            return value
-        }
-        .joined(separator: " · ")
     }
 
     private func syncSelection() {

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 struct LocalLibraryRoot: Identifiable, Hashable, Sendable {
@@ -29,6 +30,18 @@ struct LocalFolderNode: Identifiable, Hashable, Sendable {
 struct LocalImageItem: Identifiable, Hashable, Sendable {
     let url: URL
     let title: String
+    let pixelWidth: Int?
+    let pixelHeight: Int?
 
     nonisolated var id: String { url.path }
+
+    nonisolated var aspectRatio: CGFloat {
+        guard let pixelWidth,
+              let pixelHeight,
+              pixelWidth > 0,
+              pixelHeight > 0 else {
+            return 16.0 / 9.0
+        }
+        return CGFloat(pixelWidth) / CGFloat(pixelHeight)
+    }
 }

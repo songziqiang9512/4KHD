@@ -8,12 +8,11 @@ enum LocalImageMetadataService {
             for image in images {
                 guard !Task.isCancelled else { return result }
                 let values = try? image.url.resourceValues(forKeys: keys)
-                let pixelSize = pixelSize(for: image.url)
                 result[image.id] = LocalImageMetadata(
                     fileSize: values?.fileSize.map(Int64.init),
                     modifiedDate: values?.contentModificationDate,
-                    pixelWidth: pixelSize?.width,
-                    pixelHeight: pixelSize?.height,
+                    pixelWidth: image.pixelWidth,
+                    pixelHeight: image.pixelHeight,
                     fileExists: FileManager.default.fileExists(atPath: image.url.path)
                 )
             }
