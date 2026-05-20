@@ -89,6 +89,7 @@ final class LocalImageGridContainerView: NSView {
     override func layout() {
         super.layout()
         let width = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : bounds.width
+        guard width.isFinite, width > 1, width < 100_000 else { return }
         guard abs(width - lastLayoutWidth) > 0.5 else { return }
         lastLayoutWidth = width
         collectionView.collectionViewLayout?.invalidateLayout()
@@ -221,12 +222,16 @@ final class LocalImageGridContainerView: NSView {
         guard let attributes = waterfallLayout.layoutAttributesForItem(at: indexPath) else { return }
         let frame = attributes.frame
         let visible = scrollView.contentView.bounds
-        guard frame.isFiniteForScrolling, visible.isFiniteForScrolling else { return }
+        guard frame.isFiniteForScrolling,
+              visible.isFiniteForScrolling,
+              collectionView.bounds.isFiniteForScrolling else {
+            return
+        }
         guard !visible.contains(frame) else { return }
         let maxY = max(0, collectionView.bounds.height - visible.height)
         let targetY = frame.minY < visible.minY ? frame.minY - 4 : frame.maxY - visible.height + 4
         let y = min(max(0, targetY), maxY)
-        guard y.isFinite else { return }
+        guard y.isFinite, y < 100_000 else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }

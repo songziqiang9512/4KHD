@@ -29,33 +29,43 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             return
         }
 
-        let boundsWidth = collectionView.bounds.width
-        guard boundsWidth.isFinite, boundsWidth > 0, boundsWidth < maximumLayoutWidth else {
+        guard collectionView.bounds.isFiniteForWaterfallLayout else {
             contentHeight = 0
             return
         }
+        let boundsWidth = collectionView.bounds.width
 
-        let availableWidth = max(0, boundsWidth - sectionInset.left - sectionInset.right)
+        let inset = safeSectionInset()
+        let availableWidth = max(0, boundsWidth - inset.left - inset.right)
         let columns = columnCount(for: availableWidth)
         let estimatedWidth = max(60, (availableWidth - columnSpacing * CGFloat(columns - 1)) / CGFloat(columns))
         let hoverGap = estimatedWidth * (WorkspaceThumbnailGridCardAnimation.cardHoverScale - 1)
         let effectiveColumnSpacing = max(columnSpacing, hoverGap)
         let effectiveRowSpacing = max(rowSpacing, hoverGap)
         let columnWidth = max(60, (availableWidth - effectiveColumnSpacing * CGFloat(columns - 1)) / CGFloat(columns))
-        guard columnWidth.isFinite, effectiveColumnSpacing.isFinite, effectiveRowSpacing.isFinite else {
+        guard columnWidth.isFinite,
+              effectiveColumnSpacing.isFinite,
+              effectiveRowSpacing.isFinite,
+              columns > 0 else {
             contentHeight = 0
             return
         }
-        var columnHeights = [CGFloat](repeating: sectionInset.top, count: columns)
+        var columnHeights = [CGFloat](repeating: inset.top, count: columns)
 
         for item in 0 ..< collectionView.numberOfItems(inSection: 0) {
             let indexPath = IndexPath(item: item, section: 0)
             let column = columnHeights.indices.min { columnHeights[$0] < columnHeights[$1] } ?? 0
             let ratio = clampedAspectRatio(for: indexPath)
             let height = columnWidth / ratio
-            let x = sectionInset.left + CGFloat(column) * (columnWidth + effectiveColumnSpacing)
+            let x = inset.left + CGFloat(column) * (columnWidth + effectiveColumnSpacing)
             let y = columnHeights[column]
-            guard x.isFinite, y.isFinite, height.isFinite else { continue }
+            guard x.isFinite,
+                  y.isFinite,
+                  height.isFinite,
+                  height > 0,
+                  y < maximumLayoutWidth else {
+                continue
+            }
             let attributes = NSCollectionViewLayoutAttributes(forItemWith: indexPath)
             attributes.frame = CGRect(
                 x: x,
@@ -67,10 +77,13 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             columnHeights[column] += height + effectiveRowSpacing
         }
 
-        contentHeight = max(
-            (columnHeights.max() ?? sectionInset.top) + sectionInset.bottom - effectiveRowSpacing,
-            sectionInset.top + sectionInset.bottom
+        let resolvedHeight = max(
+            (columnHeights.max() ?? inset.top) + inset.bottom - effectiveRowSpacing,
+            inset.top + inset.bottom
         )
+        contentHeight = resolvedHeight.isFinite && resolvedHeight >= 0 && resolvedHeight < maximumLayoutWidth
+            ? resolvedHeight
+            : 0
     }
 
     override var collectionViewContentSize: NSSize {
@@ -81,7 +94,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     }
 
     override func layoutAttributesForElements(in rect: NSRect) -> [NSCollectionViewLayoutAttributes] {
-        cache.filter { $0.frame.intersects(rect) }
+        guard rect.isFiniteForWaterfallLayout else { return [] }
+        return cache.filter { $0.frame.intersects(rect) }
     }
 
     override func layoutAttributesForItem(at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
@@ -90,7 +104,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
     override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool {
         guard let collectionView else { return false }
-        guard collectionView.bounds.width.isFinite, newBounds.width.isFinite else { return true }
+        guard collectionView.bounds.isFiniteForWaterfallLayout, newBounds.isFiniteForWaterfallLayout else { return true }
         return abs(collectionView.bounds.width - newBounds.width) > 0.5
     }
 
@@ -119,5 +133,27 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         if oldValue.isFinite != newValue.isFinite || abs(oldValue - newValue) > 0.001 {
             invalidateLayout()
         }
+    }
+
+    private func safeSectionInset() -> NSEdgeInsets {
+        NSEdgeInsets(
+            top: sectionInset.top.isFinite && sectionInset.top >= 0 ? sectionInset.top : 0,
+            left: sectionInset.left.isFinite && sectionInset.left >= 0 ? sectionInset.left : 0,
+            bottom: sectionInset.bottom.isFinite && sectionInset.bottom >= 0 ? sectionInset.bottom : 0,
+            right: sectionInset.right.isFinite && sectionInset.right >= 0 ? sectionInset.right : 0
+        )
+    }
+}
+
+private extension NSRect {
+    var isFiniteForWaterfallLayout: Bool {
+        origin.x.isFinite
+            && origin.y.isFinite
+            && size.width.isFinite
+            && size.height.isFinite
+            && size.width > 0
+            && size.height >= 0
+            && size.width < 100_000
+            && size.height < 100_000
     }
 }

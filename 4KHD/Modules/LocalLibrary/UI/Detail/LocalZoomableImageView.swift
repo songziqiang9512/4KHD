@@ -116,16 +116,27 @@ final class LocalZoomableImageView: NSView {
     }
 
     private func fitImage(resetMagnification: Bool) {
-        guard let image = imageView.image, image.size.width > 0, image.size.height > 0 else { return }
+        guard let image = imageView.image,
+              image.size.isFiniteForLocalZoom,
+              image.size.width > 0,
+              image.size.height > 0 else {
+            return
+        }
         if resetMagnification {
             scrollView.magnification = 1
             scrollView.layoutSubtreeIfNeeded()
         }
         let viewportSize = scrollView.contentView.bounds.size
-        guard viewportSize.width > 1, viewportSize.height > 1 else { return }
+        guard viewportSize.isFiniteForLocalZoom,
+              viewportSize.width > 1,
+              viewportSize.height > 1 else {
+            return
+        }
 
         let fitScale = min(viewportSize.width / image.size.width, viewportSize.height / image.size.height)
+        guard fitScale.isFinite, fitScale > 0 else { return }
         let fittedSize = NSSize(width: image.size.width * fitScale, height: image.size.height * fitScale)
+        guard fittedSize.isFiniteForLocalZoom else { return }
         documentView.frame = NSRect(origin: .zero, size: viewportSize)
         imageView.frame = NSRect(
             x: max((viewportSize.width - fittedSize.width) / 2, 0),
@@ -155,10 +166,12 @@ final class LocalZoomableImageView: NSView {
 
 private final class LocalCenteringClipView: NSClipView {
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        guard proposedBounds.isFiniteForLocalZoom else { return bounds }
         var constrained = super.constrainBoundsRect(proposedBounds)
         guard let documentView else { return constrained }
 
         let documentFrame = documentView.frame
+        guard documentFrame.isFiniteForLocalZoom else { return constrained }
         if documentFrame.width < proposedBounds.width {
             constrained.origin.x = floor((documentFrame.width - proposedBounds.width) / 2)
         }
@@ -199,10 +212,30 @@ private final class LocalZoomScrollView: NSScrollView {
         }
 
         let visibleRect = contentView.bounds
+        guard visibleRect.isFiniteForLocalZoom else { return }
         let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
         setMagnification(proposedMagnification, centeredAt: center)
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
             onMagnifyEndedBelowBaseline?()
         }
+    }
+}
+
+private extension NSSize {
+    var isFiniteForLocalZoom: Bool {
+        width.isFinite
+            && height.isFinite
+            && width >= 0
+            && height >= 0
+            && width < 100_000
+            && height < 100_000
+    }
+}
+
+private extension NSRect {
+    var isFiniteForLocalZoom: Bool {
+        origin.x.isFinite
+            && origin.y.isFinite
+            && size.isFiniteForLocalZoom
     }
 }

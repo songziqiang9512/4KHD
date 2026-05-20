@@ -13,7 +13,7 @@ enum WorkspaceThumbnailGridCardAnimation {
 }
 
 final class WorkspaceThumbnailGridCardView: NSView {
-    private let imageView = NSImageView()
+    private let imageView = WorkspaceAspectFillImageView()
     private let placeholderLabel = NSTextField(labelWithString: "加载中...")
     private let hoverOutline = NSView()
     private let infoOverlay = NSView()
@@ -219,8 +219,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
         layer?.masksToBounds = true
         layer?.borderWidth = 1
 
-        imageView.imageScaling = .scaleAxesIndependently
-
         placeholderLabel.alignment = .center
         placeholderLabel.textColor = .secondaryLabelColor
         placeholderLabel.font = .systemFont(ofSize: 11)
@@ -390,5 +388,41 @@ private extension NSRect {
             && size.height > 0
             && size.width < 100_000
             && size.height < 100_000
+    }
+}
+
+private final class WorkspaceAspectFillImageView: NSView {
+    var image: NSImage? {
+        didSet { needsDisplay = true }
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let image else { return }
+        image.draw(
+            in: imageRect(for: bounds, imageSize: image.size),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+    }
+
+    private func imageRect(for bounds: NSRect, imageSize: NSSize) -> NSRect {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return .zero
+        }
+        let widthScale = bounds.width / imageSize.width
+        let heightScale = bounds.height / imageSize.height
+        let scale = max(widthScale, heightScale)
+        guard scale.isFinite, scale > 0 else { return .zero }
+
+        let size = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let x = floor((bounds.width - size.width) / 2)
+        let y = floor((bounds.height - size.height) / 2)
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 }
