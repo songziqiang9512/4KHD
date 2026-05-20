@@ -26,10 +26,7 @@ final class LocalImageGridContainerView: NSView {
 
     lazy var waterfallLayout: LocalImageGridLayout = {
         let layout = LocalImageGridLayout()
-        layout.aspectRatioProvider = { [weak self] indexPath in
-            guard let self, indexPath.item < self.entries.count else { return 16.0 / 9.0 }
-            return self.aspectRatio(for: self.entries[indexPath.item])
-        }
+        layout.aspectRatioProvider = { _ in 16.0 / 9.0 }
         return layout
     }()
 
@@ -116,7 +113,7 @@ final class LocalImageGridContainerView: NSView {
             )
         }
         let ids = newEntries.map(\.image.id)
-        let metadataChanged = hasMetadataChanges(newEntries)
+        let visibleTextChanged = hasVisibleTextChanges(newEntries)
         let minimumColumnPreferenceChanged = waterfallLayout.minimumColumnCount != minimumColumnCount
         let columnPreferenceChanged = waterfallLayout.maximumColumnCount != maximumColumnCount
         let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
@@ -131,9 +128,8 @@ final class LocalImageGridContainerView: NSView {
             collectionView.reloadData()
             collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
-        } else if metadataChanged {
+        } else if visibleTextChanged {
             collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
-            collectionView.collectionViewLayout?.invalidateLayout()
             schedulePrefetch()
         } else if minimumColumnPreferenceChanged || columnPreferenceChanged || cardWidthPreferenceChanged {
             collectionView.collectionViewLayout?.invalidateLayout()
@@ -166,32 +162,26 @@ final class LocalImageGridContainerView: NSView {
         ])
     }
 
-    private func hasMetadataChanges(_ newEntries: [Entry]) -> Bool {
+    private func hasVisibleTextChanges(_ newEntries: [Entry]) -> Bool {
         guard newEntries.count == entries.count else { return true }
         for (oldEntry, newEntry) in zip(entries, newEntries) {
             guard oldEntry.image.id == newEntry.image.id else { return true }
-            if oldEntry.metadata?.pixelWidth != newEntry.metadata?.pixelWidth { return true }
-            if oldEntry.metadata?.pixelHeight != newEntry.metadata?.pixelHeight { return true }
+            if metadataText(for: oldEntry) != metadataText(for: newEntry) { return true }
             if oldEntry.metadata?.fileExists != newEntry.metadata?.fileExists { return true }
         }
         return false
     }
 
-    private func aspectRatio(for entry: Entry) -> CGFloat {
-        if let width = entry.metadata?.pixelWidth,
-           let height = entry.metadata?.pixelHeight,
-           width > 0,
-           height > 0 {
-            return CGFloat(width) / CGFloat(height)
+    private func metadataText(for entry: Entry) -> String {
+        [
+            formattedResolution(entry.metadata),
+            formattedSecondaryMetadata(entry.metadata)
+        ]
+        .compactMap { value -> String? in
+            guard let value, !value.isEmpty else { return nil }
+            return value
         }
-
-        if let cachedThumbnail = LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512),
-           cachedThumbnail.size.width > 0,
-           cachedThumbnail.size.height > 0 {
-            return cachedThumbnail.size.width / cachedThumbnail.size.height
-        }
-
-        return 16.0 / 9.0
+        .joined(separator: " · ")
     }
 
     private func syncSelection() {
