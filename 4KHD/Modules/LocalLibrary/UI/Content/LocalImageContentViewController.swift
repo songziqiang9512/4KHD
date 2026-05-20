@@ -244,8 +244,9 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         metadataTask = Task { [weak self] in
             let metadata = await LocalImageMetadataService.loadMetadata(for: images)
             guard !Task.isCancelled else { return }
-            self?.metadataByImageID = metadata
-            self?.reloadContent()
+            guard let self else { return }
+            self.metadataByImageID.merge(metadata) { _, new in new }
+            self.reloadContent()
         }
         availabilityTask = Task { [weak self] in
             while !Task.isCancelled {

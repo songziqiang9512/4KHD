@@ -28,7 +28,7 @@ final class LocalImageGridContainerView: NSView {
         let layout = LocalImageGridLayout()
         layout.aspectRatioProvider = { [weak self] indexPath in
             guard let self, indexPath.item < self.entries.count else { return 16.0 / 9.0 }
-            return self.aspectRatio(for: self.entries[indexPath.item].metadata)
+            return self.aspectRatio(for: self.entries[indexPath.item])
         }
         return layout
     }()
@@ -176,14 +176,21 @@ final class LocalImageGridContainerView: NSView {
         return false
     }
 
-    private func aspectRatio(for metadata: LocalImageMetadata?) -> CGFloat {
-        guard let width = metadata?.pixelWidth,
-              let height = metadata?.pixelHeight,
-              width > 0,
-              height > 0 else {
-            return 16.0 / 9.0
+    private func aspectRatio(for entry: Entry) -> CGFloat {
+        if let width = entry.metadata?.pixelWidth,
+           let height = entry.metadata?.pixelHeight,
+           width > 0,
+           height > 0 {
+            return CGFloat(width) / CGFloat(height)
         }
-        return CGFloat(width) / CGFloat(height)
+
+        if let cachedThumbnail = LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512),
+           cachedThumbnail.size.width > 0,
+           cachedThumbnail.size.height > 0 {
+            return cachedThumbnail.size.width / cachedThumbnail.size.height
+        }
+
+        return 16.0 / 9.0
     }
 
     private func syncSelection() {
