@@ -41,6 +41,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
 
     override func layout() {
         super.layout()
+        guard bounds.isUsableForManualLayout else { return }
         ensureLayerAnchorCentered()
         let fontSizes = fontSizeForWidth(bounds.width)
         titleLabel.font = .systemFont(ofSize: fontSizes.title, weight: .medium)
@@ -345,10 +346,11 @@ final class WorkspaceThumbnailGridCardView: NSView {
     }
 
     private func ensureLayerAnchorCentered() {
-        guard let layer, !bounds.isEmpty else { return }
+        guard let layer, bounds.isUsableForManualLayout else { return }
+        let preservedFrame = layer.frame
+        guard preservedFrame.isUsableForManualLayout else { return }
         guard abs(layer.anchorPoint.x - 0.5) > 0.0001
            || abs(layer.anchorPoint.y - 0.5) > 0.0001 else { return }
-        let preservedFrame = layer.frame
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
@@ -375,4 +377,17 @@ final class WorkspaceThumbnailGridCardView: NSView {
         refreshAppearance()
     }
 
+}
+
+private extension NSRect {
+    var isUsableForManualLayout: Bool {
+        origin.x.isFinite
+            && origin.y.isFinite
+            && size.width.isFinite
+            && size.height.isFinite
+            && size.width > 0
+            && size.height > 0
+            && size.width < 100_000
+            && size.height < 100_000
+    }
 }

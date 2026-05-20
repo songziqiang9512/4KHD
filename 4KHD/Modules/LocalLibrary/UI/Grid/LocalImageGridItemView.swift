@@ -22,17 +22,6 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         setupView()
     }
 
-    override func apply(_ layoutAttributes: NSCollectionViewLayoutAttributes) {
-        super.apply(layoutAttributes)
-        view.frame = layoutAttributes.frame
-        cardView.frame = view.bounds
-    }
-
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        cardView.frame = view.bounds
-    }
-
     override func prepareForReuse() {
         super.prepareForReuse()
         representedID = nil
@@ -96,6 +85,13 @@ final class LocalImageGridItemView: NSCollectionViewItem {
 
     private func setupView() {
         view.addSubview(cardView)
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cardView.topAnchor.constraint(equalTo: view.topAnchor),
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
 
     private func metadataText(for image: LocalImageItem, metadata: LocalImageMetadata?) -> String {

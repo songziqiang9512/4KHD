@@ -221,8 +221,12 @@ final class LocalImageGridContainerView: NSView {
         guard let attributes = waterfallLayout.layoutAttributesForItem(at: indexPath) else { return }
         let frame = attributes.frame
         let visible = scrollView.contentView.bounds
+        guard frame.isFiniteForScrolling, visible.isFiniteForScrolling else { return }
         guard !visible.contains(frame) else { return }
-        let y = frame.minY < visible.minY ? max(0, frame.minY - 4) : frame.maxY - visible.height + 4
+        let maxY = max(0, collectionView.bounds.height - visible.height)
+        let targetY = frame.minY < visible.minY ? frame.minY - 4 : frame.maxY - visible.height + 4
+        let y = min(max(0, targetY), maxY)
+        guard y.isFinite else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
@@ -306,5 +310,16 @@ final class LocalImageGridContainerView: NSView {
                 _ = await LocalImageCache.shared.image(for: url, maxPixelSize: 512)
             }
         }
+    }
+}
+
+private extension NSRect {
+    var isFiniteForScrolling: Bool {
+        origin.x.isFinite
+            && origin.y.isFinite
+            && size.width.isFinite
+            && size.height.isFinite
+            && size.width >= 0
+            && size.height >= 0
     }
 }
