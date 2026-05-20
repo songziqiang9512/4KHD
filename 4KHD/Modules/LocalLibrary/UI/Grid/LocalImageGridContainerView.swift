@@ -8,6 +8,7 @@ final class LocalImageGridContainerView: NSView {
     }
 
     var onSelect: ((Int) -> Void)?
+    var onOpenDetail: (() -> Void)?
     var onQuickLook: ((LocalImageItem) -> Void)?
     var onShowInfo: ((LocalImageItem) -> Void)?
 
@@ -50,6 +51,9 @@ final class LocalImageGridContainerView: NSView {
         }
         collectionView.spaceKeyHandler = { [weak self] in
             self?.quickLookSelected() ?? false
+        }
+        collectionView.doubleClickHandler = { [weak self] indexPath in
+            self?.openDetail(at: indexPath)
         }
         collectionView.cardPressStateHandler = { [weak self] indexPath, isPressed in
             self?.updateCardPressState(at: indexPath, isPressed: isPressed)
@@ -246,6 +250,12 @@ final class LocalImageGridContainerView: NSView {
         guard let selected = selectedEntry else { return false }
         onQuickLook?(selected.image)
         return true
+    }
+
+    private func openDetail(at indexPath: IndexPath) {
+        guard entries.indices.contains(indexPath.item) else { return }
+        selectItem(at: indexPath.item, scroll: false)
+        onOpenDetail?()
     }
 
     private func onQuickLookSync() {

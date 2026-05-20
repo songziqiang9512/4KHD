@@ -4,6 +4,7 @@ import Nuke
 @MainActor
 final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     var onSelect: ((GalleryItem) -> Void)?
+    var onOpenDetail: (() -> Void)?
     var onNeedsMore: (() -> Void)?
     var contextMenuProvider: ((GalleryItem) -> NSMenu?)?
 
@@ -228,6 +229,9 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         collectionView.contextMenuProvider = { [weak self] indexPath in
             self?.makeContextMenu(for: indexPath)
         }
+        collectionView.doubleClickHandler = { [weak self] indexPath in
+            self?.openDetail(for: indexPath)
+        }
         collectionView.register(GalleryGridItemView.self, forItemWithIdentifier: GalleryGridItemView.reuseID)
         collectionView.register(GalleryGridFooterItem.self, forItemWithIdentifier: GalleryGridFooterItem.reuseID)
 
@@ -402,11 +406,24 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         onSelect?(item)
         return contextMenuProvider?(item)
     }
+
+    private func openDetail(for indexPath: IndexPath) {
+        guard items.indices.contains(indexPath.item) else { return }
+        let item = items[indexPath.item]
+        selectedItemID = item.id
+        isApplyingSelection = true
+        collectionView.selectionIndexPaths = [indexPath]
+        isApplyingSelection = false
+        refreshVisibleSelection()
+        onSelect?(item)
+        onOpenDetail?()
+    }
 }
 
 final class GalleryGridCollectionView: NSCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
     var contextMenuProvider: ((IndexPath?) -> NSMenu?)?
+    var doubleClickHandler: ((IndexPath) -> Void)?
     private var hoverTrackingArea: NSTrackingArea?
     private var lastHoveredIndexPath: IndexPath?
 
@@ -445,6 +462,15 @@ final class GalleryGridCollectionView: NSCollectionView {
         lastHoveredIndexPath = nil
         clearVisibleHoverState()
         super.mouseExited(with: event)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let clickedIndexPath = indexPathForItem(at: point)
+        super.mouseDown(with: event)
+        if event.clickCount == 2, let clickedIndexPath {
+            doubleClickHandler?(clickedIndexPath)
+        }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

@@ -5,6 +5,7 @@ final class LocalImageGridCollectionView: NSCollectionView {
     var focusHandler: (() -> Void)?
     var arrowKeyHandler: ((Int) -> Bool)?
     var spaceKeyHandler: (() -> Bool)?
+    var doubleClickHandler: ((IndexPath) -> Void)?
     var cardPressStateHandler: ((IndexPath, Bool) -> Void)?
 
     private var pressedCardIndexPath: IndexPath?
@@ -47,6 +48,9 @@ final class LocalImageGridCollectionView: NSCollectionView {
             cardPressStateHandler?(indexPath, true)
         }
         super.mouseDown(with: event)
+        if event.clickCount == 2, let indexPath = indexPathForItem(at: point) {
+            doubleClickHandler?(indexPath)
+        }
     }
 
     override func mouseUp(with event: NSEvent) {

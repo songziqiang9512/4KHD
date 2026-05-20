@@ -71,6 +71,9 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         gridView.onSelect = { [weak self] index in
             self?.localLibrary.selectImage(at: index)
         }
+        gridView.onOpenDetail = { [weak self] in
+            self?.detailPane.setPresented(true)
+        }
         gridView.onQuickLook = { image in
             LocalQuickLookController.shared.open(url: image.url)
         }
@@ -105,6 +108,8 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         tableView.quickLookHandler = { [weak self] in
             self?.quickLookSelected() ?? false
         }
+        tableView.target = self
+        tableView.doubleAction = #selector(openSelectedTableImageInDetail)
     }
 
     private func reloadContent() {
@@ -340,6 +345,13 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         let image = filteredEntries[row].image
         cell.configure(image: image, metadata: metadataByImageID[image.id])
         return cell
+    }
+
+    @objc private func openSelectedTableImageInDetail() {
+        let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
+        guard filteredEntries.indices.contains(row) else { return }
+        localLibrary.selectImage(at: filteredEntries[row].originalIndex)
+        detailPane.setPresented(true)
     }
 }
 

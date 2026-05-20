@@ -89,11 +89,16 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacentFromTable(delta: delta) ?? false
         }
+        tableView.target = self
+        tableView.doubleAction = #selector(openSelectedTableItemInDetail)
     }
 
     private func setupGrid() {
         gridView.onSelect = { [weak self] item in
             self?.library.select(item)
+        }
+        gridView.onOpenDetail = { [weak self] in
+            self?.detailPane.setPresented(true)
         }
         gridView.onNeedsMore = { [weak self] in
             self?.library.loadMoreListIfNeeded()
@@ -355,6 +360,13 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         }
 
         return true
+    }
+
+    @objc private func openSelectedTableItemInDetail() {
+        let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
+        guard rows.indices.contains(row), case .item(let id) = rows[row], let item = rowItems[id] else { return }
+        library.select(item)
+        detailPane.setPresented(true)
     }
 
     private func renameFavoriteGroup(_ group: FavoriteAuthorGroup) {
