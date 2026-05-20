@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 import Nuke
 import ImageIO
@@ -170,6 +171,16 @@ final class RemoteImagePipeline {
 actor LocalImageCache {
     static let shared = LocalImageCache()
 
+    private static let diskCacheDirectory: URL = {
+        let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let directory = supportDirectory
+            .appendingPathComponent("4KHD", isDirectory: true)
+            .appendingPathComponent("LocalImageThumbnails", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }()
+
     private static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 700
@@ -182,13 +193,23 @@ actor LocalImageCache {
     private init() {}
 
     nonisolated func cachedImage(for url: URL, maxPixelSize: CGFloat?) -> NSImage? {
-        Self.cache.object(forKey: cacheKey(for: url, maxPixelSize: maxPixelSize) as NSString)
+        let key = cacheKey(for: url, maxPixelSize: maxPixelSize)
+        if let cached = Self.cache.object(forKey: key as NSString) {
+            return cached
+        }
+        guard let diskImage = Self.diskImage(forKey: key) else { return nil }
+        Self.cache.setObject(diskImage, forKey: key as NSString, cost: diskImage.cacheCost)
+        return diskImage
     }
 
     func image(for url: URL, maxPixelSize: CGFloat?) async -> NSImage? {
         let key = cacheKey(for: url, maxPixelSize: maxPixelSize)
         if let cached = Self.cache.object(forKey: key as NSString) {
             return cached
+        }
+        if let diskImage = Self.diskImage(forKey: key) {
+            Self.cache.setObject(diskImage, forKey: key as NSString, cost: diskImage.cacheCost)
+            return diskImage
         }
         let signature = failureSignature(for: url)
         if let signature, failedSignatures.contains(signature) {
@@ -208,6 +229,7 @@ actor LocalImageCache {
         if let loaded {
             if let signature { failedSignatures.remove(signature) }
             Self.cache.setObject(loaded, forKey: key as NSString, cost: loaded.cacheCost)
+            Self.writeToDisk(loaded, forKey: key)
         } else if let signature {
             failedSignatures.insert(signature)
         }
@@ -215,14 +237,43 @@ actor LocalImageCache {
     }
 
     private nonisolated func cacheKey(for url: URL, maxPixelSize: CGFloat?) -> String {
-        "\(url.path)#\(Int(maxPixelSize ?? 0))"
+        "\(url.path)#\(fileSignature(for: url))#\(Int(maxPixelSize ?? 0))"
     }
 
     private nonisolated func failureSignature(for url: URL) -> String? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        fileSignature(for: url)
+    }
+
+    private nonisolated func fileSignature(for url: URL) -> String {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return "missing"
+        }
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
         let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         return "\(url.path)|\(size)|\(Int64(modifiedAt))"
+    }
+
+    private nonisolated static func diskImage(forKey key: String) -> NSImage? {
+        let url = diskCacheURL(forKey: key)
+        guard let data = try? Data(contentsOf: url),
+              let image = NSImage(data: data) else {
+            return nil
+        }
+        return image
+    }
+
+    private nonisolated static func writeToDisk(_ image: NSImage, forKey key: String) {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        guard let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.86]) else { return }
+        try? data.write(to: diskCacheURL(forKey: key), options: .atomic)
+    }
+
+    private nonisolated static func diskCacheURL(forKey key: String) -> URL {
+        let hash = SHA256.hash(data: Data(key.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return diskCacheDirectory.appendingPathComponent(hash).appendingPathExtension("jpg")
     }
 }
 

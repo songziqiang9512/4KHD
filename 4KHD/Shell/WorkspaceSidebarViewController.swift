@@ -292,14 +292,19 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         let route = appContext.routeController.route
         guard let path = dataSource.pathToNode(where: { routeMatches(route, node: $0) }),
               let selectedNode = path.last else {
-            outlineView.deselectAll(nil)
+            if outlineView.selectedRow >= 0 {
+                outlineView.deselectAll(nil)
+            }
             return
         }
         let row = outlineView.row(forItem: selectedNode)
         guard row >= 0 else {
-            outlineView.deselectAll(nil)
+            if outlineView.selectedRow >= 0 {
+                outlineView.deselectAll(nil)
+            }
             return
         }
+        guard outlineView.selectedRow != row else { return }
         outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         outlineView.scrollRowToVisible(row)
     }

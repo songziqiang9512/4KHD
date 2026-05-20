@@ -22,6 +22,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
     private let metadataLabel = NSTextField(labelWithString: "")
     private let missingOverlay = NSView()
     private let missingIcon = NSImageView()
+    private let placeholderImage = NSImage(size: NSSize(width: 1, height: 1))
 
     private var trackingAreaRef: NSTrackingArea?
     private var isHovering = false
@@ -129,7 +130,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         isPressingCard = false
         isSelectedState = false
         currentScale = 1
-        imageView.image = nil
+        imageView.image = placeholderImage
         placeholderLabel.stringValue = "加载中..."
         placeholderLabel.isHidden = false
         titleLabel.stringValue = ""
@@ -143,7 +144,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
     }
 
     func setImage(_ image: NSImage?) {
-        imageView.image = image
+        imageView.image = image ?? placeholderImage
         placeholderLabel.isHidden = image != nil
     }
 
@@ -218,7 +219,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         layer?.masksToBounds = true
         layer?.borderWidth = 1
 
-        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageScaling = .scaleAxesIndependently
 
         placeholderLabel.alignment = .center
         placeholderLabel.textColor = .secondaryLabelColor
