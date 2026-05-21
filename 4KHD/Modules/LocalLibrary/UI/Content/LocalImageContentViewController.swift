@@ -21,6 +21,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     private var metadataTask: Task<Void, Never>?
     private var availabilityTask: Task<Void, Never>?
     private var isObserving = false
+    private var isObservingGridLayoutPreferences = false
     var isApplyingSelection = false
 
     init(
@@ -56,6 +57,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         super.viewDidLoad()
         reloadContent()
         observeState()
+        observeGridLayoutPreferences()
     }
 
     func focus() {
@@ -132,14 +134,15 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         loadMetadataIfNeeded(for: metadataVisibleImages)
         switch preferences.layout {
         case .grid:
+            let gridLayoutPreferences = currentGridLayoutPreferences()
             setActiveView(gridView)
             gridView.update(
                 items: filteredEntries,
                 metadataByImageID: metadataByImageID,
                 selectedImageID: localLibrary.selectedImage?.id,
-                minimumColumnCount: detailPane.minimumGridColumnCount,
-                maximumColumnCount: detailPane.maximumGridColumnCount,
-                preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
+                minimumColumnCount: gridLayoutPreferences.minimumColumnCount,
+                maximumColumnCount: gridLayoutPreferences.maximumColumnCount,
+                preferredCardMinimumWidth: gridLayoutPreferences.preferredCardMinimumWidth
             )
         case .list:
             setActiveView(scrollView)
@@ -220,7 +223,6 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             _ = preferences.layout
             _ = preferences.sortField
             _ = preferences.sortDirection
-            _ = detailPane.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -229,6 +231,48 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                 self.observeState()
             }
         }
+    }
+
+    private func observeGridLayoutPreferences() {
+        guard !isObservingGridLayoutPreferences else { return }
+        isObservingGridLayoutPreferences = true
+        withObservationTracking {
+            _ = preferences.gridColumnCount
+            _ = detailPane.isPresented
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isObservingGridLayoutPreferences = false
+                self.updateGridLayoutPreferences()
+                self.observeGridLayoutPreferences()
+            }
+        }
+    }
+
+    private func updateGridLayoutPreferences() {
+        guard preferences.layout == .grid, activeView === gridView else { return }
+        let gridLayoutPreferences = currentGridLayoutPreferences()
+        gridView.updateLayoutPreferences(
+            minimumColumnCount: gridLayoutPreferences.minimumColumnCount,
+            maximumColumnCount: gridLayoutPreferences.maximumColumnCount,
+            preferredCardMinimumWidth: gridLayoutPreferences.preferredCardMinimumWidth
+        )
+    }
+
+    private func currentGridLayoutPreferences() -> GridLayoutPreferences {
+        if detailPane.isPresented {
+            return GridLayoutPreferences(
+                minimumColumnCount: detailPane.minimumGridColumnCount,
+                maximumColumnCount: detailPane.maximumGridColumnCount,
+                preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
+            )
+        }
+        let columnLimits = preferences.gridColumnLimits()
+        return GridLayoutPreferences(
+            minimumColumnCount: columnLimits.minimum,
+            maximumColumnCount: columnLimits.maximum,
+            preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
+        )
     }
 
     private func loadMetadataIfNeeded(for images: [LocalImageItem]) {
@@ -375,4 +419,10 @@ private struct LocalImageListRowSignature: Equatable {
     let title: String
     let resolution: String?
     let secondaryMetadata: String
+}
+
+private struct GridLayoutPreferences {
+    let minimumColumnCount: Int?
+    let maximumColumnCount: Int?
+    let preferredCardMinimumWidth: CGFloat
 }

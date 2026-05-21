@@ -40,6 +40,10 @@ final class WorkspaceCommandValidator {
         case #selector(WorkspaceSplitViewController.setContentGridLayout(_:)):
             updateLayoutValidationItem(item, moduleID: state.currentModuleID, isList: false)
             return true
+        case #selector(WorkspaceSplitViewController.increaseLocalGridColumns(_:)):
+            return canAdjustLocalGridColumns(1, moduleID: state.currentModuleID)
+        case #selector(WorkspaceSplitViewController.decreaseLocalGridColumns(_:)):
+            return canAdjustLocalGridColumns(-1, moduleID: state.currentModuleID)
         case #selector(WorkspaceSplitViewController.selectLocalSortFieldFromMenu(_:)):
             updateLocalSortFieldValidationItem(item, moduleID: state.currentModuleID)
             return state.currentModuleID == .localLibrary
@@ -144,6 +148,13 @@ final class WorkspaceCommandValidator {
         case .local(let snapshot):
             return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
         }
+    }
+
+    private func canAdjustLocalGridColumns(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {
+        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else {
+            return false
+        }
+        return delta > 0 ? snapshot.canIncreaseGridColumns : snapshot.canDecreaseGridColumns
     }
 
     private func updateFavoriteValidationItem(

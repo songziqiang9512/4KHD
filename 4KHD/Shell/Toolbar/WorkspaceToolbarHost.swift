@@ -7,6 +7,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let sidebarTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.sidebarTrackingSeparator")
         static let search = NSToolbarItem.Identifier("WorkspaceToolbar.search")
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
+        static let localGridColumns = NSToolbarItem.Identifier("WorkspaceToolbar.localGridColumns")
         static let localSort = NSToolbarItem.Identifier("WorkspaceToolbar.localSort")
         static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
         static let favorite = NSToolbarItem.Identifier("WorkspaceToolbar.favorite")
@@ -26,6 +27,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private var detailObserverID: UUID?
     private weak var searchItem: NSSearchToolbarItem?
     private weak var layoutControl: NSSegmentedControl?
+    private weak var localGridColumnsControl: NSSegmentedControl?
     private weak var localSortItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
     private weak var favoriteItem: NSToolbarItem?
@@ -97,6 +99,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
             ItemID.layout,
+            ItemID.localGridColumns,
             ItemID.localSort,
             ItemID.refresh,
             ItemID.favorite,
@@ -126,6 +129,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .flexibleSpace
         ]
         if currentModuleID == .localLibrary {
+            identifiers.append(ItemID.localGridColumns)
             identifiers.append(ItemID.localSort)
             identifiers.append(ItemID.importFolder)
         }
@@ -207,6 +211,37 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             item.visibilityPriority = .high
             layoutControl = control
             updateLayoutControl()
+            return item
+        case ItemID.localGridColumns:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            let increaseImage = NSImage(
+                systemSymbolName: "minus.magnifyingglass",
+                accessibilityDescription: "增加列数"
+            ) ?? NSImage()
+            let decreaseImage = NSImage(
+                systemSymbolName: "plus.magnifyingglass",
+                accessibilityDescription: "减少列数"
+            ) ?? NSImage()
+            let control = NSSegmentedControl(
+                images: [increaseImage, decreaseImage],
+                trackingMode: .momentary,
+                target: self,
+                action: #selector(localGridColumnsChanged(_:))
+            )
+            control.translatesAutoresizingMaskIntoConstraints = false
+            control.segmentStyle = .automatic
+            control.setWidth(32, forSegment: 0)
+            control.setWidth(32, forSegment: 1)
+            control.setToolTip("增加列数", forSegment: 0)
+            control.setToolTip("减少列数", forSegment: 1)
+            control.widthAnchor.constraint(equalToConstant: 72).isActive = true
+            control.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            item.view = control
+            item.label = "列数"
+            item.paletteLabel = "列数"
+            item.visibilityPriority = .high
+            localGridColumnsControl = control
+            updateLocalGridColumnsControl()
             return item
         case ItemID.localSort:
             let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
@@ -339,6 +374,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             canRefreshCurrentModule
         case ItemID.localSort:
             currentModuleID == .localLibrary
+        case ItemID.localGridColumns:
+            canAdjustLocalGridColumns
         case ItemID.favorite:
             canFavoriteCurrentModule
         case ItemID.resetZoom:
@@ -382,6 +419,18 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             appContext.toolbarContext.setGalleryLayout(sender.selectedSegment == 0 ? .list : .grid)
         case .localLibrary:
             appContext.toolbarContext.setLocalLayout(sender.selectedSegment == 0 ? .list : .grid)
+        }
+        refresh()
+    }
+
+    @objc private func localGridColumnsChanged(_ sender: NSSegmentedControl) {
+        switch sender.selectedSegment {
+        case 0:
+            appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
+        case 1:
+            appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
+        default:
+            break
         }
         refresh()
     }
@@ -513,6 +562,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = localSnapshot.sortDirection
             _ = localSnapshot.isRefreshing
             _ = localSnapshot.hasSelection
+            _ = localSnapshot.canIncreaseGridColumns
+            _ = localSnapshot.canDecreaseGridColumns
             _ = localSnapshot.canSelectPreviousImage
             _ = localSnapshot.canSelectNextImage
             _ = localSnapshot.canSaveImage
@@ -526,6 +577,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         syncToolbarItemIdentifiers()
         updateSearchField()
         updateLayoutControl()
+        updateLocalGridColumnsControl()
         updateLocalSortItem()
         updateRefreshItem()
         updateFavoriteItem()
@@ -574,6 +626,17 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         } else {
             localSortItem.toolTip = "本地图片排序"
         }
+    }
+
+    private func updateLocalGridColumnsControl() {
+        guard let localGridColumnsControl else { return }
+        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            localGridColumnsControl.setEnabled(false, forSegment: 0)
+            localGridColumnsControl.setEnabled(false, forSegment: 1)
+            return
+        }
+        localGridColumnsControl.setEnabled(snapshot.canIncreaseGridColumns, forSegment: 0)
+        localGridColumnsControl.setEnabled(snapshot.canDecreaseGridColumns, forSegment: 1)
     }
 
     private func updateRefreshItem() {
@@ -711,13 +774,21 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
     }
 
+    private var canAdjustLocalGridColumns: Bool {
+        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+            return false
+        }
+        return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
+    }
+
     private func configureDetailPaneItem(_ item: NSToolbarItem?) {
         guard let item else { return }
         let isPresented = appContext.detailPaneController.isPresented
+        let symbolName = isPresented ? "sidebar.right.filled" : "sidebar.right"
         item.image = NSImage(
-            systemSymbolName: "sidebar.right",
+            systemSymbolName: symbolName,
             accessibilityDescription: isPresented ? "隐藏详情区" : "显示详情区"
-        )
+        ) ?? NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
         item.toolTip = isPresented ? "隐藏右侧详情区" : "显示右侧详情区"
     }
 

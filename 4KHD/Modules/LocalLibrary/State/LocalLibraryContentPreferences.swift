@@ -42,6 +42,10 @@ final class LocalLibraryContentPreferences {
     private static let layoutDefaultsKey = "com.songziqiang.4khd.localContentLayout.v1"
     private static let sortFieldDefaultsKey = "com.songziqiang.4khd.localImageSortField.v1"
     private static let sortDirectionDefaultsKey = "com.songziqiang.4khd.localImageSortDirection.v1"
+    private static let gridColumnCountDefaultsKey = "com.songziqiang.4khd.localGridColumnCount.v1"
+    private static let legacyGridColumnOffsetDefaultsKey = "com.songziqiang.4khd.localGridColumnOffset.v1"
+    static let minimumGridColumnCount = 2
+    static let maximumGridColumnCount = 6
 
     var layout: LocalContentLayout {
         didSet {
@@ -63,6 +67,20 @@ final class LocalLibraryContentPreferences {
 
     var searchText = ""
 
+    var gridColumnCount: Int {
+        didSet {
+            UserDefaults.standard.set(gridColumnCount, forKey: Self.gridColumnCountDefaultsKey)
+        }
+    }
+
+    var canIncreaseGridColumns: Bool {
+        gridColumnCount < Self.maximumGridColumnCount
+    }
+
+    var canDecreaseGridColumns: Bool {
+        gridColumnCount > Self.minimumGridColumnCount
+    }
+
     init(defaults: UserDefaults = .standard) {
         let storedLayout = defaults.string(forKey: Self.layoutDefaultsKey)
         let storedSortField = defaults.string(forKey: Self.sortFieldDefaultsKey)
@@ -70,5 +88,25 @@ final class LocalLibraryContentPreferences {
         layout = LocalContentLayout(rawValue: storedLayout ?? "") ?? .grid
         sortField = LocalImageSortField(rawValue: storedSortField ?? "") ?? .name
         sortDirection = LocalImageSortDirection(rawValue: storedSortDirection ?? "") ?? .ascending
+        if let storedGridColumnCount = defaults.object(forKey: Self.gridColumnCountDefaultsKey) as? Int {
+            gridColumnCount = Self.clampedGridColumnCount(storedGridColumnCount)
+        } else {
+            let legacyOffset = defaults.integer(forKey: Self.legacyGridColumnOffsetDefaultsKey)
+            gridColumnCount = Self.clampedGridColumnCount(Self.minimumGridColumnCount + legacyOffset)
+        }
+    }
+
+    func adjustGridColumns(delta: Int) {
+        let nextColumnCount = Self.clampedGridColumnCount(gridColumnCount + delta)
+        guard nextColumnCount != gridColumnCount else { return }
+        gridColumnCount = nextColumnCount
+    }
+
+    func gridColumnLimits() -> (minimum: Int, maximum: Int) {
+        (gridColumnCount, gridColumnCount)
+    }
+
+    private static func clampedGridColumnCount(_ count: Int) -> Int {
+        min(max(count, minimumGridColumnCount), maximumGridColumnCount)
     }
 }

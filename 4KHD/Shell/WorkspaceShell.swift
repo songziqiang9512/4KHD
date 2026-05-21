@@ -210,6 +210,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         setContentLayout(isList: false)
     }
 
+    @objc func increaseLocalGridColumns(_ sender: Any?) {
+        appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
+        refreshToolbarState()
+    }
+
+    @objc func decreaseLocalGridColumns(_ sender: Any?) {
+        appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
+        refreshToolbarState()
+    }
+
     @objc func selectLocalSortFieldFromMenu(_ sender: NSMenuItem) {
         guard let field = sender.representedObject as? LocalImageSortField,
               case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
@@ -489,6 +499,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             } else {
                 self.splitLayoutController.applyDefaultSplitViewWidths()
             }
+            self.applyDetailPaneVisibility(self.appContext.detailPaneController.isPresented)
+            self.refreshToolbarState()
         }
     }
 

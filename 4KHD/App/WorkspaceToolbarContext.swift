@@ -26,6 +26,8 @@ enum WorkspaceToolbarSnapshot {
         let sortDirection: LocalImageSortDirection
         let isRefreshing: Bool
         let hasSelection: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
@@ -86,6 +88,7 @@ final class WorkspaceToolbarContext {
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
+    private let detailPaneController: WorkspaceDetailPaneController
     private let importRootFolderAction: () -> Void
 
     init(
@@ -96,6 +99,7 @@ final class WorkspaceToolbarContext {
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
         filmstripVisibility: FilmstripVisibilityController,
+        detailPaneController: WorkspaceDetailPaneController,
         importRootFolderAction: @escaping () -> Void
     ) {
         self.galleryStore = galleryStore
@@ -105,6 +109,7 @@ final class WorkspaceToolbarContext {
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
         self.filmstripVisibility = filmstripVisibility
+        self.detailPaneController = detailPaneController
         self.importRootFolderAction = importRootFolderAction
     }
 
@@ -132,6 +137,8 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             let selectedImageIndex = localLibraryStore.selectedImageIndex
             let imageCount = localLibraryStore.selectedImages.count
+            let canAdjustGridColumns = localPreferences.layout == .grid
+                && !detailPaneController.isPresented
             return .local(
                 .init(
                     searchText: localPreferences.searchText,
@@ -140,6 +147,10 @@ final class WorkspaceToolbarContext {
                     sortDirection: localPreferences.sortDirection,
                     isRefreshing: localLibraryStore.isScanning,
                     hasSelection: !localLibraryStore.roots.isEmpty,
+                    canIncreaseGridColumns: canAdjustGridColumns
+                        && localPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: canAdjustGridColumns
+                        && localPreferences.canDecreaseGridColumns,
                     canSelectPreviousImage: selectedImageIndex > 0,
                     canSelectNextImage: selectedImageIndex < imageCount - 1,
                     canSaveImage: localLibraryStore.selectedImage != nil,
@@ -184,6 +195,12 @@ final class WorkspaceToolbarContext {
     func setLocalSort(field: LocalImageSortField, direction: LocalImageSortDirection) {
         localPreferences.sortField = field
         localPreferences.sortDirection = direction
+    }
+
+    func adjustLocalGridColumns(delta: Int) {
+        guard localPreferences.layout == .grid,
+              !detailPaneController.isPresented else { return }
+        localPreferences.adjustGridColumns(delta: delta)
     }
 
     func refresh(for moduleID: WorkspaceModuleID) {

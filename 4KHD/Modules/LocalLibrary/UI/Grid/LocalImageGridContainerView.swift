@@ -1,6 +1,10 @@
 import AppKit
 
 final class LocalImageGridContainerView: NSView {
+    enum Section {
+        case main
+    }
+
     struct Entry {
         let originalIndex: Int
         let image: LocalImageItem
@@ -11,6 +15,11 @@ final class LocalImageGridContainerView: NSView {
     var onOpenDetail: (() -> Void)?
     var onQuickLook: ((LocalImageItem) -> Void)?
     var onShowInfo: ((LocalImageItem) -> Void)?
+
+    private lazy var dataSource = LocalImageGridDiffableDataSource(collectionView: collectionView) {
+        [weak self] collectionView, indexPath, imageID -> NSCollectionViewItem? in
+        self?.makeGridItem(collectionView: collectionView, indexPath: indexPath, imageID: imageID)
+    }
 
     let scrollView: NSScrollView = {
         let scrollView = NSScrollView()
@@ -39,7 +48,6 @@ final class LocalImageGridContainerView: NSView {
         collectionView.backgroundColors = [.clear]
         collectionView.isSelectable = true
         collectionView.allowsMultipleSelection = false
-        collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
         collectionView.setDraggingSourceOperationMask(.copy, forLocal: true)
@@ -66,6 +74,8 @@ final class LocalImageGridContainerView: NSView {
     var selectedImageID: LocalImageItem.ID?
     var isApplyingSelection = false
     private var lastAppliedIDs: [LocalImageItem.ID] = []
+    private var pendingIDs: [LocalImageItem.ID] = []
+    private var isSnapshotScheduled = false
     private var lastLayoutWidth: CGFloat = 0
     private var scrollObserver: NSObjectProtocol?
     private var prefetchWorkItem: DispatchWorkItem?
@@ -94,6 +104,9 @@ final class LocalImageGridContainerView: NSView {
         lastLayoutWidth = width
         collectionView.collectionViewLayout?.invalidateLayout()
         schedulePrefetch()
+        DispatchQueue.main.async { [weak self] in
+            self?.restoreVisibleLayoutIfNeeded()
+        }
     }
 
     func focus() {
@@ -127,19 +140,32 @@ final class LocalImageGridContainerView: NSView {
         waterfallLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
 
         if ids != lastAppliedIDs {
-            lastAppliedIDs = ids
-            collectionView.reloadData()
-            collectionView.collectionViewLayout?.invalidateLayout()
-            schedulePrefetch()
+            applySnapshot(ids: ids)
         } else if metadataChanged {
             collectionView.reloadItems(at: Set(collectionView.indexPathsForVisibleItems()))
             schedulePrefetch()
         } else if minimumColumnPreferenceChanged || columnPreferenceChanged || cardWidthPreferenceChanged {
-            collectionView.collectionViewLayout?.invalidateLayout()
-            schedulePrefetch()
+            refreshLayoutAfterGeometryChange()
         }
 
         syncSelection()
+    }
+
+    func updateLayoutPreferences(
+        minimumColumnCount: Int?,
+        maximumColumnCount: Int?,
+        preferredCardMinimumWidth: CGFloat
+    ) {
+        let minimumColumnPreferenceChanged = waterfallLayout.minimumColumnCount != minimumColumnCount
+        let maximumColumnPreferenceChanged = waterfallLayout.maximumColumnCount != maximumColumnCount
+        let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
+        guard minimumColumnPreferenceChanged || maximumColumnPreferenceChanged || cardWidthPreferenceChanged else {
+            return
+        }
+        waterfallLayout.minimumColumnCount = minimumColumnCount
+        waterfallLayout.maximumColumnCount = maximumColumnCount
+        waterfallLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
+        refreshLayoutAfterGeometryChange()
     }
 
     private func setupView() {
@@ -147,6 +173,10 @@ final class LocalImageGridContainerView: NSView {
         layer?.backgroundColor = NSColor.clear.cgColor
 
         scrollView.documentView = collectionView
+        dataSource.pasteboardWriter = { [weak self] indexPath in
+            guard let self, self.entries.indices.contains(indexPath.item) else { return nil }
+            return self.entries[indexPath.item].image.url as NSURL
+        }
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
@@ -175,6 +205,143 @@ final class LocalImageGridContainerView: NSView {
             if oldEntry.metadata?.fileExists != newEntry.metadata?.fileExists { return true }
         }
         return false
+    }
+
+    private func makeGridItem(
+        collectionView: NSCollectionView,
+        indexPath: IndexPath,
+        imageID: LocalImageItem.ID
+    ) -> NSCollectionViewItem {
+        guard let entry = entry(for: imageID),
+              let item = collectionView.makeItem(
+                withIdentifier: LocalImageGridItemView.reuseID,
+                for: indexPath
+              ) as? LocalImageGridItemView else {
+            return NSCollectionViewItem()
+        }
+
+        item.configure(
+            image: entry.image,
+            metadata: entry.metadata,
+            fileExists: entry.metadata?.fileExists ?? true,
+            isSelected: entry.image.id == selectedImageID,
+            cachedThumbnail: LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512)
+        ) { completion in
+            guard FileManager.default.fileExists(atPath: entry.image.url.path) else {
+                completion(.missingFile)
+                return
+            }
+            Task { @MainActor in
+                let image = await LocalImageCache.shared.image(for: entry.image.url, maxPixelSize: 512)
+                completion(image.map(LocalImageThumbnailLoadResult.image) ?? .unavailable)
+            }
+        }
+        return item
+    }
+
+    private func entry(for imageID: LocalImageItem.ID) -> Entry? {
+        entries.first { $0.image.id == imageID }
+    }
+
+    private func applySnapshot(ids: [LocalImageItem.ID]) {
+        pendingIDs = ids
+        guard !isSnapshotScheduled else { return }
+        isSnapshotScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isSnapshotScheduled = false
+            let ids = self.pendingIDs
+            guard ids != self.lastAppliedIDs else { return }
+            let animate = !self.lastAppliedIDs.isEmpty
+                && abs(ids.count - self.lastAppliedIDs.count)
+                    <= max(20, self.collectionView.indexPathsForVisibleItems().count + 10)
+            var snapshot = NSDiffableDataSourceSnapshot<Section, LocalImageItem.ID>()
+            snapshot.appendSections([.main])
+            snapshot.appendItems(ids, toSection: .main)
+            self.dataSource.apply(snapshot, animatingDifferences: animate) { [weak self] in
+                guard let self else { return }
+                self.lastAppliedIDs = ids
+                self.refreshLayoutAfterGeometryChange()
+                self.syncSelection()
+            }
+        }
+    }
+
+    private func refreshLayoutAfterGeometryChange() {
+        invalidateCollectionLayout()
+        restoreVisibleLayoutIfNeeded()
+        schedulePrefetch()
+    }
+
+    private func invalidateCollectionLayout() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            collectionView.collectionViewLayout?.invalidateLayout()
+            collectionView.needsLayout = true
+            collectionView.layoutSubtreeIfNeeded()
+        }
+        CATransaction.commit()
+    }
+
+    private func restoreVisibleLayoutIfNeeded() {
+        guard !entries.isEmpty else { return }
+        forceLayoutForVisibleRegion()
+        clampScrollPositionToContent()
+        scrollToSelectedItemIfVisibleRegionIsEmpty()
+        collectionView.needsLayout = true
+        collectionView.layoutSubtreeIfNeeded()
+    }
+
+    private func forceLayoutForVisibleRegion() {
+        let visible = scrollView.contentView.bounds
+        guard visible.isFiniteForScrolling else { return }
+        _ = waterfallLayout.layoutAttributesForElements(in: visible)
+    }
+
+    private func clampScrollPositionToContent() {
+        let visible = scrollView.contentView.bounds
+        guard visible.isFiniteForScrolling else { return }
+        let contentHeight = collectionView.collectionViewLayout?.collectionViewContentSize.height
+            ?? collectionView.bounds.height
+        guard contentHeight.isFinite, contentHeight >= 0 else { return }
+        let maxY = max(0, contentHeight - visible.height)
+        let y = min(max(0, visible.origin.y), maxY)
+        guard abs(y - visible.origin.y) > 0.5 else { return }
+        scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func scrollToSelectedItemIfVisibleRegionIsEmpty() {
+        let visible = scrollView.contentView.bounds
+        guard visible.isFiniteForScrolling,
+              visible.height > 1,
+              waterfallLayout.layoutAttributesForElements(in: visible).isEmpty,
+              let indexPath = visibleRecoveryIndexPath(),
+              let attributes = waterfallLayout.layoutAttributesForItem(at: indexPath) else {
+            return
+        }
+        let contentHeight = waterfallLayout.collectionViewContentSize.height
+        guard contentHeight.isFinite, contentHeight > visible.height else {
+            scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: 0))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            return
+        }
+        let maxY = max(0, contentHeight - visible.height)
+        let targetY = min(max(0, attributes.frame.minY - 4), maxY)
+        guard targetY.isFinite, abs(targetY - visible.origin.y) > 0.5 else { return }
+        scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: targetY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func visibleRecoveryIndexPath() -> IndexPath? {
+        if let selectedImageID,
+           let selectedIndex = entries.firstIndex(where: { $0.image.id == selectedImageID }) {
+            return IndexPath(item: selectedIndex, section: 0)
+        }
+        return entries.isEmpty ? nil : IndexPath(item: 0, section: 0)
     }
 
     private func syncSelection() {
@@ -301,6 +468,31 @@ final class LocalImageGridContainerView: NSView {
     }
 }
 
+extension LocalImageGridContainerView: NSCollectionViewDelegate {
+    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+        guard !isApplyingSelection,
+              let indexPath = indexPaths.first,
+              indexPath.item < entries.count else { return }
+        selectItem(at: indexPath.item, scroll: false)
+    }
+
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        willDisplay item: NSCollectionViewItem,
+        forRepresentedObjectAt indexPath: IndexPath
+    ) {
+        guard let item = item as? LocalImageGridItemView, indexPath.item < entries.count else { return }
+        item.applySelectionState(entries[indexPath.item].image.id == selectedImageID)
+    }
+
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        shouldDeselectItemsAt indexPaths: Set<IndexPath>
+    ) -> Set<IndexPath> {
+        []
+    }
+}
+
 private extension NSRect {
     var isFiniteForScrolling: Bool {
         origin.x.isFinite
@@ -309,5 +501,19 @@ private extension NSRect {
             && size.height.isFinite
             && size.width >= 0
             && size.height >= 0
+    }
+}
+
+nonisolated private final class LocalImageGridDiffableDataSource: NSCollectionViewDiffableDataSource<
+    LocalImageGridContainerView.Section,
+    LocalImageItem.ID
+> {
+    var pasteboardWriter: ((IndexPath) -> NSPasteboardWriting?)?
+
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        pasteboardWriterForItemAt indexPath: IndexPath
+    ) -> NSPasteboardWriting? {
+        pasteboardWriter?(indexPath)
     }
 }

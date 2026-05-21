@@ -60,6 +60,8 @@ private final class WorkspaceKeyboardShortcutsViewController: NSViewController {
             shortcuts: [
                 Shortcut(title: "Toggle Toolbar", keys: "⌘T"),
                 Shortcut(title: "Actual Size", keys: "⌘0"),
+                Shortcut(title: "Increase Local Grid Columns", keys: "⌘-"),
+                Shortcut(title: "Decrease Local Grid Columns", keys: "⌘="),
                 Shortcut(title: "Toggle Detail", keys: "⌘\\"),
                 Shortcut(title: "Focus Sidebar", keys: "⌘1"),
                 Shortcut(title: "Focus Content", keys: "⌘2"),

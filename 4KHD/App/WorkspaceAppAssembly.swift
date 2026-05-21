@@ -33,6 +33,7 @@ enum WorkspaceAppAssembly {
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
             filmstripVisibility: filmstripVisibility,
+            detailPaneController: detailPaneController,
             importRootFolderAction: importRootFolderAction
         )
         let routeController = WorkspaceRouteController(

@@ -320,6 +320,7 @@ private enum MainMenuBuilder {
             )
         )
         menu.addItem(layoutMenuItem())
+        menu.addItem(gridColumnsMenuItem())
         menu.addItem(localSortMenuItem())
         menu.addItem(.separator())
         menu.addItem(
@@ -381,6 +382,23 @@ private enum MainMenuBuilder {
             title: "Grid",
             action: #selector(WorkspaceSplitViewController.setContentGridLayout(_:)),
             keyEquivalent: ""
+        ))
+        item.submenu = menu
+        return item
+    }
+
+    private static func gridColumnsMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Local Grid Columns", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Local Grid Columns")
+        menu.addItem(NSMenuItem(
+            title: "Increase Columns",
+            action: #selector(WorkspaceSplitViewController.increaseLocalGridColumns(_:)),
+            keyEquivalent: "-"
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Decrease Columns",
+            action: #selector(WorkspaceSplitViewController.decreaseLocalGridColumns(_:)),
+            keyEquivalent: "="
         ))
         item.submenu = menu
         return item
