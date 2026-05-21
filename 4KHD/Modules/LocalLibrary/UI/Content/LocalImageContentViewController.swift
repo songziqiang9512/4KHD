@@ -203,11 +203,12 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         let container = NSView()
         container.addSubview(stack)
         stack.translatesAutoresizingMaskIntoConstraints = false
+        let readableArea = container.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -24)
+            stack.centerXAnchor.constraint(equalTo: readableArea.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: readableArea.centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: readableArea.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: readableArea.trailingAnchor, constant: -24)
         ])
         return container
     }

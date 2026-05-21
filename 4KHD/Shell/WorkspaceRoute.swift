@@ -22,7 +22,11 @@ struct WorkspaceRoute: Hashable {
     }
 
     init?(rawValue: String) {
-        let parts = rawValue.split(separator: "|", maxSplits: 1).map(String.init)
+        let parts = rawValue.split(
+            separator: "|",
+            maxSplits: 1,
+            omittingEmptySubsequences: false
+        ).map(String.init)
         guard parts.count == 2,
               let moduleID = WorkspaceModuleID(rawValue: parts[0]),
               let data = Data(base64Encoded: parts[1]),
