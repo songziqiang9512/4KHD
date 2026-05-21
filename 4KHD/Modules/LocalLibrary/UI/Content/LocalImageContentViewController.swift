@@ -119,21 +119,17 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             setActiveView(makePlaceholderView(title: "还没有本地目录", detail: "导入一个图片目录开始浏览。", showsImportButton: true))
             return
         }
-        guard let folder = localLibrary.selectedFolder else {
-            setActiveView(makePlaceholderView(title: "从侧栏选择目录", detail: nil, showsImportButton: false))
-            return
-        }
-        guard !folder.images.isEmpty else {
-            setActiveView(makePlaceholderView(title: "当前目录没有图片", detail: folder.title, showsImportButton: false))
+        let selectedImages = localLibrary.selectedImages
+        guard !selectedImages.isEmpty else {
+            setActiveView(makePlaceholderView(title: "当前目录没有图片", detail: selectedPlaceholderDetail, showsImportButton: false))
             return
         }
         guard !filteredEntries.isEmpty else {
             setActiveView(makePlaceholderView(title: "没有匹配图片", detail: preferences.searchText, showsImportButton: false))
-            loadMetadataIfNeeded(for: localLibrary.selectedImages)
             return
         }
 
-        loadMetadataIfNeeded(for: localLibrary.selectedImages)
+        loadMetadataIfNeeded(for: metadataVisibleImages)
         switch preferences.layout {
         case .grid:
             setActiveView(gridView)
@@ -278,6 +274,23 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         let entries = Array(localLibrary.selectedImages.enumerated()).map { ($0.offset, $0.element) }
         let filtered = query.isEmpty ? entries : entries.filter { $0.1.title.localizedStandardContains(query) }
         return filtered.sorted(by: { compare($0.1, $1.1) == .orderedAscending })
+    }
+
+    private var selectedPlaceholderDetail: String? {
+        if localLibrary.selectedFolderID == LocalLibraryStore.allImagesFolderID {
+            return "我的图片"
+        }
+        return localLibrary.selectedFolder?.title
+    }
+
+    private var metadataVisibleImages: [LocalImageItem] {
+        let selectedID = localLibrary.selectedImage?.id
+        let selectedRow = selectedID.flatMap { id in
+            filteredEntries.firstIndex { $0.image.id == id }
+        } ?? 0
+        let lowerBound = max(0, selectedRow - 80)
+        let upperBound = min(filteredEntries.count, selectedRow + 160)
+        return filteredEntries[lowerBound..<upperBound].map(\.image)
     }
 
     private func compare(_ lhs: LocalImageItem, _ rhs: LocalImageItem) -> ComparisonResult {

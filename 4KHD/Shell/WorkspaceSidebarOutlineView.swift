@@ -81,3 +81,78 @@ final class WorkspaceSidebarRowView: NSTableRowView {
         super.drawSelection(in: dirtyRect)
     }
 }
+
+final class WorkspaceSidebarCellView: NSTableCellView {
+    private let iconView = NSImageView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let countLabel = NSTextField(labelWithString: "")
+    private let spacer = NSView()
+    private let stackView = NSStackView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func configure(title: String, image: NSImage?, count: Int?) {
+        titleLabel.stringValue = title
+        iconView.image = image
+        iconView.isHidden = image == nil
+        if let count {
+            countLabel.stringValue = "\(count)"
+            countLabel.isHidden = false
+        } else {
+            countLabel.stringValue = ""
+            countLabel.isHidden = true
+        }
+    }
+
+    func setDraggingPresentation(_ isDragging: Bool) {
+        alphaValue = isDragging ? 0 : 1
+    }
+
+    private func setupView() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        iconView.imageScaling = .scaleProportionallyDown
+        iconView.contentTintColor = .secondaryLabelColor
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        countLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        countLabel.textColor = .secondaryLabelColor
+        countLabel.alignment = .right
+        countLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        stackView.orientation = .horizontal
+        stackView.alignment = .centerY
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(stackView)
+        stackView.addArrangedSubview(iconView)
+        stackView.addArrangedSubview(titleLabel)
+        stackView.addArrangedSubview(spacer)
+        stackView.addArrangedSubview(countLabel)
+
+        NSLayoutConstraint.activate([
+            iconView.widthAnchor.constraint(equalToConstant: 18),
+            iconView.heightAnchor.constraint(equalToConstant: 18),
+            countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 18),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            stackView.topAnchor.constraint(equalTo: topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+}

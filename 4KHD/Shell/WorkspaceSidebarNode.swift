@@ -3,7 +3,7 @@ import Foundation
 enum WorkspaceSidebarNode: Hashable {
     case group(String)
     case gallery(GallerySection)
-    case importLocal
+    case localAllImages(count: Int)
     case localFolder(LocalFolderNode)
 
     var title: String {
@@ -12,8 +12,8 @@ enum WorkspaceSidebarNode: Hashable {
             title
         case .gallery(let section):
             section.title
-        case .importLocal:
-            "导入本地目录"
+        case .localAllImages:
+            "我的图片"
         case .localFolder(let folder):
             folder.title
         }
@@ -25,10 +25,21 @@ enum WorkspaceSidebarNode: Hashable {
             "group:\(title)"
         case .gallery(let section):
             "gallery:\(section.rawValue)"
-        case .importLocal:
-            "local:import"
+        case .localAllImages:
+            "local:allImages"
         case .localFolder(let folder):
             "localFolder:\(folder.id)"
+        }
+    }
+
+    var count: Int? {
+        switch self {
+        case .localAllImages(let count):
+            count
+        case .localFolder(let folder):
+            folder.imageCount
+        default:
+            nil
         }
     }
 }

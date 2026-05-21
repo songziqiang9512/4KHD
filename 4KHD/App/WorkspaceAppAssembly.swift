@@ -66,6 +66,48 @@ enum WorkspaceAppAssembly {
         return WorkspaceModuleRegistry(
             modules: [
                 WorkspaceModuleDescriptor(
+                    id: .localLibrary,
+                    displayName: "LocalLibrary",
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
+                    },
+                    makeContentController: { context in
+                        LocalImageContentViewController(
+                            localLibrary: localLibraryStore,
+                            preferences: localPreferences,
+                            detailPane: context.detailPaneController,
+                            importRootFolderAction: importRootFolderAction
+                        )
+                    },
+                    makeDetailController: { context in
+                        LocalImageDetailViewController(
+                            localLibrary: localLibraryStore,
+                            immersive: context.immersive,
+                            detailInteraction: localDetailInteraction,
+                            filmstripVisibility: filmstripVisibility
+                        )
+                    },
+                    normalizeRoute: { route in
+                        if localLibraryStore.isAllImagesFolderID(route.itemID) {
+                            return WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
+                        }
+                        if let folder = localLibraryStore.findFolder(id: route.itemID) {
+                            return WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
+                        }
+                        return WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
+                    },
+                    applyRoute: { route in
+                        if localLibraryStore.isAllImagesFolderID(route.itemID) {
+                            localLibraryStore.selectAllImages()
+                            return
+                        }
+                        if let folder = localLibraryStore.findFolder(id: route.itemID) {
+                            localLibraryStore.selectFolder(folder)
+                        }
+                    },
+                    bootstrap: {}
+                ),
+                WorkspaceModuleDescriptor(
                     id: .fourKHDGallery,
                     displayName: "4KHDGallery",
                     defaultRoute: {
@@ -102,47 +144,6 @@ enum WorkspaceAppAssembly {
                     bootstrap: {
                         fourKHDGalleryStore.refreshFromNetwork()
                     }
-                ),
-                WorkspaceModuleDescriptor(
-                    id: .localLibrary,
-                    displayName: "LocalLibrary",
-                    defaultRoute: {
-                        if let folderID = localLibraryStore.defaultFolderID {
-                            return WorkspaceRoute(moduleID: .localLibrary, itemID: folderID)
-                        }
-                        return WorkspaceRoute(moduleID: .localLibrary, itemID: "")
-                    },
-                    makeContentController: { context in
-                        LocalImageContentViewController(
-                            localLibrary: localLibraryStore,
-                            preferences: localPreferences,
-                            detailPane: context.detailPaneController,
-                            importRootFolderAction: importRootFolderAction
-                        )
-                    },
-                    makeDetailController: { context in
-                        LocalImageDetailViewController(
-                            localLibrary: localLibraryStore,
-                            immersive: context.immersive,
-                            detailInteraction: localDetailInteraction,
-                            filmstripVisibility: filmstripVisibility
-                        )
-                    },
-                    normalizeRoute: { route in
-                        if let folder = localLibraryStore.findFolder(id: route.itemID) {
-                            return WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
-                        }
-                        if let folderID = localLibraryStore.defaultFolderID {
-                            return WorkspaceRoute(moduleID: .localLibrary, itemID: folderID)
-                        }
-                        return WorkspaceRoute(moduleID: .localLibrary, itemID: "")
-                    },
-                    applyRoute: { route in
-                        if let folder = localLibraryStore.findFolder(id: route.itemID) {
-                            localLibraryStore.selectFolder(folder)
-                        }
-                    },
-                    bootstrap: {}
                 )
             ]
         )

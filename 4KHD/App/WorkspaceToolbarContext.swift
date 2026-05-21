@@ -139,7 +139,7 @@ final class WorkspaceToolbarContext {
                     sortField: localPreferences.sortField,
                     sortDirection: localPreferences.sortDirection,
                     isRefreshing: localLibraryStore.isScanning,
-                    hasSelection: localLibraryStore.selectedFolder != nil,
+                    hasSelection: !localLibraryStore.roots.isEmpty,
                     canSelectPreviousImage: selectedImageIndex > 0,
                     canSelectNextImage: selectedImageIndex < imageCount - 1,
                     canSaveImage: localLibraryStore.selectedImage != nil,

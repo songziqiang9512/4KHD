@@ -85,6 +85,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
             }
             return "\(section.title) - 4KHD"
         case .localLibrary:
+            if appContext.localLibraryStore.isAllImagesFolderID(route.itemID) {
+                return "我的图片 - 本地"
+            }
             if let folder = appContext.localLibraryStore.findFolder(id: route.itemID) {
                 return "\(folder.title) - 本地"
             }

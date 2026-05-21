@@ -263,43 +263,35 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         } else {
             isGroup = false
         }
-        let identifier = NSUserInterfaceItemIdentifier(isGroup ? "SidebarGroupCell" : "SidebarCell")
-        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
-            ?? NSTableCellView()
-        cell.identifier = identifier
-        cell.textField = cell.textField ?? NSTextField(labelWithString: "")
-        if !isGroup {
-            cell.imageView = cell.imageView ?? NSImageView()
-        }
-        if cell.textField?.superview == nil, let textField = cell.textField {
-            textField.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(textField)
-            if let imageView = cell.imageView {
-                imageView.translatesAutoresizingMaskIntoConstraints = false
-                imageView.imageScaling = .scaleProportionallyDown
-                cell.addSubview(imageView)
-                NSLayoutConstraint.activate([
-                    imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                    imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                    imageView.widthAnchor.constraint(equalToConstant: 18),
-                    imageView.heightAnchor.constraint(equalToConstant: 18),
-                    textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 8),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-                ])
-            } else {
+        if isGroup {
+            let identifier = NSUserInterfaceItemIdentifier("SidebarGroupCell")
+            let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
+                ?? NSTableCellView()
+            cell.identifier = identifier
+            cell.textField = cell.textField ?? NSTextField(labelWithString: "")
+            if cell.textField?.superview == nil, let textField = cell.textField {
+                textField.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(textField)
                 NSLayoutConstraint.activate([
                     textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
                     textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
                     textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
                 ])
             }
+            cell.textField?.stringValue = node.title
+            cell.textField?.font = font(for: node)
+            return cell
         }
-        if let imageView = cell.imageView {
-            imageView.image = sidebarImage(for: node)
-        }
-        cell.textField?.stringValue = title(for: node)
-        cell.textField?.font = font(for: node)
+
+        let identifier = NSUserInterfaceItemIdentifier("SidebarLeafCell")
+        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? WorkspaceSidebarCellView
+            ?? WorkspaceSidebarCellView()
+        cell.identifier = identifier
+        cell.configure(
+            title: node.title,
+            image: sidebarImage(for: node),
+            count: node.count
+        )
         return cell
     }
 
@@ -310,8 +302,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             return nil
         case .gallery(let section):
             systemName = section.sidebarSystemImage
-        case .importLocal:
-            systemName = "folder.badge.plus"
+        case .localAllImages:
+            systemName = "photo.on.rectangle.angled"
         case .localFolder:
             systemName = "folder"
         }
@@ -337,9 +329,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .fourKHDGallery, itemID: section.rawValue)
         case .localFolder(let folder):
             selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
-        case .importLocal:
-            delegate?.sidebarViewControllerDidRequestLocalImport(self)
-            selectedRoute = nil
+        case .localAllImages:
+            selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
         case .group:
             selectedRoute = nil
         }
@@ -354,8 +345,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         let clickedRow = outlineView.clickedRow
         guard clickedRow >= 0,
               let node = outlineView.item(atRow: clickedRow) as? WorkspaceSidebarNode,
-              case .importLocal = node else { return }
-        delegate?.sidebarViewControllerDidRequestLocalImport(self)
+              case .localAllImages = node else { return }
+        delegate?.sidebarViewController(self, didSelect: WorkspaceRoute(
+            moduleID: .localLibrary,
+            itemID: LocalLibraryStore.allImagesFolderID
+        ))
     }
 
     private func observeLocalLibrary() {
@@ -454,18 +448,15 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             route.itemID == section.rawValue
         case (.localLibrary, .localFolder(let folder)):
             route.itemID == folder.id
+        case (.localLibrary, .localAllImages):
+            route.itemID == LocalLibraryStore.allImagesFolderID
         default:
             false
         }
     }
 
     private func title(for node: WorkspaceSidebarNode) -> String {
-        switch node {
-        case .localFolder(let folder):
-            "\(folder.title)  \(folder.imageCount)"
-        default:
-            node.title
-        }
+        node.title
     }
 
     private func font(for node: WorkspaceSidebarNode) -> NSFont {

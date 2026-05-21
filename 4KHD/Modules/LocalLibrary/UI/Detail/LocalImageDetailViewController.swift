@@ -19,7 +19,7 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     private var imageTopFullBleedConstraint: NSLayoutConstraint?
     private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
     private var metadataTask: Task<Void, Never>?
-    private var observedFolderID: LocalFolderNode.ID?
+    private var observedImageIDs: [LocalImageItem.ID] = []
     private var isObserving = false
     private var currentImageID: LocalImageItem.ID?
     private var resetTokenSeen = UUID()
@@ -183,7 +183,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     }
 
     private func reloadDetail() {
-        guard let folder = localLibrary.selectedFolder, let image = localLibrary.selectedImage else {
+        let selectedImages = localLibrary.selectedImages
+        guard let image = localLibrary.selectedImage else {
             currentImageID = nil
             zoomableImageView.setImageURL(nil)
             emptyLabel.isHidden = false
@@ -210,8 +211,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             zoomableImageView.setImageURL(image.url)
         }
 
-        loadMetadataIfNeeded(folder: folder)
-        filmstripView.update(images: localLibrary.selectedImages, selectedIndex: localLibrary.selectedImageIndex)
+        loadMetadataIfNeeded(for: selectedImages)
+        filmstripView.update(images: selectedImages, selectedIndex: localLibrary.selectedImageIndex)
         updateFilmstripVisibility()
         if detailInteraction.resetToken != resetTokenSeen {
             resetTokenSeen = detailInteraction.resetToken
@@ -243,12 +244,13 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         statusChrome.isHidden = message.isEmpty
     }
 
-    private func loadMetadataIfNeeded(folder: LocalFolderNode) {
-        guard observedFolderID != folder.id else { return }
-        observedFolderID = folder.id
+    private func loadMetadataIfNeeded(for images: [LocalImageItem]) {
+        let imageIDs = images.map(\.id)
+        guard observedImageIDs != imageIDs else { return }
+        observedImageIDs = imageIDs
         metadataTask?.cancel()
         metadataTask = Task { [weak self] in
-            let metadata = await LocalImageMetadataService.loadMetadata(for: folder.images)
+            let metadata = await LocalImageMetadataService.loadMetadata(for: images)
             guard !Task.isCancelled else { return }
             self?.metadataByImageID = metadata
         }

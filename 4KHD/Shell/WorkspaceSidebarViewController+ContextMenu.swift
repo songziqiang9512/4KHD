@@ -3,21 +3,15 @@ import AppKit
 extension WorkspaceSidebarViewController {
     func makeContextMenu(forRow row: Int) -> NSMenu? {
         guard let node = nodeForSidebarRow(row) else {
-            return importMenu()
+            return nil
         }
 
         switch node {
-        case .importLocal:
-            return importMenu()
         case .localFolder(let folder):
             return localFolderMenu(folder)
-        case .group, .gallery:
+        case .group, .gallery, .localAllImages:
             return nil
         }
-    }
-
-    @objc func importLocalFolderFromSidebarMenu(_ sender: Any?) {
-        requestLocalImportFromContextMenu()
     }
 
     @objc func revealLocalFolderFromSidebarMenu(_ sender: NSMenuItem) {
@@ -58,19 +52,6 @@ extension WorkspaceSidebarViewController {
 
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         delegate?.sidebarViewController(self, didRequestRemoveLocalFolder: folder)
-    }
-
-    private func importMenu() -> NSMenu {
-        let menu = NSMenu(title: "SidebarImportMenu")
-        let item = NSMenuItem(
-            title: "导入本地目录",
-            action: #selector(importLocalFolderFromSidebarMenu(_:)),
-            keyEquivalent: ""
-        )
-        item.target = self
-        item.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: "导入本地目录")
-        menu.addItem(item)
-        return menu
     }
 
     private func localFolderMenu(_ folder: LocalFolderNode) -> NSMenu {

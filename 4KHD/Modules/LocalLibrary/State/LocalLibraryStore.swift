@@ -4,8 +4,10 @@ import UniformTypeIdentifiers
 @MainActor
 @Observable
 final class LocalLibraryStore {
+    static let allImagesFolderID: LocalFolderNode.ID = "localLibrary.allImages"
+
     private(set) var roots: [LocalLibraryRoot] = []
-    var selectedFolderID: LocalFolderNode.ID?
+    var selectedFolderID: LocalFolderNode.ID? = LocalLibraryStore.allImagesFolderID
     var selectedImageIndex = 0
     var isFullscreenViewerPresented = false
     private(set) var isScanning = false
@@ -13,6 +15,8 @@ final class LocalLibraryStore {
     @ObservationIgnored private var rootURLs: [URL] = []
     @ObservationIgnored private var excludedFolderPathsByRootPath: [String: Set<String>] = [:]
     @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var cachedAllImages: [LocalImageItem] = []
+    @ObservationIgnored private var cachedAllImagesRootSignature: [String] = []
     @ObservationIgnored private static let rootFoldersDefaultsKey = "com.songziqiang.4khd.localRootFolders.v2"
     @ObservationIgnored private static let legacyRootFoldersDefaultsKey = "com.songziqiang.4khd.localFolders.v1"
     @ObservationIgnored private static let excludedFoldersDefaultsKey = "com.songziqiang.4khd.localExcludedFolders.v1"
@@ -22,12 +26,16 @@ final class LocalLibraryStore {
     }
 
     var selectedFolder: LocalFolderNode? {
+        guard !isAllImagesSelected else { return nil }
         guard let selectedFolderID else { return firstFolder }
         return roots.lazy.compactMap { Self.folder(withID: selectedFolderID, in: $0.tree) }.first ?? firstFolder
     }
 
     var selectedImages: [LocalImageItem] {
-        selectedFolder?.images ?? []
+        if isAllImagesSelected {
+            return allImages
+        }
+        return selectedFolder?.images ?? []
     }
 
     var selectedImage: LocalImageItem? {
@@ -78,9 +86,17 @@ final class LocalLibraryStore {
         saveRootFolders()
         saveExcludedFolders()
         if selectedFolderID == root.tree.id || Self.folder(withID: selectedFolderID, in: root.tree) != nil {
-            selectedFolderID = firstFolder?.id
+            selectedFolderID = Self.allImagesFolderID
             selectedImageIndex = 0
+        } else if isAllImagesSelected {
+            clampSelectedImageIndex()
         }
+    }
+
+    func selectAllImages(force: Bool = false) {
+        guard force || selectedFolderID != Self.allImagesFolderID else { return }
+        selectedFolderID = Self.allImagesFolderID
+        selectedImageIndex = 0
     }
 
     func selectFolder(_ folder: LocalFolderNode, force: Bool = false) {
@@ -129,6 +145,10 @@ final class LocalLibraryStore {
     }
 
     func refreshSelectedRoot() {
+        if isAllImagesSelected {
+            reloadAllRoots()
+            return
+        }
         guard let root = selectedRoot else { return }
         reloadRoot(root.url)
     }
@@ -143,11 +163,16 @@ final class LocalLibraryStore {
     }
 
     var defaultFolderID: LocalFolderNode.ID? {
-        firstFolder?.id
+        Self.allImagesFolderID
     }
 
     func findFolder(id: LocalFolderNode.ID) -> LocalFolderNode? {
-        roots.lazy.compactMap { Self.folder(withID: id, in: $0.tree) }.first
+        guard id != Self.allImagesFolderID else { return nil }
+        return roots.lazy.compactMap { Self.folder(withID: id, in: $0.tree) }.first
+    }
+
+    func isAllImagesFolderID(_ id: LocalFolderNode.ID) -> Bool {
+        id == Self.allImagesFolderID
     }
 
     private func loadRootFolders() {
@@ -157,7 +182,7 @@ final class LocalLibraryStore {
         loadExcludedFolders()
         rootURLs = storedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL }
         roots = []
-        selectedFolderID = nil
+        selectedFolderID = Self.allImagesFolderID
         isScanning = !rootURLs.isEmpty
         scanTask?.cancel()
         scanTask = Task { [weak self] in
@@ -168,7 +193,7 @@ final class LocalLibraryStore {
 
             guard !Task.isCancelled else { return }
             self.roots = scannedRoots
-            self.selectedFolderID = self.firstFolder?.id
+            self.selectedFolderID = Self.allImagesFolderID
             self.isScanning = false
         }
     }
@@ -206,8 +231,10 @@ final class LocalLibraryStore {
                let index = self?.roots.firstIndex(where: { $0.url == url }) {
                 self?.roots[index] = scannedRoot
                 if self?.selectedFolderID == nil || Self.folder(withID: self?.selectedFolderID, in: scannedRoot.tree) == nil {
-                    self?.selectedFolderID = Self.firstFolderWithImages(in: scannedRoot.tree)?.id ?? scannedRoot.tree.id
+                    self?.selectedFolderID = Self.allImagesFolderID
                     self?.selectedImageIndex = 0
+                } else {
+                    self?.clampSelectedImageIndex()
                 }
                 self?.isScanning = false
             } else if let root = self?.roots.first(where: { $0.url == url }) {
@@ -219,6 +246,23 @@ final class LocalLibraryStore {
         }
     }
 
+    private func reloadAllRoots() {
+        isScanning = !rootURLs.isEmpty
+        scanTask?.cancel()
+        scanTask = Task { [weak self] in
+            guard let self else { return }
+            let rootURLs = self.rootURLs
+            let excluded = self.excludedFolderPathsByRootPath
+            let scannedRoots = await Self.scanRoots(rootURLs, excluded: excluded)
+
+            guard !Task.isCancelled else { return }
+            self.roots = scannedRoots
+            self.selectedFolderID = Self.allImagesFolderID
+            self.clampSelectedImageIndex()
+            self.isScanning = false
+        }
+    }
+
     private func applyImportedRoot(_ root: LocalLibraryRoot, url: URL) {
         rootURLs.removeAll { $0 == url }
         rootURLs.insert(url, at: 0)
@@ -226,7 +270,9 @@ final class LocalLibraryStore {
         roots.insert(root, at: 0)
         saveRootFolders()
         isScanning = false
-        selectFolder(root.tree, force: true)
+        if !isAllImagesSelected {
+            selectFolder(root.tree, force: true)
+        }
     }
 
     private nonisolated static func scanRoot(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalLibraryRoot? {
@@ -315,6 +361,44 @@ final class LocalLibraryStore {
     private static func firstFolderWithImages(in folder: LocalFolderNode) -> LocalFolderNode? {
         if !folder.images.isEmpty { return folder }
         return folder.folders.lazy.compactMap(Self.firstFolderWithImages).first
+    }
+
+    private var isAllImagesSelected: Bool {
+        selectedFolderID == Self.allImagesFolderID
+    }
+
+    private var allImages: [LocalImageItem] {
+        let signature = roots.map { "\($0.id):\($0.imageCount)" }
+        if signature == cachedAllImagesRootSignature {
+            return cachedAllImages
+        }
+        var images: [LocalImageItem] = []
+        var seenPaths = Set<String>()
+        for root in roots {
+            Self.appendImages(from: root.tree, to: &images, seenPaths: &seenPaths)
+        }
+        cachedAllImages = images
+        cachedAllImagesRootSignature = signature
+        return images
+    }
+
+    private static func appendImages(
+        from folder: LocalFolderNode,
+        to images: inout [LocalImageItem],
+        seenPaths: inout Set<String>
+    ) {
+        for image in folder.images {
+            let path = image.url.resolvingSymlinksInPath().standardizedFileURL.path
+            guard seenPaths.insert(path).inserted else { continue }
+            images.append(image)
+        }
+        for child in folder.folders {
+            appendImages(from: child, to: &images, seenPaths: &seenPaths)
+        }
+    }
+
+    private func clampSelectedImageIndex() {
+        selectedImageIndex = min(selectedImageIndex, max(selectedImages.count - 1, 0))
     }
 
     private static func contains(folderID: String, in folder: LocalFolderNode) -> Bool {

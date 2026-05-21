@@ -17,13 +17,13 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         localRootFolderIDs = Set(localRoots.map(\.tree.id))
         let online = WorkspaceSidebarNode.group("线上")
         let local = WorkspaceSidebarNode.group("本地")
-        nodes = [online, local]
+        nodes = [local, online]
         childrenByNode[online] = GallerySection.allCases.map(WorkspaceSidebarNode.gallery)
-        if localRoots.isEmpty {
-            childrenByNode[local] = [.importLocal]
-        } else {
-            childrenByNode[local] = localRoots.map { makeFolderNode($0.tree) }
-        }
+        var localChildren: [WorkspaceSidebarNode] = [
+            .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount })
+        ]
+        localChildren.append(contentsOf: localRoots.map { makeFolderNode($0.tree) })
+        childrenByNode[local] = localChildren
     }
 
     func children(of node: WorkspaceSidebarNode) -> [WorkspaceSidebarNode] {
@@ -134,11 +134,11 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
               }) else {
             return currentLocalRootFolderIDs()
         }
-        var insertionIndex = max(0, min(dropIndex, localRoots.count))
+        var insertionIndex = max(1, min(dropIndex, localRoots.count))
         if sourceIndex < insertionIndex {
             insertionIndex -= 1
         }
-        insertionIndex = max(0, min(insertionIndex, localRoots.count - 1))
+        insertionIndex = max(1, min(insertionIndex, localRoots.count - 1))
         guard sourceIndex != insertionIndex else {
             return currentLocalRootFolderIDs()
         }
@@ -198,7 +198,11 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         let localGroup = localRootGroup()
         if let node = item as? WorkspaceSidebarNode,
            node == localGroup {
-            return max(0, min(index, children(of: localGroup).count))
+            return max(1, min(index, children(of: localGroup).count))
+        }
+        if let node = item as? WorkspaceSidebarNode,
+           case .localAllImages = node {
+            return 1
         }
         guard let node = item as? WorkspaceSidebarNode,
               case .localFolder(let folder) = node,
