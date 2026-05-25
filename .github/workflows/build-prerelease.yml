@@ -38,12 +38,12 @@ jobs:
         id: version
         run: |
           source script/version.env
-          version="$(script/resolve_version.sh)"
+          version="$(script/resolve_version.sh --next)"
           short_sha="${GITHUB_SHA::7}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=build-$version" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$APP_NAME-$version-$short_sha.dmg" >> "$GITHUB_OUTPUT"
-          script/update_version.sh
+          script/update_version.sh --next
 
       - name: Validate signing secrets
         env:
