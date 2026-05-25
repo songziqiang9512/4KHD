@@ -788,7 +788,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         item.image = NSImage(
             systemSymbolName: symbolName,
             accessibilityDescription: isPresented ? "隐藏详情区" : "显示详情区"
-        ) ?? NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: nil)
+        ) ?? NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: isPresented ? "隐藏详情区" : "显示详情区")
         item.toolTip = isPresented ? "隐藏右侧详情区" : "显示右侧详情区"
     }
 
@@ -834,39 +834,39 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .fourKHDGallery:
             let openItem = NSMenuItem(title: "打开原网页", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
             openItem.target = self
-            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: nil)
+            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
             menu.addItem(openItem)
 
             let saveItem = NSMenuItem(title: "保存图片...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self
-            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
+            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
             saveItem.isEnabled = canSaveCurrentImage
             menu.addItem(saveItem)
 
             let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
             infoItem.target = self
-            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
         case .localLibrary:
             let saveItem = NSMenuItem(title: "保存副本...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self
-            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: nil)
+            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
             saveItem.isEnabled = canSaveCurrentImage
             menu.addItem(saveItem)
 
             let quickLookItem = NSMenuItem(title: "快速预览", action: #selector(quickLookCurrentFile(_:)), keyEquivalent: "")
             quickLookItem.target = self
-            quickLookItem.image = NSImage(systemSymbolName: "eye", accessibilityDescription: nil)
+            quickLookItem.image = NSImage(systemSymbolName: "eye", accessibilityDescription: "预览")
             menu.addItem(quickLookItem)
 
             let revealItem = NSMenuItem(title: "在 Finder 中显示", action: #selector(revealCurrentFileInFinder(_:)), keyEquivalent: "")
             revealItem.target = self
-            revealItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+            revealItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "在访达中显示")
             menu.addItem(revealItem)
 
             let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
             infoItem.target = self
-            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
         }
         return menu

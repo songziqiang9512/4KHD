@@ -11,6 +11,7 @@ final class GalleryDetailStore {
     private(set) var loadedImageSlots: [ImageSlot] = []
     private(set) var prefetchPageURL: URL?
     var isFullscreenViewerPresented = false
+    var errorMessage: String?
 
     @ObservationIgnored private var currentItem: GalleryItem?
     @ObservationIgnored private var itemPageCursors: [GalleryItem.ID: Int] = [:]
@@ -40,6 +41,7 @@ final class GalleryDetailStore {
 
     /// 切换 / 重选当前图集时调用：重建 slot、cursor、清掉 in-flight 任务。
     func prepare(for item: GalleryItem?) {
+        errorMessage = nil
         cancelOutstandingDetailPageTasks()
         currentItem = item
         pendingSelectionIndex = nil
@@ -199,6 +201,7 @@ final class GalleryDetailStore {
     private func resolveDetailPage(_ pageURL: URL) {
         let key = pageURL.absoluteString
         guard detailPageTasks[key] == nil else { return }
+        errorMessage = nil
         detailPageTasks[key] = Task { [weak self] in
             do {
                 let page = try await DetailPageHTMLResolver.resolve(pageURL: pageURL)
@@ -206,6 +209,7 @@ final class GalleryDetailStore {
                 self?.registerResolvedPage(page)
             } catch {
                 guard !Task.isCancelled else { return }
+                self?.errorMessage = "解析失败，请检查网络连接"
                 self?.markDetailPageResolutionFailed(pageURL)
             }
         }

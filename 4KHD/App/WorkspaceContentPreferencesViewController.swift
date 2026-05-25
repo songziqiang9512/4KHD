@@ -8,7 +8,7 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
     private let localSortFieldPopup = NSPopUpButton()
     private let localSortDirectionPopup = NSPopUpButton()
 
-    let paneContentSize = NSSize(width: 430, height: 220)
+    let paneContentSize = NSSize(width: 430, height: 160)
 
     init(toolbarContext: WorkspaceToolbarContext) {
         self.toolbarContext = toolbarContext

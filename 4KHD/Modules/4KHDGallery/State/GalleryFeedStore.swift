@@ -20,6 +20,7 @@ final class GalleryFeedStore {
     private(set) var activeSearchQuery: String?
     private(set) var visibleCount = 18
     private(set) var isRefreshingList = false
+    var errorMessage: String?
 
     @ObservationIgnored private var library = ApifyLibrary()
     @ObservationIgnored private var searchItems: [GalleryItem] = []
@@ -112,12 +113,14 @@ final class GalleryFeedStore {
         autoRefreshAttemptedSections.insert(section)
         let currentSection = section
         listRefreshTasks[currentSection]?.cancel()
+        errorMessage = nil
         isRefreshingList = true
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolve(section: currentSection)
                 self?.applyNetworkPage(page, section: currentSection)
             } catch {
+                self?.errorMessage = "网络请求失败"
                 self?.finishListRefresh(section: currentSection)
             }
         }
@@ -140,12 +143,14 @@ final class GalleryFeedStore {
         searchRefreshTask?.cancel()
         listRefreshTasks.values.forEach { $0.cancel() }
         listRefreshTasks.removeAll()
+        errorMessage = nil
         isRefreshingList = true
         searchRefreshTask = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolveSearch(query: query)
                 self?.applySearchPage(page, replacing: true)
             } catch {
+                self?.errorMessage = "搜索失败"
                 self?.finishSearchRefresh()
             }
         }
@@ -155,6 +160,7 @@ final class GalleryFeedStore {
         searchRefreshTask?.cancel()
         searchRefreshTask = nil
         clearSearchState()
+        errorMessage = nil
         isRefreshingList = false
         selectFirstItemIfNeeded(force: true)
     }
@@ -168,12 +174,14 @@ final class GalleryFeedStore {
             return
         }
         guard let nextPageURL = listNextPageURLs[currentSection] else { return }
+        errorMessage = nil
         isRefreshingList = true
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolve(pageURL: nextPageURL, section: currentSection)
                 self?.appendNetworkPage(page, section: currentSection)
             } catch {
+                self?.errorMessage = "网络请求失败"
                 self?.finishListRefresh(section: currentSection)
             }
         }
@@ -243,12 +251,14 @@ final class GalleryFeedStore {
             return
         }
         guard let nextPageURL = searchNextPageURL else { return }
+        errorMessage = nil
         isRefreshingList = true
         searchRefreshTask = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolveSearch(pageURL: nextPageURL)
                 self?.applySearchPage(page, replacing: false)
             } catch {
+                self?.errorMessage = "搜索失败"
                 self?.finishSearchRefresh()
             }
         }

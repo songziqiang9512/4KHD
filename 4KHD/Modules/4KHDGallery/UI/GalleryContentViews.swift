@@ -108,7 +108,7 @@ final class GalleryFavoriteGroupHeaderView: NSTableCellView {
     func configure(group: FavoriteAuthorGroup, isExpanded: Bool) {
         titleLabel.stringValue = group.author
         countLabel.stringValue = "\(group.items.count)"
-        chevron.image = NSImage(systemSymbolName: isExpanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
+        chevron.image = NSImage(systemSymbolName: isExpanded ? "chevron.down" : "chevron.right", accessibilityDescription: isExpanded ? "折叠" : "展开")
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

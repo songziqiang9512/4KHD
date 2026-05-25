@@ -271,7 +271,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         missingOverlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.42).cgColor
         missingOverlay.isHidden = true
 
-        missingIcon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+        missingIcon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "图片缺失")
         missingIcon.contentTintColor = NSColor.white.withAlphaComponent(0.86)
 
         addSubview(imageView)

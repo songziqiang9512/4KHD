@@ -44,15 +44,43 @@ final class WorkspaceColumnHostController: NSViewController {
 
         contentController = controller
         addChild(controller)
-        view.addSubview(controller.view)
+
+        // Determine the container that will host the content view.
+        // When a background material is configured, insert a vibrancy wrapper
+        // so that text and controls in the content composite correctly over the
+        // translucent material.  Without the vibrancy layer labels and controls
+        // may appear washed out or have reduced legibility.
+        let container: NSView
+        if let backgroundMaterial {
+            let vibrancyView = NSVisualEffectView()
+            vibrancyView.material = backgroundMaterial
+            vibrancyView.blendingMode = .withinWindow
+            vibrancyView.state = .active
+            vibrancyView.isEmphasized = true
+            vibrancyView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(vibrancyView)
+            NSLayoutConstraint.activate([
+                vibrancyView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                vibrancyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                vibrancyView.topAnchor.constraint(
+                    equalTo: respectsSafeAreaTop
+                        ? view.safeAreaLayoutGuide.topAnchor
+                        : view.topAnchor
+                ),
+                vibrancyView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            container = vibrancyView
+        } else {
+            container = view
+        }
+
+        container.addSubview(controller.view)
         controller.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            controller.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            controller.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            controller.view.topAnchor.constraint(
-                equalTo: respectsSafeAreaTop ? view.safeAreaLayoutGuide.topAnchor : view.topAnchor
-            ),
-            controller.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            controller.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            controller.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            controller.view.topAnchor.constraint(equalTo: container.topAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
     }
 }

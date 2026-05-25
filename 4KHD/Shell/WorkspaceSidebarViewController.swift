@@ -276,8 +276,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
                 textField.translatesAutoresizingMaskIntoConstraints = false
                 cell.addSubview(textField)
                 NSLayoutConstraint.activate([
-                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 12),
+                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
                     textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
                 ])
             }

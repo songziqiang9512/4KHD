@@ -10,6 +10,9 @@ struct WorkspaceKeyboardContext {
     var stepSelection: ((Int) -> Bool)?
     var quickLook: (() -> Bool)?
     var toggleImmersive: (() -> Bool)?
+    var onEscape: (() -> Bool)?
+    var onTab: (() -> Bool)?
+    var onEnter: (() -> Bool)?
 }
 
 @MainActor
@@ -25,6 +28,12 @@ enum WorkspaceKeyboardHandler {
                 return context.stepSelection?(-1) ?? false
             case 124, 125:
                 return context.stepSelection?(1) ?? false
+            case 53:
+                return context.onEscape?() ?? false
+            case 48:
+                return context.onTab?() ?? false
+            case 36, 76:
+                return context.onEnter?() ?? false
             default:
                 break
             }

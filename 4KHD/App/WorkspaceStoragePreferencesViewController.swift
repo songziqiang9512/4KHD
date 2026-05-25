@@ -4,7 +4,7 @@ import AppKit
 final class WorkspaceStoragePreferencesViewController: NSViewController, WorkspacePreferencesPane {
     private let cacheLimitPopup = NSPopUpButton()
 
-    let paneContentSize = NSSize(width: 430, height: 112)
+    let paneContentSize = NSSize(width: 430, height: 70)
 
     override func loadView() {
         let rootView = NSView(frame: NSRect(origin: .zero, size: paneContentSize))

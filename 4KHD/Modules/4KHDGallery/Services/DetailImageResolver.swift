@@ -96,9 +96,9 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
         let currentGeneration = generation
         loadedPageURL = pageURL
         extractionTask?.cancel()
-        extractionTask = Task { @MainActor in
+        extractionTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(650))
-            guard !Task.isCancelled, self.generation == currentGeneration else { return }
+            guard !Task.isCancelled, let self, self.generation == currentGeneration else { return }
             self.extractImages(generation: currentGeneration)
         }
     }
