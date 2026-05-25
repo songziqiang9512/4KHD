@@ -71,6 +71,8 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard let indexPath = indexPaths.first, images.indices.contains(indexPath.item) else { return }
+        selectedIndex = indexPath.item
+        refreshVisibleSelection()
         onSelect?(indexPath.item)
     }
 
@@ -133,7 +135,10 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
     private func scrollToSelectedItem() {
         guard images.indices.contains(selectedIndex) else { return }
         let indexPath = IndexPath(item: selectedIndex, section: 0)
-        collectionView.scrollToItems(at: [indexPath], scrollPosition: .centeredHorizontally)
+        let visibleRect = collectionView.visibleRect
+        guard let attrs = collectionView.layoutAttributesForItem(at: indexPath),
+              !visibleRect.contains(attrs.frame) else { return }
+        collectionView.scrollToItems(at: [indexPath], scrollPosition: .left)
     }
 
     private func refreshVisibleSelection() {

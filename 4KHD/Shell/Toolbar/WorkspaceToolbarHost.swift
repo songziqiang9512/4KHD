@@ -26,7 +26,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private var routeObserverID: UUID?
     private var detailObserverID: UUID?
     private weak var searchItem: NSSearchToolbarItem?
-    private weak var layoutControl: NSSegmentedControl?
     private weak var localGridColumnsControl: NSSegmentedControl?
     private weak var localSortItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
@@ -98,7 +97,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .flexibleSpace,
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
-            ItemID.layout,
             ItemID.localGridColumns,
             ItemID.localSort,
             ItemID.refresh,
@@ -124,7 +122,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .flexibleSpace,
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
-            ItemID.layout,
             ItemID.refresh,
             .flexibleSpace
         ]
@@ -188,30 +185,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             searchItem = item
             updateSearchField()
             return item
-        case ItemID.layout:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            let listImage = NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "列表") ?? NSImage()
-            let gridImage = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "网格") ?? NSImage()
-            let control = NSSegmentedControl(
-                images: [listImage, gridImage],
-                trackingMode: .selectOne,
-                target: self,
-                action: #selector(layoutChanged(_:))
-            )
-            control.translatesAutoresizingMaskIntoConstraints = false
-            control.segmentStyle = .automatic
-            control.setWidth(32, forSegment: 0)
-            control.setWidth(32, forSegment: 1)
-            control.toolTip = "切换列表/网格"
-            control.widthAnchor.constraint(equalToConstant: 72).isActive = true
-            control.heightAnchor.constraint(equalToConstant: 28).isActive = true
-            item.view = control
-            item.label = "布局"
-            item.paletteLabel = "布局"
-            item.visibilityPriority = .high
-            layoutControl = control
-            updateLayoutControl()
-            return item
         case ItemID.localGridColumns:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             let increaseImage = NSImage(
@@ -247,7 +220,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "排序"
             item.paletteLabel = "排序"
-            item.image = NSImage(systemSymbolName: "arrow.up.arrow.down", accessibilityDescription: "排序")
+            item.image = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: "排序")
             item.menu = makeLocalSortMenu()
             item.visibilityPriority = .standard
             localSortItem = item
@@ -413,16 +386,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         appContext.toolbarContext.setSearchText(sender.stringValue, for: currentModuleID)
     }
 
-    @objc private func layoutChanged(_ sender: NSSegmentedControl) {
-        switch currentModuleID {
-        case .fourKHDGallery:
-            appContext.toolbarContext.setGalleryLayout(sender.selectedSegment == 0 ? .list : .grid)
-        case .localLibrary:
-            appContext.toolbarContext.setLocalLayout(sender.selectedSegment == 0 ? .list : .grid)
-        }
-        refresh()
-    }
-
     @objc private func localGridColumnsChanged(_ sender: NSSegmentedControl) {
         switch sender.selectedSegment {
         case 0:
@@ -576,7 +539,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func refresh() {
         syncToolbarItemIdentifiers()
         updateSearchField()
-        updateLayoutControl()
         updateLocalGridColumnsControl()
         updateLocalSortItem()
         updateRefreshItem()
@@ -604,17 +566,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
         if searchField.stringValue != text {
             searchField.stringValue = text
-        }
-    }
-
-    private func updateLayoutControl() {
-        guard let layoutControl else { return }
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        switch snapshot {
-        case .gallery(let gallerySnapshot):
-            layoutControl.selectedSegment = gallerySnapshot.layout == .list ? 0 : 1
-        case .local(let localSnapshot):
-            layoutControl.selectedSegment = localSnapshot.layout == .list ? 0 : 1
         }
     }
 
@@ -656,15 +607,21 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         guard let favoriteItem else { return }
         guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
             favoriteItem.isEnabled = false
-            favoriteItem.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: "收藏")
+            favoriteItem.image = NSImage(systemSymbolName: "heart", accessibilityDescription: "收藏")
             favoriteItem.toolTip = "收藏"
             return
         }
         favoriteItem.isEnabled = snapshot.canFavorite
-        favoriteItem.image = NSImage(
-            systemSymbolName: snapshot.isFavorite ? "bookmark.fill" : "bookmark",
-            accessibilityDescription: snapshot.isFavorite ? "取消收藏" : "收藏"
-        )
+        if snapshot.isFavorite {
+            let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
+            favoriteItem.image = NSImage(
+                systemSymbolName: "heart.fill", accessibilityDescription: "取消收藏"
+            )?.withSymbolConfiguration(config)
+        } else {
+            favoriteItem.image = NSImage(
+                systemSymbolName: "heart", accessibilityDescription: "收藏"
+            )
+        }
         favoriteItem.toolTip = snapshot.isFavorite ? "取消收藏" : "收藏"
     }
 

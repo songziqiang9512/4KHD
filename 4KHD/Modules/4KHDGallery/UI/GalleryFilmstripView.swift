@@ -79,6 +79,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
               let indexPath = indexPaths.first,
               slots.indices.contains(indexPath.item) else { return }
         selectedIndex = indexPath.item
+        refreshVisibleSelection()
         onSelect?(indexPath.item)
     }
 
@@ -153,10 +154,11 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
 
     private func scrollToSelectedItem() {
         guard slots.indices.contains(selectedIndex) else { return }
-        collectionView.scrollToItems(
-            at: [IndexPath(item: selectedIndex, section: 0)],
-            scrollPosition: .centeredHorizontally
-        )
+        let indexPath = IndexPath(item: selectedIndex, section: 0)
+        let visibleRect = collectionView.visibleRect
+        guard let attrs = collectionView.layoutAttributesForItem(at: indexPath),
+              !visibleRect.contains(attrs.frame) else { return }
+        collectionView.scrollToItems(at: [indexPath], scrollPosition: .left)
     }
 
     private func refreshVisibleSelection() {
