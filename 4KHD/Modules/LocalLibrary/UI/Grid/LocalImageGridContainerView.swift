@@ -72,6 +72,7 @@ final class LocalImageGridContainerView: NSView {
 
     var entries: [Entry] = []
     var selectedImageID: LocalImageItem.ID?
+    private var previousSelectedImageID: LocalImageItem.ID?
     var isApplyingSelection = false
     private var lastAppliedIDs: [LocalImageItem.ID] = []
     private var lastLayoutWidth: CGFloat = 0
@@ -139,6 +140,7 @@ final class LocalImageGridContainerView: NSView {
         let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
         entries = newEntries
         failedThumbnailSignatures.removeAll()
+        previousSelectedImageID = self.selectedImageID
         self.selectedImageID = selectedImageID
         waterfallLayout.minimumColumnCount = minimumColumnCount
         waterfallLayout.maximumColumnCount = maximumColumnCount
@@ -370,11 +372,18 @@ final class LocalImageGridContainerView: NSView {
     }
 
     func refreshVisibleSelection() {
+        let previousID = previousSelectedImageID
+        let currentID = selectedImageID
         for indexPath in collectionView.indexPathsForVisibleItems() {
             guard let item = collectionView.item(at: indexPath) as? LocalImageGridItemView,
                   indexPath.item < entries.count else { continue }
-            item.applySelectionState(entries[indexPath.item].image.id == selectedImageID)
+            let entryID = entries[indexPath.item].image.id
+            let wasSelected = entryID == previousID
+            let isSelected = entryID == currentID
+            guard wasSelected != isSelected else { continue }
+            item.applySelectionState(isSelected)
         }
+        previousSelectedImageID = selectedImageID
     }
 
     func scrollItemIntoViewIfNeeded(at indexPath: IndexPath) {
@@ -411,6 +420,7 @@ final class LocalImageGridContainerView: NSView {
     func selectItem(at index: Int, scroll: Bool) {
         guard entries.indices.contains(index) else { return }
         window?.makeFirstResponder(collectionView)
+        previousSelectedImageID = selectedImageID
         selectedImageID = entries[index].image.id
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [IndexPath(item: index, section: 0)]

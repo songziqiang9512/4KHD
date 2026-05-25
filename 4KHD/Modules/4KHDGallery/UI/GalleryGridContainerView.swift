@@ -13,6 +13,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private let gridLayout = WorkspaceThumbnailWaterfallLayout()
     private var items: [GalleryItem] = []
     private var selectedItemID: GalleryItem.ID?
+    private var previousSelectedItemID: GalleryItem.ID?
     private var showsFooter = false
     private var isRefreshing = false
     private var canLoadMore = false
@@ -79,6 +80,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let nextItemIDSet = Set(nextItemIDs)
 
         self.items = items
+        self.previousSelectedItemID = self.selectedItemID
         self.selectedItemID = selectedItemID
         self.minimumColumnCount = minimumColumnCount
         self.maximumColumnCount = maximumColumnCount
@@ -129,6 +131,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let previousSelectedItemID = self.selectedItemID
 
         self.selectedItemID = selectedItemID
+        self.previousSelectedItemID = previousSelectedItemID
         self.isFavorite = isFavorite
         self.isCached = isCached
         self.isRefreshing = isRefreshing
@@ -200,6 +203,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
               let indexPath = indexPaths.first,
               items.indices.contains(indexPath.item) else { return }
         let item = items[indexPath.item]
+        previousSelectedItemID = selectedItemID
         selectedItemID = item.id
         refreshVisibleSelection()
         onSelect?(item)
@@ -404,11 +408,18 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     }
 
     private func refreshVisibleSelection() {
+        let previousID = previousSelectedItemID
+        let currentID = selectedItemID
         for indexPath in collectionView.indexPathsForVisibleItems() {
             guard let item = collectionView.item(at: indexPath) as? GalleryGridItemView,
                   items.indices.contains(indexPath.item) else { continue }
-            item.applySelectionState(items[indexPath.item].id == selectedItemID)
+            let itemID = items[indexPath.item].id
+            let wasSelected = itemID == previousID
+            let isSelected = itemID == currentID
+            guard wasSelected != isSelected else { continue }
+            item.applySelectionState(isSelected)
         }
+        previousSelectedItemID = selectedItemID
     }
 
     private func selectAdjacent(delta: Int) -> Bool {
@@ -418,6 +429,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             ?? 0
         let next = min(max(current + delta, 0), items.count - 1)
         guard next != current else { return true }
+        previousSelectedItemID = selectedItemID
         selectedItemID = items[next].id
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [IndexPath(item: next, section: 0)]
@@ -433,6 +445,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
               items.indices.contains(indexPath.item) else { return nil }
 
         let item = items[indexPath.item]
+        previousSelectedItemID = selectedItemID
         selectedItemID = item.id
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [indexPath]
@@ -445,6 +458,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private func openDetail(for indexPath: IndexPath) {
         guard items.indices.contains(indexPath.item) else { return }
         let item = items[indexPath.item]
+        previousSelectedItemID = selectedItemID
         selectedItemID = item.id
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [indexPath]
