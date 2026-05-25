@@ -75,6 +75,7 @@ final class LocalImageGridContainerView: NSView {
     var isApplyingSelection = false
     private var lastAppliedIDs: [LocalImageItem.ID] = []
     private var lastLayoutWidth: CGFloat = 0
+    private var failedThumbnailSignatures: Set<String> = []
     private var scrollObserver: NSObjectProtocol?
     private var prefetchWorkItem: DispatchWorkItem?
     private let restoreScrollQueue = WorkspaceCoalescingQueue(
@@ -137,6 +138,7 @@ final class LocalImageGridContainerView: NSView {
         let columnPreferenceChanged = waterfallLayout.maximumColumnCount != maximumColumnCount
         let cardWidthPreferenceChanged = waterfallLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
         entries = newEntries
+        failedThumbnailSignatures.removeAll()
         self.selectedImageID = selectedImageID
         waterfallLayout.minimumColumnCount = minimumColumnCount
         waterfallLayout.maximumColumnCount = maximumColumnCount
@@ -228,13 +230,29 @@ final class LocalImageGridContainerView: NSView {
             fileExists: entry.metadata?.fileExists ?? true,
             isSelected: entry.image.id == selectedImageID,
             cachedThumbnail: LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512)
-        ) { completion in
+        ) { [weak self] completion in
+            guard let self else {
+                completion(.unavailable)
+                return
+            }
             guard FileManager.default.fileExists(atPath: entry.image.url.path) else {
                 completion(.missingFile)
                 return
             }
-            Task { @MainActor in
+            let signature = self.thumbnailSignature(for: entry.image.url)
+            if let sig = signature, self.failedThumbnailSignatures.contains(sig) {
+                completion(.unavailable)
+                return
+            }
+            Task { @MainActor [weak self] in
                 let image = await LocalImageCache.shared.image(for: entry.image.url, maxPixelSize: 512)
+                if let sig = signature {
+                    if image != nil {
+                        self?.failedThumbnailSignatures.remove(sig)
+                    } else {
+                        self?.failedThumbnailSignatures.insert(sig)
+                    }
+                }
                 completion(image.map(LocalImageThumbnailLoadResult.image) ?? .unavailable)
             }
         }
@@ -453,10 +471,21 @@ final class LocalImageGridContainerView: NSView {
         for entry in entries[lowerBound ... upperBound] {
             guard entry.metadata?.fileExists ?? true else { continue }
             let url = entry.image.url
+            if let signature = thumbnailSignature(for: url),
+               failedThumbnailSignatures.contains(signature) {
+                continue
+            }
             Task(priority: .utility) {
                 _ = await LocalImageCache.shared.image(for: url, maxPixelSize: 512)
             }
         }
+    }
+
+    private func thumbnailSignature(for url: URL) -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? -1
+        let modifiedAt = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(url.path)|\(size)|\(Int64(modifiedAt))"
     }
 }
 

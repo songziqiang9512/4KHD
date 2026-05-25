@@ -68,7 +68,24 @@ private final class WorkspaceInspectorViewController: NSViewController {
     private let tertiaryLabel = NSTextField(labelWithString: "")
     private let modifiedValue = NSTextField(labelWithString: "")
     private let quaternaryLabel = NSTextField(labelWithString: "")
-    private let availabilityValue = NSTextField(labelWithString: "")
+    private let formatLabel = NSTextField(labelWithString: "")
+    private let formatValue = NSTextField(labelWithString: "")
+    private let availabilityIconView = NSImageView()
+    private let availabilityTextField: NSTextField = {
+        let tf = NSTextField(labelWithString: "")
+        tf.translatesAutoresizingMaskIntoConstraints = false
+        return tf
+    }()
+    private lazy var availabilityRowView: NSStackView = {
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(availabilityIconView)
+        stack.addArrangedSubview(availabilityTextField)
+        return stack
+    }()
     private let pathLabel = NSTextField(labelWithString: "")
     private let pathValue = NSTextField(labelWithString: "")
 
@@ -159,8 +176,9 @@ private final class WorkspaceInspectorViewController: NSViewController {
         let fields = NSGridView(views: [
             makeRow(label: primaryLabel, value: resolutionValue),
             makeRow(label: secondaryLabel, value: fileSizeValue),
+            makeRow(label: formatLabel, value: formatValue),
             makeRow(label: tertiaryLabel, value: modifiedValue),
-            makeRow(label: quaternaryLabel, value: availabilityValue),
+            makeRow(label: quaternaryLabel, value: availabilityRowView),
             makeRow(label: pathLabel, value: pathValue)
         ])
         fields.rowSpacing = 8
@@ -182,15 +200,18 @@ private final class WorkspaceInspectorViewController: NSViewController {
         ])
     }
 
-    private func makeRow(label: NSTextField, value: NSTextField) -> [NSView] {
+    private func makeRow(label: NSTextField, value: NSView) -> [NSView] {
         label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         label.textColor = .secondaryLabelColor
         label.alignment = .right
 
-        value.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        value.lineBreakMode = .byTruncatingMiddle
-        value.maximumNumberOfLines = label === pathLabel ? 2 : 1
-        value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        if let textField = value as? NSTextField {
+            textField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            textField.lineBreakMode = .byTruncatingMiddle
+            textField.maximumNumberOfLines = label === pathLabel ? 2 : 1
+            textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            textField.isSelectable = true
+        }
         return [label, value]
     }
 
@@ -201,10 +222,12 @@ private final class WorkspaceInspectorViewController: NSViewController {
         resolutionValue.stringValue = "-"
         secondaryLabel.stringValue = "Count"
         fileSizeValue.stringValue = "-"
+        formatLabel.stringValue = "Format"
+        formatValue.stringValue = "-"
         tertiaryLabel.stringValue = "Section"
         modifiedValue.stringValue = "-"
         quaternaryLabel.stringValue = "URL"
-        availabilityValue.stringValue = "-"
+        resetAvailability()
         pathLabel.stringValue = "Path"
         pathValue.stringValue = "-"
     }
@@ -218,10 +241,16 @@ private final class WorkspaceInspectorViewController: NSViewController {
         fileSizeValue.stringValue = metadata?.fileSize.map {
             ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
         } ?? "-"
+        formatLabel.stringValue = "Format"
+        formatValue.stringValue = image.url.pathExtension.uppercased().nilIfEmpty ?? "-"
         tertiaryLabel.stringValue = "Modified"
         modifiedValue.stringValue = metadata?.modifiedDate?.formatted(date: .numeric, time: .omitted) ?? "-"
-        quaternaryLabel.stringValue = "Available"
-        availabilityValue.stringValue = metadata?.fileExists == false ? "Missing" : "Available"
+        quaternaryLabel.stringValue = "Status"
+        if metadata?.fileExists == false {
+            applyAvailability(fileMissing: true)
+        } else {
+            applyAvailability(fileMissing: false)
+        }
         pathLabel.stringValue = "Path"
         pathValue.stringValue = image.url.path
     }
@@ -233,12 +262,41 @@ private final class WorkspaceInspectorViewController: NSViewController {
         resolutionValue.stringValue = item.kind.rawValue
         secondaryLabel.stringValue = "Images"
         fileSizeValue.stringValue = "\(item.imageCount)"
+        formatLabel.stringValue = "Format"
+        formatValue.stringValue = "-"
         tertiaryLabel.stringValue = "Section"
         modifiedValue.stringValue = item.section.title
         quaternaryLabel.stringValue = "Favorite"
-        availabilityValue.stringValue = appContext.galleryStore.isFavorite(item) ? "Yes" : "No"
+        availabilityIconView.isHidden = true
+        availabilityTextField.stringValue = appContext.galleryStore.isFavorite(item) ? "Yes" : "No"
+        availabilityTextField.textColor = .secondaryLabelColor
         pathLabel.stringValue = "URL"
         pathValue.stringValue = item.detailURL.absoluteString
+    }
+
+    private func resetAvailability() {
+        availabilityIconView.image = nil
+        availabilityIconView.isHidden = true
+        availabilityTextField.stringValue = "-"
+        availabilityTextField.textColor = .secondaryLabelColor
+    }
+
+    private func applyAvailability(fileMissing: Bool) {
+        if fileMissing {
+            if #available(macOS 11.0, *) {
+                let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+                availabilityIconView.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+                availabilityIconView.symbolConfiguration = config
+            }
+            availabilityIconView.isHidden = false
+            availabilityTextField.stringValue = "Original file unavailable"
+            availabilityTextField.textColor = .systemOrange
+        } else {
+            availabilityIconView.image = nil
+            availabilityIconView.isHidden = true
+            availabilityTextField.stringValue = "Available"
+            availabilityTextField.textColor = .secondaryLabelColor
+        }
     }
 
     private func observeState() {
@@ -261,5 +319,11 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 self.observeState()
             }
         }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

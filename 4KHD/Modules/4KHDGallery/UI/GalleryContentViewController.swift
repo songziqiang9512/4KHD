@@ -431,15 +431,16 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     private func promptForFavoriteGroupName(currentName: String) -> String? {
-        let alert = NSAlert()
-        alert.messageText = "重命名收藏目录"
-        alert.informativeText = "目录名会应用到当前目录下的所有收藏图集。"
-        alert.addButton(withTitle: "保存")
-        alert.addButton(withTitle: "取消")
-
         let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         textField.stringValue = currentName
-        alert.accessoryView = textField
+
+        let alert = makeAppAlert(
+            title: "重命名收藏目录",
+            message: "目录名会应用到当前目录下的所有收藏图集。",
+            buttons: ["保存", "取消"],
+            accessoryView: textField
+        )
+        alert.applyAppDialogStyle()
 
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         let newAuthor = normalizedFavoriteAuthorOverride(textField.stringValue)

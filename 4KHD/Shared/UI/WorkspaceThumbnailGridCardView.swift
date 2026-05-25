@@ -359,22 +359,8 @@ final class WorkspaceThumbnailGridCardView: NSView {
         currentScale = targetScale
     }
 
-    private func ensureLayerAnchorCentered() {
-        guard let layer, bounds.isUsableForManualLayout else { return }
-        let preservedFrame = layer.frame
-        guard preservedFrame.isUsableForManualLayout else { return }
-        guard abs(layer.anchorPoint.x - 0.5) > 0.0001
-           || abs(layer.anchorPoint.y - 0.5) > 0.0001 else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        layer.frame = preservedFrame
-        CATransaction.commit()
-    }
-
     private func refreshAppearance() {
-        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .vibrantDark])
-            .map { $0 == .darkAqua || $0 == .vibrantDark } ?? false
+        let isDark = isDarkAppearance
         layer?.backgroundColor = (isDark ? NSColor.controlBackgroundColor : NSColor.windowBackgroundColor).cgColor
         layer?.borderColor = isSelectedState
             ? NSColor.controlAccentColor.cgColor

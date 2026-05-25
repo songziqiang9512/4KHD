@@ -28,25 +28,6 @@ final class LocalImageAppearanceAwareView: NSView {
     }
 }
 
-extension NSView {
-    var localImageGridIsDarkAppearance: Bool {
-        effectiveAppearance.bestMatch(from: [.darkAqua, .vibrantDark])
-            .map { $0 == .darkAqua || $0 == .vibrantDark } ?? false
-    }
-
-    func localImageGridEnsureLayerAnchorCentered() {
-        guard let layer, !bounds.isEmpty else { return }
-        guard abs(layer.anchorPoint.x - 0.5) > 0.0001
-           || abs(layer.anchorPoint.y - 0.5) > 0.0001 else { return }
-        let frame = layer.frame
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        layer.frame = frame
-        CATransaction.commit()
-    }
-}
-
 enum LocalImageGridInteractionSupport {
     static func schedulePressRelease(
         pressedAt: TimeInterval,

@@ -20,11 +20,11 @@ enum LocalDesktopWallpaperSetter {
     }
 
     private static func presentFailure(message: String) {
-        let alert = NSAlert()
-        alert.messageText = "设置桌面壁纸失败"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "好")
-        alert.runModal()
+        let alert = makeAppAlert(
+            title: "设置桌面壁纸失败",
+            message: message,
+            style: .warning
+        )
+        presentAppAlert(alert)
     }
 }

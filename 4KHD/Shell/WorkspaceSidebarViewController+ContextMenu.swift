@@ -32,26 +32,16 @@ extension WorkspaceSidebarViewController {
 
     @objc func removeLocalFolderFromSidebarMenu(_ sender: NSMenuItem) {
         guard let folder = sender.representedObject as? LocalFolderNode else { return }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "从本地库移除目录？"
-        alert.informativeText = "这只会从侧边栏和本地库索引中移除该目录，不会删除磁盘上的文件。"
-        alert.addButton(withTitle: "移除")
-        alert.addButton(withTitle: "取消")
-
-        if let window = view.window {
-            alert.beginSheetModal(for: window) { [weak self] response in
-                guard response == .alertFirstButtonReturn else { return }
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    delegate?.sidebarViewController(self, didRequestRemoveLocalFolder: folder)
-                }
-            }
-            return
+        let alert = makeAppAlert(
+            title: "从本地库移除目录？",
+            message: "这只会从侧边栏和本地库索引中移除该目录，不会删除磁盘上的文件。",
+            style: .warning,
+            buttons: ["移除", "取消"]
+        )
+        presentAppAlert(alert, in: view.window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            delegate?.sidebarViewController(self, didRequestRemoveLocalFolder: folder)
         }
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        delegate?.sidebarViewController(self, didRequestRemoveLocalFolder: folder)
     }
 
     private func localFolderMenu(_ folder: LocalFolderNode) -> NSMenu {
