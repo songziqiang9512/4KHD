@@ -77,6 +77,7 @@ class WorkspaceZoomableImageView: NSView {
         scrollView.allowsMagnification = true
         scrollView.minMagnification = minimumRubberBandMagnification
         scrollView.maxMagnification = maxMagnification
+        scrollView.autohidesScrollers = true
         scrollView.contentView = CenteringClipView()
         scrollView.documentView = documentView
         scrollView.onMagnifyEndedBelowBaseline = { [weak self] in
