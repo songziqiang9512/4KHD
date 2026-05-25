@@ -133,18 +133,30 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             lastVisibleListSignature = visibleListSignature()
         case .grid:
             setActiveView(gridView)
-            gridView.update(
-                items: library.visibleItems,
-                selectedItemID: library.selectedItemID,
-                minimumColumnCount: nil,
-                maximumColumnCount: nil,
-                preferredCardMinimumWidth: 136,
-                showsFooter: shouldShowFooter,
-                isRefreshing: library.isRefreshingList,
-                canLoadMore: library.canLoadMoreList,
-                isFavorite: { [weak library] item in library?.isFavorite(item) ?? false },
-                isCached: { [weak library] item in library?.isCached(item) ?? false }
-            )
+            if rows != lastAppliedRows {
+                lastAppliedRows = rows
+                gridView.update(
+                    items: library.visibleItems,
+                    selectedItemID: library.selectedItemID,
+                    minimumColumnCount: nil,
+                    maximumColumnCount: nil,
+                    preferredCardMinimumWidth: 136,
+                    showsFooter: shouldShowFooter,
+                    isRefreshing: library.isRefreshingList,
+                    canLoadMore: library.canLoadMoreList,
+                    isFavorite: { [weak library] item in library?.isFavorite(item) ?? false },
+                    isCached: { [weak library] item in library?.isCached(item) ?? false }
+                )
+            } else {
+                gridView.refreshMetadata(
+                    selectedItemID: library.selectedItemID,
+                    isFavorite: { [weak library] item in library?.isFavorite(item) ?? false },
+                    isCached: { [weak library] item in library?.isCached(item) ?? false },
+                    isRefreshing: library.isRefreshingList,
+                    canLoadMore: library.canLoadMoreList,
+                    showsFooter: shouldShowFooter
+                )
+            }
         }
     }
 

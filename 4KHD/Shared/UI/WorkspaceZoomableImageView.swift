@@ -6,6 +6,7 @@ class WorkspaceZoomableImageView: NSView {
     let imageView = NSImageView()
     let minimumRubberBandMagnification: CGFloat = 0.8
     var maxMagnification: CGFloat = 6
+    private var lastFitSize: CGSize = .zero
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -20,6 +21,7 @@ class WorkspaceZoomableImageView: NSView {
     override func layout() {
         super.layout()
         if abs(scrollView.magnification - 1) < 0.001 {
+            guard bounds.size != lastFitSize else { return }
             fitImage(resetMagnification: false)
         }
     }
@@ -50,6 +52,7 @@ class WorkspaceZoomableImageView: NSView {
         )
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
+        lastFitSize = bounds.size
     }
 
     func restoreBaselineAfterRubberBand() {

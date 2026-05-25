@@ -114,6 +114,41 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         syncSelection()
     }
 
+    /// Lightweight update that only re-evaluates badge/footer/selection state without touching item layout.
+    /// Precondition: the item array itself is unchanged; only metadata (favorites, cache, refresh, selection) may differ.
+    func refreshMetadata(
+        selectedItemID: GalleryItem.ID?,
+        isFavorite: @escaping (GalleryItem) -> Bool,
+        isCached: @escaping (GalleryItem) -> Bool,
+        isRefreshing: Bool,
+        canLoadMore: Bool,
+        showsFooter: Bool
+    ) {
+        let previousBadgeSignature = visibleBadgeSignature()
+        let previousFooterState = (self.isRefreshing, self.canLoadMore)
+        let previousSelectedItemID = self.selectedItemID
+
+        self.selectedItemID = selectedItemID
+        self.isFavorite = isFavorite
+        self.isCached = isCached
+        self.isRefreshing = isRefreshing
+        self.canLoadMore = canLoadMore
+        self.showsFooter = showsFooter
+
+        let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
+        let footerChanged = previousFooterState != (isRefreshing, canLoadMore)
+        let selectionChanged = previousSelectedItemID != selectedItemID
+
+        if footerChanged {
+            reloadFooterItem()
+        } else if badgeChanged {
+            reloadVisibleItems()
+        } else if selectionChanged {
+            refreshVisibleSelection()
+        }
+        syncSelection()
+    }
+
     func numberOfSections(in collectionView: NSCollectionView) -> Int {
         1
     }

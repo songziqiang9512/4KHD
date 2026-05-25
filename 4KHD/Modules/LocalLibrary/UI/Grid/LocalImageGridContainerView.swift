@@ -74,8 +74,6 @@ final class LocalImageGridContainerView: NSView {
     var selectedImageID: LocalImageItem.ID?
     var isApplyingSelection = false
     private var lastAppliedIDs: [LocalImageItem.ID] = []
-    private var pendingIDs: [LocalImageItem.ID] = []
-    private var isSnapshotScheduled = false
     private var lastLayoutWidth: CGFloat = 0
     private var scrollObserver: NSObjectProtocol?
     private var prefetchWorkItem: DispatchWorkItem?
@@ -248,26 +246,20 @@ final class LocalImageGridContainerView: NSView {
     }
 
     private func applySnapshot(ids: [LocalImageItem.ID]) {
-        pendingIDs = ids
-        guard !isSnapshotScheduled else { return }
-        isSnapshotScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        guard ids != lastAppliedIDs else { return }
+        let animate = !lastAppliedIDs.isEmpty
+            && abs(ids.count - lastAppliedIDs.count)
+                <= max(20, collectionView.indexPathsForVisibleItems().count + 10)
+        var snapshot = NSDiffableDataSourceSnapshot<Section, LocalImageItem.ID>()
+        snapshot.appendSections([.main])
+        snapshot.appendItems(ids, toSection: .main)
+        // Data source is updated immediately; the completion handler fires
+        // after animations (if any) finish.
+        dataSource.apply(snapshot, animatingDifferences: animate) { [weak self] in
             guard let self else { return }
-            self.isSnapshotScheduled = false
-            let ids = self.pendingIDs
-            guard ids != self.lastAppliedIDs else { return }
-            let animate = !self.lastAppliedIDs.isEmpty
-                && abs(ids.count - self.lastAppliedIDs.count)
-                    <= max(20, self.collectionView.indexPathsForVisibleItems().count + 10)
-            var snapshot = NSDiffableDataSourceSnapshot<Section, LocalImageItem.ID>()
-            snapshot.appendSections([.main])
-            snapshot.appendItems(ids, toSection: .main)
-            self.dataSource.apply(snapshot, animatingDifferences: animate) { [weak self] in
-                guard let self else { return }
-                self.lastAppliedIDs = ids
-                self.refreshLayoutAfterGeometryChange()
-                self.syncSelection()
-            }
+            self.lastAppliedIDs = ids
+            self.refreshLayoutAfterGeometryChange()
+            self.syncSelection()
         }
     }
 
@@ -310,14 +302,9 @@ final class LocalImageGridContainerView: NSView {
     private func clampScrollPositionToContent() {
         let visible = scrollView.contentView.bounds
         guard visible.isFiniteForScrolling else { return }
-        let contentHeight = collectionView.collectionViewLayout?.collectionViewContentSize.height
-            ?? collectionView.bounds.height
-        guard contentHeight.isFinite, contentHeight >= 0 else { return }
         let minY = -scrollView.contentInsets.top
-        let maxY = max(minY, contentHeight - visible.height + scrollView.contentInsets.bottom)
-        let y = min(max(minY, visible.origin.y), maxY)
-        guard abs(y - visible.origin.y) > 0.5 else { return }
-        scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
+        guard visible.origin.y < minY - 0.5 else { return }
+        scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: minY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
