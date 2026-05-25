@@ -89,11 +89,17 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
     private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
         var heights = [CGFloat](repeating: metrics.sectionInset.top, count: metrics.columns)
-        let oldColumnSpan = oldMetrics.columnWidth + oldMetrics.columnSpacing
-        for attrs in cache {
+        // Sort cached items by indexPath order so they flow left-to-right, top-to-bottom
+        // using the standard shortest-column-first waterfall algorithm, regardless of
+        // column count changes. This avoids stacking/overlapping that would occur when
+        // trying to preserve old column assignments after a column count decrease.
+        let sortedCache = cache.sorted { a, b in
+            guard let ia = a.indexPath, let ib = b.indexPath else { return false }
+            return ia < ib
+        }
+        for attrs in sortedCache {
             guard let indexPath = attrs.indexPath else { continue }
-            let rawColumn = ((attrs.frame.origin.x - oldMetrics.sectionInset.left) / oldColumnSpan).rounded()
-            let column = min(max(Int(rawColumn), 0), metrics.columns - 1)
+            let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
             let ratio = clampedAspectRatio(for: indexPath)
             let height = metrics.columnWidth / ratio
             let x = metrics.sectionInset.left + CGFloat(column) * (metrics.columnWidth + metrics.columnSpacing)

@@ -23,6 +23,11 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     private var isObserving = false
     private var currentImageID: LocalImageItem.ID?
     private var resetTokenSeen = UUID()
+    private let reloadQueue = WorkspaceCoalescingQueue(
+        name: "LocalDetail Reload",
+        interval: 0.05,
+        maxInterval: 0.12
+    )
 
     init(
         localLibrary: LocalLibraryStore,
@@ -180,7 +185,9 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isObserving = false
-                self.reloadDetail()
+                self.reloadQueue.add(id: "reload") { [weak self] in
+                    self?.reloadDetail()
+                }
                 self.observeState()
             }
         }

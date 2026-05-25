@@ -11,6 +11,15 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     var localFolderDropHandler: ((URL) -> Void)?
     var localRootFolderOrderCommitHandler: (([LocalFolderNode.ID]) -> Void)?
 
+    /// Returns all node state identifiers in depth-first order for structural comparison.
+    func allStateIdentifiers() -> [String] {
+        var result: [String] = []
+        for node in nodes {
+            appendStateIdentifiers(from: node, into: &result)
+        }
+        return result
+    }
+
     func reload(localRoots: [LocalLibraryRoot]) {
         childrenByNode = [:]
         lastLiveLocalRootDestination = nil
@@ -150,6 +159,13 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         outlineView.moveItem(at: sourceIndex, inParent: localGroup, to: insertionIndex, inParent: localGroup)
         outlineView.endUpdates()
         return currentLocalRootFolderIDs()
+    }
+
+    private func appendStateIdentifiers(from node: WorkspaceSidebarNode, into result: inout [String]) {
+        result.append(node.stateIdentifier)
+        for child in children(of: node) {
+            appendStateIdentifiers(from: child, into: &result)
+        }
     }
 
     private func makeFolderNode(_ folder: LocalFolderNode) -> WorkspaceSidebarNode {

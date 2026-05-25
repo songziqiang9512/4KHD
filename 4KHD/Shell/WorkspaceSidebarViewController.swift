@@ -123,7 +123,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     }
 
     func reload() {
+        let oldIdentifiers = dataSource.allStateIdentifiers()
         dataSource.reload(localRoots: appContext.localLibraryStore.roots)
+        let newIdentifiers = dataSource.allStateIdentifiers()
+        guard oldIdentifiers != newIdentifiers else { return }
         outlineView.reloadData()
         applyExpandedNodeIDs()
         selectCurrentRoute()
