@@ -278,8 +278,6 @@ final class LocalImageGridContainerView: NSView {
             context.duration = 0
             context.allowsImplicitAnimation = false
             collectionView.collectionViewLayout?.invalidateLayout()
-            collectionView.needsLayout = true
-            collectionView.layoutSubtreeIfNeeded()
         }
         CATransaction.commit()
     }
@@ -289,8 +287,6 @@ final class LocalImageGridContainerView: NSView {
         forceLayoutForVisibleRegion()
         clampScrollPositionToContent()
         scrollToSelectedItemIfVisibleRegionIsEmpty()
-        collectionView.needsLayout = true
-        collectionView.layoutSubtreeIfNeeded()
     }
 
     private func forceLayoutForVisibleRegion() {

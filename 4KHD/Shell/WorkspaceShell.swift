@@ -84,9 +84,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        Task { @MainActor [weak self] in
-            self?.restoreSplitViewStateIfNeeded()
-        }
+        restoreSplitViewStateIfNeeded()
     }
 
     override func keyDown(with event: NSEvent) {
@@ -143,12 +141,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         }
     }
 
-    private func setSidebarCollapsed(_ isCollapsed: Bool, animated: Bool) {
-        if animated {
-            sidebarItem.animator().isCollapsed = isCollapsed
-        } else {
-            sidebarItem.isCollapsed = isCollapsed
-        }
+    private func setSidebarCollapsed(_ isCollapsed: Bool) {
+        sidebarItem.isCollapsed = isCollapsed
     }
 
     @objc func toggleWorkspaceSidebar(_ sender: Any?) {
@@ -480,14 +474,14 @@ final class WorkspaceSplitViewController: NSSplitViewController {
                 contentCollapsedBeforeImmersive = contentItem.isCollapsed
                 isApplyingImmersiveLayout = true
             }
-            setSidebarCollapsed(!immersive.peekRevealing, animated: true)
-            contentItem.animator().isCollapsed = !immersive.peekRevealing
-            detailItem.animator().isCollapsed = false
+            setSidebarCollapsed(!immersive.peekRevealing)
+            contentItem.isCollapsed = !immersive.peekRevealing
+            detailItem.isCollapsed = false
         } else {
             guard isApplyingImmersiveLayout else { return }
             isApplyingImmersiveLayout = false
-            setSidebarCollapsed(sidebarCollapsedBeforeImmersive, animated: true)
-            contentItem.animator().isCollapsed = contentCollapsedBeforeImmersive
+            setSidebarCollapsed(sidebarCollapsedBeforeImmersive)
+            contentItem.isCollapsed = contentCollapsedBeforeImmersive
             applyDetailPaneVisibility(appContext.detailPaneController.isPresented)
         }
     }
