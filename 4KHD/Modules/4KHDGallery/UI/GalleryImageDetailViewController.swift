@@ -27,6 +27,11 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     private var currentImageURL: URL?
     private var detailFailed = false
     private var isDetailReady = false
+    private let reloadQueue = WorkspaceCoalescingQueue(
+        name: "GalleryDetail Reload",
+        interval: 0.05,
+        maxInterval: 0.1
+    )
 
     init(
         library: FourKHDGalleryStore,
@@ -88,6 +93,10 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        if let firstResponder = view.window?.firstResponder as? NSText,
+           firstResponder.isEditable {
+            return
+        }
         view.window?.makeFirstResponder(view)
     }
 
@@ -197,7 +206,9 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isObserving = false
-                self.reloadDetail()
+                self.reloadQueue.add(id: "reload") { [weak self] in
+                    self?.reloadDetail()
+                }
                 self.observeState()
             }
         }

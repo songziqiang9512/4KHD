@@ -79,6 +79,11 @@ final class LocalImageGridContainerView: NSView {
     private var lastLayoutWidth: CGFloat = 0
     private var scrollObserver: NSObjectProtocol?
     private var prefetchWorkItem: DispatchWorkItem?
+    private let restoreScrollQueue = WorkspaceCoalescingQueue(
+        name: "LocalGrid Restore Scroll",
+        interval: 0.08,
+        maxInterval: 0.15
+    )
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -104,7 +109,7 @@ final class LocalImageGridContainerView: NSView {
         lastLayoutWidth = width
         collectionView.collectionViewLayout?.invalidateLayout()
         schedulePrefetch()
-        DispatchQueue.main.async { [weak self] in
+        restoreScrollQueue.add(id: "scroll") { [weak self] in
             self?.restoreVisibleLayoutIfNeeded()
         }
     }
@@ -269,8 +274,10 @@ final class LocalImageGridContainerView: NSView {
 
     private func refreshLayoutAfterGeometryChange() {
         invalidateCollectionLayout()
-        restoreVisibleLayoutIfNeeded()
         schedulePrefetch()
+        restoreScrollQueue.add(id: "scroll") { [weak self] in
+            self?.restoreVisibleLayoutIfNeeded()
+        }
     }
 
     private func invalidateCollectionLayout() {

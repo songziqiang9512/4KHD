@@ -103,7 +103,7 @@ final class LocalLibraryContentPreferences {
     }
 
     func gridColumnLimits() -> (minimum: Int, maximum: Int) {
-        (gridColumnCount, gridColumnCount)
+        (Self.minimumGridColumnCount, gridColumnCount)
     }
 
     private static func clampedGridColumnCount(_ count: Int) -> Int {

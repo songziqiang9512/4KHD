@@ -35,14 +35,17 @@ final class LocalZoomableImageView: NSView {
         }
     }
 
-    func setImageURL(_ url: URL?) {
+    func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
         guard imageURL != url else { return }
+        let shouldKeepCurrent = preservesCurrentImageUntilLoaded && imageView.image != nil
         imageURL = url
         imageTask?.cancel()
-        imageView.image = nil
-        progressIndicator.isHidden = url == nil
-        if url != nil {
-            progressIndicator.startAnimation(nil)
+        if !shouldKeepCurrent {
+            imageView.image = nil
+            progressIndicator.isHidden = url == nil
+            if url != nil {
+                progressIndicator.startAnimation(nil)
+            }
         }
 
         guard let url else { return }

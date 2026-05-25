@@ -59,6 +59,10 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        if let firstResponder = view.window?.firstResponder as? NSText,
+           firstResponder.isEditable {
+            return
+        }
         view.window?.makeFirstResponder(view)
     }
 
@@ -202,10 +206,11 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         previousButton.isEnabled = localLibrary.selectedImageIndex > 0
         nextButton.isEnabled = localLibrary.selectedImageIndex < localLibrary.selectedImages.count - 1
 
-        if currentImageID != image.id {
+        let isSameImage = currentImageID == image.id
+        if !isSameImage {
             currentImageID = image.id
             detailInteraction.saveMessage = ""
-            zoomableImageView.setImageURL(image.url)
+            zoomableImageView.setImageURL(image.url, preservesCurrentImageUntilLoaded: true)
             LocalQuickLookController.shared.syncVisible(url: image.url)
         } else {
             zoomableImageView.setImageURL(image.url)

@@ -69,6 +69,14 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         )
         guard layoutMetrics != metrics else { return }
 
+        if let oldMetrics = layoutMetrics,
+           oldMetrics.itemCount == metrics.itemCount,
+           oldMetrics.columns == metrics.columns,
+           !cache.isEmpty {
+            updateCachedFrames(metrics: metrics, oldMetrics: oldMetrics)
+            return
+        }
+
         layoutMetrics = metrics
         itemCount = newItemCount
         cache.removeAll(keepingCapacity: true)
@@ -77,6 +85,29 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         didLayoutAllItems = itemCount == 0
         contentHeight = inset.top + inset.bottom
         estimatedContentHeight = estimateContentHeight(metrics: metrics)
+    }
+
+    private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
+        var heights = [CGFloat](repeating: metrics.sectionInset.top, count: metrics.columns)
+        let oldColumnSpan = oldMetrics.columnWidth + oldMetrics.columnSpacing
+        for attrs in cache {
+            guard let indexPath = attrs.indexPath else { continue }
+            let rawColumn = ((attrs.frame.origin.x - oldMetrics.sectionInset.left) / oldColumnSpan).rounded()
+            let column = min(max(Int(rawColumn), 0), metrics.columns - 1)
+            let ratio = clampedAspectRatio(for: indexPath)
+            let height = metrics.columnWidth / ratio
+            let x = metrics.sectionInset.left + CGFloat(column) * (metrics.columnWidth + metrics.columnSpacing)
+            let y = heights[column]
+            guard x.isFinite, y.isFinite, height.isFinite, height > 0, y < maximumLayoutExtent else { continue }
+            attrs.frame = CGRect(x: x, y: y, width: metrics.columnWidth, height: height)
+            heights[column] += height + metrics.rowSpacing
+        }
+        layoutMetrics = metrics
+        didLayoutAllItems = true
+        contentHeight = max(
+            (heights.max() ?? metrics.sectionInset.top) + metrics.sectionInset.bottom - metrics.rowSpacing,
+            metrics.sectionInset.top + metrics.sectionInset.bottom
+        )
     }
 
     override var collectionViewContentSize: NSSize {

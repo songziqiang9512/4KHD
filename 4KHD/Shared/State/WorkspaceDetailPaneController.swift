@@ -9,35 +9,11 @@ final class WorkspaceDetailPaneController {
 
     @ObservationIgnored private var observers: [UUID: (Bool) -> Void] = [:]
 
-    var isPresented: Bool = true {
+    var isPresented: Bool = false {
         didSet {
             guard oldValue != isPresented else { return }
             notifyObservers()
         }
-    }
-
-    var preferredContentIdealWidth: CGFloat {
-        isPresented ? 380 : 760
-    }
-
-    var preferredContentMaxWidth: CGFloat {
-        isPresented ? 430 : 10_000
-    }
-
-    var minimumGridColumnCount: Int? {
-        isPresented ? 2 : nil
-    }
-
-    var maximumGridColumnCount: Int? {
-        isPresented ? 2 : nil
-    }
-
-    var preferredGridCardMinimumWidth: CGFloat {
-        isPresented ? 148 : 136
-    }
-
-    var preferredGridCardMaximumWidth: CGFloat? {
-        isPresented ? 210 : nil
     }
 
     func setPresented(_ isPresented: Bool) {

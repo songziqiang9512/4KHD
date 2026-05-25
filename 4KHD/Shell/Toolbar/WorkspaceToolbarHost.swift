@@ -801,12 +801,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         guard identifiers != lastDefaultItemIdentifiers else { return }
         lastDefaultItemIdentifiers = identifiers
 
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         while !items.isEmpty {
             removeItem(at: 0)
         }
         for (index, identifier) in identifiers.enumerated() {
             insertItem(withItemIdentifier: identifier, at: index)
         }
+        CATransaction.commit()
     }
 
     private func makeDetailActionsMenu() -> NSMenu {

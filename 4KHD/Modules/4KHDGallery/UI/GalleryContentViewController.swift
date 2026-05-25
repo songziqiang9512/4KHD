@@ -25,6 +25,11 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private var isApplyingSelection = false
     private var lastAppliedRows: [Row] = []
     private var lastVisibleListSignature: [Int: GalleryVisibleListRowSignature] = [:]
+    private let reloadQueue = WorkspaceCoalescingQueue(
+        name: "GalleryContent Reload",
+        interval: 0.05,
+        maxInterval: 0.12
+    )
 
     init(
         library: FourKHDGalleryStore,
@@ -131,9 +136,9 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             gridView.update(
                 items: library.visibleItems,
                 selectedItemID: library.selectedItemID,
-                minimumColumnCount: detailPane.minimumGridColumnCount,
-                maximumColumnCount: detailPane.maximumGridColumnCount,
-                preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth,
+                minimumColumnCount: nil,
+                maximumColumnCount: nil,
+                preferredCardMinimumWidth: 136,
                 showsFooter: shouldShowFooter,
                 isRefreshing: library.isRefreshingList,
                 canLoadMore: library.canLoadMoreList,
@@ -145,16 +150,26 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
 
     private func setActiveView(_ nextView: NSView) {
         guard activeView !== nextView else { return }
-        activeView?.removeFromSuperview()
+        let previousView = activeView
         activeView = nextView
-        view.addSubview(nextView)
         nextView.translatesAutoresizingMaskIntoConstraints = false
+        nextView.alphaValue = previousView != nil ? 0 : 1
+        view.addSubview(nextView)
         NSLayoutConstraint.activate([
             nextView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             nextView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             nextView.topAnchor.constraint(equalTo: view.topAnchor),
             nextView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        guard let previousView else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            previousView.animator().alphaValue = 0
+            nextView.animator().alphaValue = 1
+        } completionHandler: {
+            previousView.removeFromSuperview()
+        }
     }
 
     private func observeState() {
@@ -178,7 +193,9 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
                 if self.library.section != .favorites {
                     self.expandedFavoriteAuthorIDs.removeAll()
                 }
-                self.reloadContent()
+                self.reloadQueue.add(id: "reload") { [weak self] in
+                    self?.reloadContent()
+                }
                 self.observeState()
             }
         }
@@ -248,12 +265,38 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     private func toggleFavoriteGroup(_ id: String) {
+        let oldRows = rows
         if expandedFavoriteAuthorIDs.contains(id) {
             expandedFavoriteAuthorIDs.remove(id)
         } else {
             expandedFavoriteAuthorIDs.insert(id)
         }
-        reloadContent()
+        rebuildRows()
+        if tableScrollView.superview != nil {
+            animateTableRowChange(from: oldRows, to: rows)
+        } else {
+            lastAppliedRows = rows
+        }
+    }
+
+    private func animateTableRowChange(from oldRows: [Row], to newRows: [Row]) {
+        let removed = oldRows.enumerated().filter { !newRows.contains($0.element) }
+        let inserted = newRows.enumerated().filter { !oldRows.contains($0.element) }
+        let removedSet = IndexSet(removed.map(\.offset))
+        let insertedSet = IndexSet(inserted.map(\.offset))
+        guard !removedSet.isEmpty || !insertedSet.isEmpty else {
+            lastAppliedRows = newRows
+            return
+        }
+        lastAppliedRows = newRows
+        tableView.beginUpdates()
+        if !removedSet.isEmpty {
+            tableView.removeRows(at: removedSet, withAnimation: .slideUp)
+        }
+        if !insertedSet.isEmpty {
+            tableView.insertRows(at: insertedSet, withAnimation: .slideDown)
+        }
+        tableView.endUpdates()
     }
 
     private func loadMoreIfNeeded(for row: Int) {

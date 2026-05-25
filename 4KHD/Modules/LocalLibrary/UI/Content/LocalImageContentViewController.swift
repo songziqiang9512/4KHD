@@ -23,6 +23,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     private var isObserving = false
     private var isObservingGridLayoutPreferences = false
     var isApplyingSelection = false
+    private let reloadQueue = WorkspaceCoalescingQueue(
+        name: "LocalContent Reload",
+        interval: 0.05,
+        maxInterval: 0.12
+    )
 
     init(
         localLibrary: LocalLibraryStore,
@@ -157,16 +162,26 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
 
     private func setActiveView(_ nextView: NSView) {
         guard activeView !== nextView else { return }
-        activeView?.removeFromSuperview()
+        let previousView = activeView
         activeView = nextView
-        view.addSubview(nextView)
         nextView.translatesAutoresizingMaskIntoConstraints = false
+        nextView.alphaValue = previousView != nil ? 0 : 1
+        view.addSubview(nextView)
         NSLayoutConstraint.activate([
             nextView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             nextView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             nextView.topAnchor.constraint(equalTo: view.topAnchor),
             nextView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        guard let previousView else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            previousView.animator().alphaValue = 0
+            nextView.animator().alphaValue = 1
+        } completionHandler: {
+            previousView.removeFromSuperview()
+        }
     }
 
     private func makePlaceholderView(title: String, detail: String?, showsImportButton: Bool) -> NSView {
@@ -227,7 +242,9 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isObserving = false
-                self.reloadContent()
+                self.reloadQueue.add(id: "reload") { [weak self] in
+                    self?.reloadContent()
+                }
                 self.observeState()
             }
         }
@@ -238,7 +255,6 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         isObservingGridLayoutPreferences = true
         withObservationTracking {
             _ = preferences.gridColumnCount
-            _ = detailPane.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -260,18 +276,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     }
 
     private func currentGridLayoutPreferences() -> GridLayoutPreferences {
-        if detailPane.isPresented {
-            return GridLayoutPreferences(
-                minimumColumnCount: detailPane.minimumGridColumnCount,
-                maximumColumnCount: detailPane.maximumGridColumnCount,
-                preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
-            )
-        }
         let columnLimits = preferences.gridColumnLimits()
         return GridLayoutPreferences(
             minimumColumnCount: columnLimits.minimum,
             maximumColumnCount: columnLimits.maximum,
-            preferredCardMinimumWidth: detailPane.preferredGridCardMinimumWidth
+            preferredCardMinimumWidth: 136
         )
     }
 

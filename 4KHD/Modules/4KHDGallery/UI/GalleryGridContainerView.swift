@@ -270,7 +270,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let currentRatio = aspectRatiosByItemID[itemID]
             ?? modelRatio
             ?? 0.74
-        guard abs(currentRatio - clampedRatio) > 0.01 else { return }
+        let threshold = modelRatio != nil ? 0.1 : 0.01
+        guard abs(currentRatio - clampedRatio) > threshold else { return }
         aspectRatiosByItemID[itemID] = clampedRatio
         aspectRatioLayoutQueue.add(id: "invalidate-layout") { [weak self] in
             self?.performWithoutCollectionAnimation {

@@ -81,6 +81,6 @@ struct WorkspaceWindowStateStore {
 
     func legacyDetailPanePresented() -> Bool {
         let stored = defaults.object(forKey: WorkspaceDetailPaneController.defaultsKey) as? Bool
-        return stored ?? true
+        return stored ?? false
     }
 }
