@@ -28,10 +28,13 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
     func update(images: [LocalImageItem], selectedIndex: Int) {
         let previousSelectedIndex = self.selectedIndex
         let idsChanged = self.images.map(\.id) != images.map(\.id)
+        let countChanged = images.count != self.images.count
         self.images = images
         self.selectedIndex = selectedIndex
-        if idsChanged {
+        if countChanged {
             collectionView.reloadData()
+        } else if idsChanged {
+            collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems())
         } else if previousSelectedIndex != selectedIndex {
             refreshVisibleSelection()
         }

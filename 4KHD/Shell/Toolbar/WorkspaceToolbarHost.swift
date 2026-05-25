@@ -17,7 +17,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let detailActions = NSToolbarItem.Identifier("WorkspaceToolbar.detailActions")
         static let share = NSToolbarItem.Identifier("WorkspaceToolbar.share")
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
-        static let cacheLimit = NSToolbarItem.Identifier("WorkspaceToolbar.cacheLimit")
         static let importFolder = NSToolbarItem.Identifier("WorkspaceToolbar.importFolder")
     }
 
@@ -36,8 +35,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var detailActionsItem: NSMenuToolbarItem?
     private weak var shareItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
-    private weak var cacheLimitItem: NSToolbarItem?
-    private var cacheLimitObserver: NSObjectProtocol?
     private var isObservingToolbarState = false
     private var lastDefaultItemIdentifiers: [NSToolbarItem.Identifier] = []
     private let refreshQueue = WorkspaceCoalescingQueue(
@@ -64,22 +61,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         detailObserverID = appContext.detailPaneController.addObserver { [weak self] _ in
             self?.scheduleRefresh()
         }
-        cacheLimitObserver = NotificationCenter.default.addObserver(
-            forName: OnlineCacheLimit.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateCacheLimitItem()
-            }
-        }
         observeToolbarState()
     }
 
     deinit {
-        if let cacheLimitObserver {
-            NotificationCenter.default.removeObserver(cacheLimitObserver)
-        }
         if let routeObserverID {
             Task { @MainActor [appContext] in
                 appContext.routeController.removeObserver(id: routeObserverID)
@@ -107,7 +92,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.detailActions,
             ItemID.share,
             ItemID.detailPane,
-            ItemID.cacheLimit,
             ItemID.importFolder,
             ItemID.search
         ]
@@ -141,9 +125,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.share,
             ItemID.detailPane
         ]
-        if currentModuleID == .fourKHDGallery {
-            identifiers.append(ItemID.cacheLimit)
-        }
         identifiers.append(ItemID.search)
         return identifiers
     }
@@ -311,15 +292,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             detailPaneItem = item
             configureDetailPaneItem(item)
             return item
-        case ItemID.cacheLimit:
-            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "缓存容量"
-            item.paletteLabel = "缓存容量"
-            item.image = NSImage(systemSymbolName: "internaldrive", accessibilityDescription: "缓存容量")
-            item.menu = makeCacheLimitMenu()
-            item.visibilityPriority = .low
-            cacheLimitItem = item
-            return item
         case ItemID.importFolder:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "导入目录"
@@ -470,11 +442,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     @objc private func quickLookCurrentFile(_ sender: Any?) {
         guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
         LocalQuickLookController.shared.open(url: fileURL)
-    }
-
-    @objc private func selectCacheLimit(_ sender: NSMenuItem) {
-        guard let limit = sender.representedObject as? OnlineCacheLimit else { return }
-        OnlineCacheLimit.apply(limit)
     }
 
     private var currentModuleID: WorkspaceModuleID {
@@ -749,10 +716,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         item.toolTip = isPresented ? "隐藏右侧详情区" : "显示右侧详情区"
     }
 
-    private func updateCacheLimitItem() {
-        (cacheLimitItem as? NSMenuToolbarItem)?.menu = makeCacheLimitMenu()
-    }
-
     private func syncToolbarItemIdentifiers() {
         let identifiers = defaultItemIdentifiers()
         guard identifiers != lastDefaultItemIdentifiers else { return }
@@ -825,19 +788,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
-        }
-        return menu
-    }
-
-    private func makeCacheLimitMenu() -> NSMenu {
-        let menu = NSMenu(title: "缓存容量")
-        let current = OnlineCacheLimit.current
-        for limit in OnlineCacheLimit.allCases {
-            let item = NSMenuItem(title: limit.title, action: #selector(selectCacheLimit(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = limit
-            item.state = limit == current ? .on : .off
-            menu.addItem(item)
         }
         return menu
     }

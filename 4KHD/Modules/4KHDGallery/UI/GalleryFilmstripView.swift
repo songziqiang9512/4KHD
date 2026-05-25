@@ -32,11 +32,17 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         let previousSelectedIndex = self.selectedIndex
         let slotIDsChanged = self.slots.map(\.id) != slots.map(\.id)
         let loadingTileChanged = self.showsLoadingTile != showsLoadingTile
+        let countChanged = (slots.count + (showsLoadingTile ? 1 : 0)) != (self.slots.count + (self.showsLoadingTile ? 1 : 0))
         self.slots = slots
         self.selectedIndex = selectedIndex
         self.showsLoadingTile = showsLoadingTile
-        if slotIDsChanged || loadingTileChanged {
+        if countChanged {
+            // Only full reload when item count changes — otherwise
+            // reload visible items in-place to avoid destroying cells
+            // that the user may be interacting with.
             collectionView.reloadData()
+        } else if slotIDsChanged || loadingTileChanged {
+            collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems())
         } else if previousSelectedIndex != selectedIndex {
             refreshVisibleSelection()
         }
