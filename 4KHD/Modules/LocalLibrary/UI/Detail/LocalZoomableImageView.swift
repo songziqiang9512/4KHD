@@ -1,12 +1,8 @@
 import AppKit
 
 @MainActor
-final class LocalZoomableImageView: NSView {
-    private let scrollView = LocalZoomScrollView()
-    private let documentView = NSView()
-    private let imageView = NSImageView()
+final class LocalZoomableImageView: WorkspaceZoomableImageView {
     private let progressIndicator = NSProgressIndicator()
-    private let minimumRubberBandMagnification: CGFloat = 0.8
     private var imageTask: Task<Void, Never>?
     private var imageURL: URL?
 
@@ -14,26 +10,11 @@ final class LocalZoomableImageView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        setupView()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    deinit {
-        imageTask?.cancel()
+        maxMagnification = 8
+        setupLocalOverlay()
     }
 
     override var acceptsFirstResponder: Bool { true }
-
-    override func layout() {
-        super.layout()
-        if abs(scrollView.magnification - 1) < 0.001 {
-            fitImage(resetMagnification: false)
-        }
-    }
 
     func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
         guard imageURL != url else { return }
@@ -56,54 +37,6 @@ final class LocalZoomableImageView: NSView {
         }
     }
 
-    func resetZoom() {
-        fitImage(resetMagnification: true)
-    }
-
-    private func setupView() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
-
-        scrollView.drawsBackground = false
-        scrollView.hasHorizontalScroller = true
-        scrollView.hasVerticalScroller = true
-        scrollView.allowsMagnification = true
-        scrollView.minMagnification = minimumRubberBandMagnification
-        scrollView.maxMagnification = 8
-        scrollView.autohidesScrollers = true
-        scrollView.contentView = LocalCenteringClipView()
-        scrollView.onMagnifyEndedBelowBaseline = { [weak self] in
-            self?.restoreBaselineAfterRubberBand()
-        }
-
-        documentView.wantsLayer = true
-        documentView.layer?.backgroundColor = NSColor.clear.cgColor
-        documentView.addSubview(imageView)
-
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.imageAlignment = .alignCenter
-        imageView.wantsLayer = true
-        imageView.layer?.backgroundColor = NSColor.clear.cgColor
-        scrollView.documentView = documentView
-
-        progressIndicator.style = .spinning
-        progressIndicator.controlSize = .large
-        progressIndicator.isDisplayedWhenStopped = false
-
-        addSubview(scrollView)
-        addSubview(progressIndicator)
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            progressIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
-            progressIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
-    }
-
     private var maxPixelSize: CGFloat {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         return max(bounds.width, bounds.height) * scale
@@ -118,127 +51,16 @@ final class LocalZoomableImageView: NSView {
         onDisplayed?()
     }
 
-    private func fitImage(resetMagnification: Bool) {
-        guard let image = imageView.image,
-              image.size.isFiniteForLocalZoom,
-              image.size.width > 0,
-              image.size.height > 0 else {
-            return
-        }
-        if resetMagnification {
-            scrollView.magnification = 1
-            scrollView.layoutSubtreeIfNeeded()
-        }
-        let viewportSize = scrollView.contentView.bounds.size
-        guard viewportSize.isFiniteForLocalZoom,
-              viewportSize.width > 1,
-              viewportSize.height > 1 else {
-            return
-        }
+    private func setupLocalOverlay() {
+        progressIndicator.style = .spinning
+        progressIndicator.controlSize = .large
+        progressIndicator.isDisplayedWhenStopped = false
 
-        let fitScale = min(viewportSize.width / image.size.width, viewportSize.height / image.size.height)
-        guard fitScale.isFinite, fitScale > 0 else { return }
-        let fittedSize = NSSize(width: image.size.width * fitScale, height: image.size.height * fitScale)
-        guard fittedSize.isFiniteForLocalZoom else { return }
-        documentView.frame = NSRect(origin: .zero, size: viewportSize)
-        imageView.frame = NSRect(
-            x: max((viewportSize.width - fittedSize.width) / 2, 0),
-            y: max((viewportSize.height - fittedSize.height) / 2, 0),
-            width: fittedSize.width,
-            height: fittedSize.height
-        )
-        scrollView.contentView.scroll(to: .zero)
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-    }
-
-    private func restoreBaselineAfterRubberBand() {
-        guard scrollView.magnification < 1 else { return }
-        let visibleRect = scrollView.contentView.bounds
-        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            scrollView.animator().setMagnification(1, centeredAt: center)
-        } completionHandler: { [weak self] in
-            guard let self else { return }
-            self.scrollView.contentView.scroll(to: .zero)
-            self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
-        }
-    }
-}
-
-private final class LocalCenteringClipView: NSClipView {
-    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-        guard proposedBounds.isFiniteForLocalZoom else { return bounds }
-        var constrained = super.constrainBoundsRect(proposedBounds)
-        guard let documentView else { return constrained }
-
-        let documentFrame = documentView.frame
-        guard documentFrame.isFiniteForLocalZoom else { return constrained }
-        if documentFrame.width < proposedBounds.width {
-            constrained.origin.x = floor((documentFrame.width - proposedBounds.width) / 2)
-        }
-        if documentFrame.height < proposedBounds.height {
-            constrained.origin.y = floor((documentFrame.height - proposedBounds.height) / 2)
-        }
-        return constrained
-    }
-}
-
-private final class LocalZoomScrollView: NSScrollView {
-    var onMagnifyEndedBelowBaseline: (() -> Void)?
-
-    override func viewWillStartLiveResize() {
-        hasHorizontalScroller = false
-        hasVerticalScroller = false
-        super.viewWillStartLiveResize()
-    }
-
-    override func viewDidEndLiveResize() {
-        hasHorizontalScroller = true
-        hasVerticalScroller = true
-        super.viewDidEndLiveResize()
-    }
-
-    override func magnify(with event: NSEvent) {
-        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
-            if magnification < 1 {
-                onMagnifyEndedBelowBaseline?()
-                return
-            }
-        }
-
-        let proposedMagnification = min(max(magnification + event.magnification, minMagnification), maxMagnification)
-        guard event.magnification < 0, proposedMagnification < 1.0001 else {
-            super.magnify(with: event)
-            return
-        }
-
-        let visibleRect = contentView.bounds
-        guard visibleRect.isFiniteForLocalZoom else { return }
-        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
-        setMagnification(proposedMagnification, centeredAt: center)
-        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
-            onMagnifyEndedBelowBaseline?()
-        }
-    }
-}
-
-private extension NSSize {
-    var isFiniteForLocalZoom: Bool {
-        width.isFinite
-            && height.isFinite
-            && width >= 0
-            && height >= 0
-            && width < 100_000
-            && height < 100_000
-    }
-}
-
-private extension NSRect {
-    var isFiniteForLocalZoom: Bool {
-        origin.x.isFinite
-            && origin.y.isFinite
-            && size.isFiniteForLocalZoom
+        addSubview(progressIndicator)
+        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            progressIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
+            progressIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
     }
 }
