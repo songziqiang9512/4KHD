@@ -314,8 +314,9 @@ final class LocalImageGridContainerView: NSView {
         let contentHeight = collectionView.collectionViewLayout?.collectionViewContentSize.height
             ?? collectionView.bounds.height
         guard contentHeight.isFinite, contentHeight >= 0 else { return }
-        let maxY = max(0, contentHeight - visible.height)
-        let y = min(max(0, visible.origin.y), maxY)
+        let minY = -scrollView.contentInsets.top
+        let maxY = max(minY, contentHeight - visible.height + scrollView.contentInsets.bottom)
+        let y = min(max(minY, visible.origin.y), maxY)
         guard abs(y - visible.origin.y) > 0.5 else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -331,13 +332,14 @@ final class LocalImageGridContainerView: NSView {
             return
         }
         let contentHeight = waterfallLayout.collectionViewContentSize.height
+        let minY = -scrollView.contentInsets.top
         guard contentHeight.isFinite, contentHeight > visible.height else {
-            scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: 0))
+            scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: minY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
             return
         }
-        let maxY = max(0, contentHeight - visible.height)
-        let targetY = min(max(0, attributes.frame.minY - 4), maxY)
+        let maxY = max(minY, contentHeight - visible.height + scrollView.contentInsets.bottom)
+        let targetY = min(max(minY, attributes.frame.minY - 4), maxY)
         guard targetY.isFinite, abs(targetY - visible.origin.y) > 0.5 else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -385,9 +387,10 @@ final class LocalImageGridContainerView: NSView {
             return
         }
         guard !visible.contains(frame) else { return }
-        let maxY = max(0, collectionView.bounds.height - visible.height)
+        let minY = -scrollView.contentInsets.top
+        let maxY = max(minY, collectionView.bounds.height - visible.height + scrollView.contentInsets.bottom)
         let targetY = frame.minY < visible.minY ? frame.minY - 4 : frame.maxY - visible.height + 4
-        let y = min(max(0, targetY), maxY)
+        let y = min(max(minY, targetY), maxY)
         guard y.isFinite, y < 100_000 else { return }
         scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
         scrollView.reflectScrolledClipView(scrollView.contentView)
