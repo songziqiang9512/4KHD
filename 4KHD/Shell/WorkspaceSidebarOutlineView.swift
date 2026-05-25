@@ -71,11 +71,6 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
 final class WorkspaceSidebarRowView: NSTableRowView {
     var suppressSelectionDuringDrag = false
 
-    override var isEmphasized: Bool {
-        get { false }
-        set {}
-    }
-
     override func drawSelection(in dirtyRect: NSRect) {
         guard !suppressSelectionDuringDrag else { return }
         super.drawSelection(in: dirtyRect)

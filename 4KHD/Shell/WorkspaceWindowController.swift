@@ -28,6 +28,19 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         window.setFrameUsingName(windowAutosaveName, force: true)
+        // If the restored frame is completely off-screen (e.g., from a now-disconnected
+        // external monitor), reposition it onto a visible screen.
+        let restoredFrame = window.frame
+        if !restoredFrame.isEmpty, !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(restoredFrame) }) {
+            let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+                ?? NSScreen.screens.first
+            if let screenFrame = targetScreen?.visibleFrame {
+                window.setFrameOrigin(NSPoint(
+                    x: screenFrame.midX - restoredFrame.width / 2,
+                    y: screenFrame.midY - restoredFrame.height / 2
+                ))
+            }
+        }
         let toolbarHost = WorkspaceToolbarHost(appContext: appContext, splitController: shellController)
         window.toolbar = toolbarHost
         routeObserverID = appContext.routeController.addObserver { [weak self] _ in

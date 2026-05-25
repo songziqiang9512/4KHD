@@ -307,7 +307,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                 try? await Task.sleep(for: .seconds(2))
                 let availability = await LocalImageMetadataService.loadAvailability(for: images)
                 guard !Task.isCancelled else { return }
-                var changed = false
+                var changedIDs = Set<LocalImageItem.ID>()
                 for (id, fileExists) in availability {
                     guard let metadata = self?.metadataByImageID[id], metadata.fileExists != fileExists else { continue }
                     self?.metadataByImageID[id] = LocalImageMetadata(
@@ -317,11 +317,42 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                         pixelHeight: metadata.pixelHeight,
                         fileExists: fileExists
                     )
-                    changed = true
+                    changedIDs.insert(id)
                 }
-                if changed {
-                    self?.reloadContent()
+                guard !changedIDs.isEmpty else { continue }
+                self?.reloadAvailabilityChangedItems(changedIDs)
+            }
+        }
+    }
+
+    /// Reload only the visible cells/rows whose availability changed,
+    /// avoiding a full ``reloadContent()`` that resets the entire view.
+    @MainActor
+    private func reloadAvailabilityChangedItems(_ changedIDs: Set<LocalImageItem.ID>) {
+        if preferences.layout == .grid, activeView === gridView {
+            // Sync the grid's in-memory entries so card badges reflect file existence.
+            for i in gridView.entries.indices {
+                let id = gridView.entries[i].image.id
+                guard changedIDs.contains(id), let metadata = metadataByImageID[id] else { continue }
+                gridView.entries[i] = LocalImageGridContainerView.Entry(
+                    originalIndex: gridView.entries[i].originalIndex,
+                    image: gridView.entries[i].image,
+                    metadata: metadata
+                )
+            }
+            let visiblePaths = gridView.collectionView.indexPathsForVisibleItems()
+                .filter { gridView.entries.indices.contains($0.item) && changedIDs.contains(gridView.entries[$0.item].image.id) }
+            if !visiblePaths.isEmpty {
+                gridView.collectionView.reloadItems(at: Set(visiblePaths))
+            }
+        } else if preferences.layout == .list, activeView === scrollView {
+            let changedRows = IndexSet(
+                filteredEntries.enumerated().compactMap { offset, entry in
+                    changedIDs.contains(entry.image.id) ? offset : nil
                 }
+            )
+            if !changedRows.isEmpty {
+                tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integer: 0))
             }
         }
     }

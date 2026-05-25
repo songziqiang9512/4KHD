@@ -228,8 +228,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             return metrics.sectionInset.top + metrics.sectionInset.bottom
         }
         let rows = ceil(CGFloat(metrics.itemCount) / CGFloat(metrics.columns))
-        let sampleCount = min(metrics.itemCount, 80)
-        let averageRatio = averageAspectRatio(sampleCount: sampleCount)
+        let sampleCount = min(metrics.itemCount, 200)
+        let averageRatio = averageAspectRatio(sampleCount: sampleCount, totalCount: metrics.itemCount)
         let averageHeight = metrics.columnWidth / averageRatio
         let estimated = metrics.sectionInset.top
             + metrics.sectionInset.bottom
@@ -239,13 +239,17 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         return estimated
     }
 
-    private func averageAspectRatio(sampleCount: Int) -> CGFloat {
+    private func averageAspectRatio(sampleCount: Int, totalCount: Int) -> CGFloat {
         guard sampleCount > 0 else { return 16.0 / 9.0 }
+        let step = max(1, totalCount / sampleCount)
         var total: CGFloat = 0
-        for item in 0 ..< sampleCount {
+        var sampled = 0
+        for item in stride(from: 0, to: totalCount, by: step) {
             total += clampedAspectRatio(for: IndexPath(item: item, section: 0))
+            sampled += 1
+            if sampled >= sampleCount { break }
         }
-        return max(total / CGFloat(sampleCount), 0.1)
+        return max(total / CGFloat(sampled), 0.1)
     }
 
     private func resetLayoutState() {
