@@ -18,6 +18,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     var filteredEntries: [Entry] = []
     private var observedImageIDs: [LocalImageItem.ID] = []
     private var lastAppliedListSignature: [LocalImageListRowSignature] = []
+    private var pendingScrollIndex: Int?
     private var metadataTask: Task<Void, Never>?
     private var availabilityTask: Task<Void, Never>?
     private var isObserving = false
@@ -137,6 +138,17 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         }
 
         loadMetadataIfNeeded(for: metadataVisibleImages)
+        // Save the first visible item index before switching layouts,
+        // so we can restore scroll position in the new view.
+        if activeView === gridView, preferences.layout == .list {
+            pendingScrollIndex = gridView.collectionView.indexPathsForVisibleItems()
+                .min(by: { $0.item < $1.item })?.item
+        } else if activeView === scrollView, preferences.layout == .grid {
+            let visibleRows = tableView.rows(in: tableView.visibleRect)
+            if visibleRows.length > 0 {
+                pendingScrollIndex = visibleRows.location
+            }
+        }
         switch preferences.layout {
         case .grid:
             let gridLayoutPreferences = currentGridLayoutPreferences()
@@ -149,6 +161,14 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                 maximumColumnCount: gridLayoutPreferences.maximumColumnCount,
                 preferredCardMinimumWidth: gridLayoutPreferences.preferredCardMinimumWidth
             )
+            if let scrollIndex = pendingScrollIndex, filteredEntries.indices.contains(scrollIndex) {
+                let indexPath = IndexPath(item: scrollIndex, section: 0)
+                // Scroll on the next runloop to let the grid's collection view
+                // finish its layout pass before querying item attributes.
+                DispatchQueue.main.async { [weak self] in
+                    self?.gridView.scrollItemIntoViewIfNeeded(at: indexPath)
+                }
+            }
         case .list:
             setActiveView(scrollView)
             let signature = listSignature()
@@ -157,7 +177,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                 tableView.reloadData()
             }
             syncTableSelection()
+            if let scrollIndex = pendingScrollIndex, filteredEntries.indices.contains(scrollIndex) {
+                tableView.scrollRowToVisible(scrollIndex)
+            }
         }
+        pendingScrollIndex = nil
     }
 
     private func setActiveView(_ nextView: NSView) {

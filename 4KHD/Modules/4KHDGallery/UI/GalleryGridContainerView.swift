@@ -532,7 +532,7 @@ final class GalleryGridCollectionView: NSCollectionView {
 
     override func viewDidEndLiveResize() {
         workspaceDidEndLiveResize()
-        syncVisibleHoverState(windowLocation: window?.mouseLocationOutsideOfEventStream)
+        clearVisibleHoverState()
         super.viewDidEndLiveResize()
     }
 

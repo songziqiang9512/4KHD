@@ -272,14 +272,28 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     private func animateTableRowChange(from oldRows: [Row], to newRows: [Row]) {
-        let removed = oldRows.enumerated().filter { !newRows.contains($0.element) }
-        let inserted = newRows.enumerated().filter { !oldRows.contains($0.element) }
-        let removedSet = IndexSet(removed.map(\.offset))
-        let insertedSet = IndexSet(inserted.map(\.offset))
+        // Compute rows to remove: old-row elements that no longer exist in the new row set.
+        let removedIndexes = oldRows.enumerated().filter { !newRows.contains($0.element) }.map(\.offset)
+        // Compute rows to insert: new-row elements that did not exist in the old row set.
+        let insertedIndexes = newRows.enumerated().filter { !oldRows.contains($0.element) }.map(\.offset)
+        let removedSet = IndexSet(removedIndexes)
+        let insertedSet = IndexSet(insertedIndexes)
+
         guard !removedSet.isEmpty || !insertedSet.isEmpty else {
             lastAppliedRows = newRows
             return
         }
+
+        // When both removals and insertions are needed, the insertion indexes
+        // from newRows may not correctly map to the table's pre-update state.
+        // This is not a simple expand/collapse (which only produces one type
+        // of change), so fall back to a full reload to avoid animation jitter.
+        if !removedSet.isEmpty, !insertedSet.isEmpty {
+            lastAppliedRows = newRows
+            tableView.reloadData()
+            return
+        }
+
         lastAppliedRows = newRows
         tableView.beginUpdates()
         if !removedSet.isEmpty {

@@ -47,9 +47,18 @@ final class GalleryRemoteImageView: NSView {
         imageTask?.cancel()
         guard loadedURL != url else { return }
         loadedURL = url
-        imageView.image = nil
-        placeholderImageView.isHidden = false
-        guard let url else { return }
+        guard let url else {
+            // URL is nil — clear the image and show placeholder
+            imageView.image = nil
+            placeholderImageView.isHidden = false
+            return
+        }
+        // Keep the existing image visible while the new one loads.
+        // Only show placeholder if there is no image to preserve,
+        // which avoids a flash during fast scrolling.
+        if imageView.image == nil {
+            placeholderImageView.isHidden = false
+        }
 
         let request = RemoteImagePipeline.shared.request(
             for: url,
@@ -71,8 +80,12 @@ final class GalleryRemoteImageView: NSView {
         imageTask?.cancel()
         imageTask = nil
         loadedURL = nil
-        imageView.image = nil
-        placeholderImageView.isHidden = false
+        // Don't clear imageView.image — let the old image stay visible
+        // until the next configure call replaces it. This avoids a
+        // flash during fast scrolling where cells are rapidly recycled.
+        if imageView.image == nil {
+            placeholderImageView.isHidden = false
+        }
     }
 
     private func setupView() {
