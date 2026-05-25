@@ -12,6 +12,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     private var slots: [ImageSlot] = []
     private var selectedIndex = 0
     private var showsLoadingTile = false
+    private var isApplyingSelection = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -70,7 +71,9 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-        guard let indexPath = indexPaths.first, slots.indices.contains(indexPath.item) else { return }
+        guard !isApplyingSelection,
+              let indexPath = indexPaths.first,
+              slots.indices.contains(indexPath.item) else { return }
         selectedIndex = indexPath.item
         onSelect?(indexPath.item)
     }
@@ -132,9 +135,15 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     }
 
     private func syncSelection() {
-        collectionView.selectionIndexPaths = slots.indices.contains(selectedIndex)
-            ? [IndexPath(item: selectedIndex, section: 0)]
-            : []
+        guard slots.indices.contains(selectedIndex) else {
+            isApplyingSelection = true
+            collectionView.selectionIndexPaths = []
+            isApplyingSelection = false
+            return
+        }
+        isApplyingSelection = true
+        collectionView.selectItems(at: [IndexPath(item: selectedIndex, section: 0)], scrollPosition: .centeredHorizontally)
+        isApplyingSelection = false
     }
 
     private func refreshVisibleSelection() {
@@ -156,6 +165,11 @@ final class GalleryFilmstripItemView: NSCollectionViewItem {
     override func loadView() {
         view = NSView()
         setupView()
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        thumbnailView.cancelPendingLoad()
     }
 
     func configure(slot: ImageSlot, isSelected: Bool) {

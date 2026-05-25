@@ -67,6 +67,14 @@ final class GalleryRemoteImageView: NSView {
         }
     }
 
+    func cancelPendingLoad() {
+        imageTask?.cancel()
+        imageTask = nil
+        loadedURL = nil
+        imageView.image = nil
+        placeholderImageView.isHidden = false
+    }
+
     private func setupView() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18).cgColor
