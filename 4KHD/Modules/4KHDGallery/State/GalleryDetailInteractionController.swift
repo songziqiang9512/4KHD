@@ -12,6 +12,10 @@ final class GalleryDetailInteractionController {
 
     @ObservationIgnored private var saveTask: ImageTask?
 
+    deinit {
+        saveTask?.cancel()
+    }
+
     func resetZoom() {
         resetToken = UUID()
     }
@@ -32,16 +36,18 @@ final class GalleryDetailInteractionController {
             configureURLRequest: GalleryRequestFactory.configureImageRequest
         )
         saveTask = RemoteImagePipeline.shared.loadData(with: request) { [weak self] data in
-            guard let self else { return }
-            guard let data else {
-                saveMessage = "保存失败"
-                return
-            }
-            do {
-                try data.write(to: target, options: .atomic)
-                saveMessage = "已保存"
-            } catch {
-                saveMessage = "保存失败"
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard let data else {
+                    saveMessage = "保存失败"
+                    return
+                }
+                do {
+                    try data.write(to: target, options: .atomic)
+                    saveMessage = "已保存"
+                } catch {
+                    saveMessage = "保存失败"
+                }
             }
         }
     }
