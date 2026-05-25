@@ -37,6 +37,11 @@ final class GalleryRemoteImageView: NSView {
         imageTask?.cancel()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18).cgColor
+    }
+
     override func layout() {
         super.layout()
         imageView.frame = imageRect(for: bounds)

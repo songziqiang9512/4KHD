@@ -382,8 +382,25 @@ final class WorkspaceThumbnailGridCardView: NSView {
         layer?.borderWidth = isSelectedState ? 2 : 1
         let hoverColor = isDark
             ? NSColor.white.withAlphaComponent(0.88)
-            : NSColor.systemBlue.withAlphaComponent(0.86)
+            : NSColor.controlAccentColor.withAlphaComponent(0.86)
         hoverOutline.layer?.borderColor = hoverColor.cgColor
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if isDark {
+            gradientLayer.colors = [
+                NSColor.clear.cgColor,
+                NSColor.black.withAlphaComponent(0.05).cgColor,
+                NSColor.black.withAlphaComponent(0.72).cgColor
+            ]
+        } else {
+            gradientLayer.colors = [
+                NSColor.clear.cgColor,
+                NSColor.black.withAlphaComponent(0.02).cgColor,
+                NSColor.black.withAlphaComponent(0.55).cgColor
+            ]
+        }
+        CATransaction.commit()
     }
 
     override func viewDidChangeEffectiveAppearance() {

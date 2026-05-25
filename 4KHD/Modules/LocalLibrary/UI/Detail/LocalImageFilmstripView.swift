@@ -80,9 +80,9 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
 
         layout.scrollDirection = .horizontal
         layout.itemSize = NSSize(width: 72, height: 96)
-        layout.minimumInteritemSpacing = 10
-        layout.minimumLineSpacing = 10
-        layout.sectionInset = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+        layout.minimumInteritemSpacing = 8
+        layout.minimumLineSpacing = 8
+        layout.sectionInset = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
 
         collectionView.collectionViewLayout = layout
         collectionView.backgroundColors = [.clear]
@@ -118,6 +118,7 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
         materialView.material = .hudWindow
         materialView.blendingMode = .withinWindow
         materialView.state = .active
+        refreshVisibleSelection()
     }
 
     private func syncSelection() {
@@ -148,7 +149,7 @@ final class LocalFilmstripItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("LocalFilmstripItemView")
 
     private let thumbnailView = NSImageView()
-    private let indexChrome = DetailOverlayChromeView(cornerRadius: 8)
+    private let indexChrome = DetailOverlayChromeView(cornerRadius: 7)
     private let indexLabel = NSTextField(labelWithString: "")
     private var imageTask: Task<Void, Never>?
 
@@ -195,7 +196,7 @@ final class LocalFilmstripItemView: NSCollectionViewItem {
         thumbnailView.wantsLayer = true
         thumbnailView.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18).cgColor
 
-        indexLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        indexLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         indexLabel.textColor = .labelColor
         indexLabel.alignment = .center
         indexLabel.setContentCompressionResistancePriority(.required, for: .horizontal)

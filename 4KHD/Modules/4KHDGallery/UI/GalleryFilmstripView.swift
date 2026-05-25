@@ -136,6 +136,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         materialView.material = .hudWindow
         materialView.blendingMode = .withinWindow
         materialView.state = .active
+        refreshVisibleSelection()
     }
 
     private func syncSelection() {

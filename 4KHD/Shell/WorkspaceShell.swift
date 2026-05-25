@@ -80,6 +80,19 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         addSplitViewItem(detailItem)
         installObservers()
         bootstrapIfNeeded()
+
+        let titlebarView = NSVisualEffectView()
+        titlebarView.material = .titlebar
+        titlebarView.blendingMode = .withinWindow
+        titlebarView.state = .active
+        titlebarView.translatesAutoresizingMaskIntoConstraints = false
+        view.subviews.insert(titlebarView, at: 0)
+        NSLayoutConstraint.activate([
+            titlebarView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            titlebarView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            titlebarView.topAnchor.constraint(equalTo: view.topAnchor),
+            titlebarView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
     override func viewDidAppear() {
