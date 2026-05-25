@@ -393,19 +393,36 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private func bootstrapIfNeeded() {
         guard !didBootstrap else { return }
         didBootstrap = true
+
+        var savedWidths: [Int]?
+        var savedIsSidebarHidden = false
         if let state = windowStateStore.load() {
             expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
             cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
             cacheSidebarWidth(state.splitViewWidths.first)
             sidebarController.restoreExpandedNodeIDs(state.expandedSidebarNodeIDs)
             appContext.detailPaneController.setPresented(state.isDetailPanePresented)
+            savedWidths = state.splitViewWidths
+            savedIsSidebarHidden = state.isSidebarHidden
         } else {
             let legacyWidths = windowStateStore.legacySplitViewWidths()
             cachePresentedSplitViewWidths(legacyWidths)
             cacheSidebarWidth(legacyWidths?.first)
             sidebarController.restoreExpandedNodeIDs(expandedSidebarNodeIDs)
             appContext.detailPaneController.setPresented(windowStateStore.legacyDetailPanePresented())
+            savedWidths = legacyWidths
+            savedIsSidebarHidden = windowStateStore.legacySidebarHidden()
         }
+
+        // Restore split view widths before the first route-driven layout pass so
+        // the window appears with its saved layout rather than default widths that
+        // would then jump to the restored values in viewDidAppear.
+        if let widths = savedWidths, widths.count == 3 {
+            splitView.layoutSubtreeIfNeeded()
+            splitLayoutController.restoreSplitViewWidths(widths, isSidebarHidden: savedIsSidebarHidden)
+            didRestoreSplitViewState = true
+        }
+
         CookieBridge.shared.start()
         appContext.routeController.applyCurrentRoute()
         appContext.moduleRegistry.bootstrapModules()

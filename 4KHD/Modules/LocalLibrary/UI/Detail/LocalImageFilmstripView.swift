@@ -35,7 +35,11 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
         } else if previousSelectedIndex != selectedIndex {
             refreshVisibleSelection()
         }
+        let selectionChanged = previousSelectedIndex != selectedIndex
         syncSelection()
+        if selectionChanged {
+            scrollToSelectedItem()
+        }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int {
@@ -122,7 +126,13 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
             return
         }
         let indexPath = IndexPath(item: selectedIndex, section: 0)
-        collectionView.selectItems(at: [indexPath], scrollPosition: .centeredHorizontally)
+        collectionView.selectItems(at: [indexPath], scrollPosition: [])
+    }
+
+    private func scrollToSelectedItem() {
+        guard images.indices.contains(selectedIndex) else { return }
+        let indexPath = IndexPath(item: selectedIndex, section: 0)
+        collectionView.scrollToItems(at: [indexPath], scrollPosition: .centeredHorizontally)
     }
 
     private func refreshVisibleSelection() {

@@ -188,7 +188,6 @@ final class LocalImageGridContainerView: NSView {
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
-            self?.collectionView.clearVisibleHoverState()
             self?.schedulePrefetch()
         }
         addSubview(scrollView)

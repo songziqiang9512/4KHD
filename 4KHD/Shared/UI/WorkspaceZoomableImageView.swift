@@ -59,7 +59,8 @@ class WorkspaceZoomableImageView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            scrollView.animator().setMagnification(1, centeredAt: center)
+            context.allowsImplicitAnimation = true
+            scrollView.setMagnification(1, centeredAt: center)
         } completionHandler: { [weak self] in
             guard let self else { return }
             self.scrollView.contentView.scroll(to: .zero)
@@ -123,14 +124,10 @@ final class WorkspaceZoomScrollView: NSScrollView {
     var onMagnifyEndedBelowBaseline: (() -> Void)?
 
     override func viewWillStartLiveResize() {
-        hasHorizontalScroller = false
-        hasVerticalScroller = false
         super.viewWillStartLiveResize()
     }
 
     override func viewDidEndLiveResize() {
-        hasHorizontalScroller = true
-        hasVerticalScroller = true
         super.viewDidEndLiveResize()
     }
 
@@ -148,9 +145,8 @@ final class WorkspaceZoomScrollView: NSScrollView {
             return
         }
 
-        let visibleRect = contentView.bounds
-        let center = NSPoint(x: visibleRect.midX, y: visibleRect.midY)
-        setMagnification(proposedMagnification, centeredAt: center)
+        let pointInView = convert(event.locationInWindow, from: nil)
+        setMagnification(proposedMagnification, centeredAt: pointInView)
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
             onMagnifyEndedBelowBaseline?()
         }

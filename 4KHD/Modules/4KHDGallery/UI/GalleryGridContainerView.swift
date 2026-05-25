@@ -194,7 +194,6 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.collectionView.clearVisibleHoverState()
                 self?.updateItemSize()
             }
         }

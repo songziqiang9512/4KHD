@@ -292,9 +292,19 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     }
 
     private func updateFilmstripLayout(showsFilmstrip: Bool) {
+        let needsAnimation = filmstripView.isHidden == showsFilmstrip
+        if needsAnimation {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                filmstripHeightConstraint?.animator().constant = showsFilmstrip ? 112 : 0
+                updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
+            }
+        } else {
+            filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
+            updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
+        }
         filmstripView.isHidden = !showsFilmstrip
-        filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
-        updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
     }
 
     private func updateImageTopConstraint(showsFilmstrip: Bool) {

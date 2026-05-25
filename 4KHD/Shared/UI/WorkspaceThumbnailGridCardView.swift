@@ -342,7 +342,10 @@ final class WorkspaceThumbnailGridCardView: NSView {
         guard let layer else { return }
         ensureLayerAnchorCentered()
         guard abs(currentScale - targetScale) > 0.0001 else { return }
-        let from = (layer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat) ?? currentScale
+        // Remove any in-flight scale animation so the presentation layer reverts to the
+        // model value, avoiding a visual bounce when the old animation is replaced.
+        layer.removeAnimation(forKey: "workspace.grid.card.scale")
+        let from = currentScale
         let animation = CABasicAnimation(keyPath: "transform.scale")
         animation.fromValue = from
         animation.toValue = targetScale

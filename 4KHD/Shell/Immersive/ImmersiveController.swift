@@ -7,6 +7,7 @@ import Observation
 @Observable
 final class ImmersiveController {
     @ObservationIgnored private var observers: [UUID: (ImmersiveController) -> Void] = [:]
+    @ObservationIgnored private var hideToolbarWorkItem: DispatchWorkItem?
 
     var isImmersive: Bool = false
     var peekRevealing: Bool = false
@@ -17,6 +18,7 @@ final class ImmersiveController {
     }
 
     func set(_ on: Bool) {
+        cancelHideToolbar()
         if on {
             isImmersive = true
             peekRevealing = false
@@ -32,14 +34,26 @@ final class ImmersiveController {
     func handleToolbarPointer(isNearTop: Bool) {
         guard isImmersive else { return }
         if isNearTop {
+            cancelHideToolbar()
             isToolbarVisible = true
             notifyObservers()
             return
         }
 
-        guard isToolbarVisible else { return }
-        isToolbarVisible = false
-        notifyObservers()
+        guard isToolbarVisible, hideToolbarWorkItem == nil else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.isToolbarVisible = false
+            self.hideToolbarWorkItem = nil
+            self.notifyObservers()
+        }
+        hideToolbarWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: workItem)
+    }
+
+    private func cancelHideToolbar() {
+        hideToolbarWorkItem?.cancel()
+        hideToolbarWorkItem = nil
     }
 
     func addObserver(_ observer: @escaping (ImmersiveController) -> Void) -> UUID {

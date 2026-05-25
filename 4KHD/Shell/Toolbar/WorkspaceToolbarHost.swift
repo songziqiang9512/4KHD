@@ -803,12 +803,28 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        while !items.isEmpty {
-            removeItem(at: 0)
+
+        let currentIdentifiers = items.map(\.itemIdentifier)
+        let targetSet = Set(identifiers)
+        let originalSet = Set(currentIdentifiers)
+
+        // Remove items that should no longer be present (iterate in reverse
+        // so that earlier indices remain valid after each removal).
+        for index in (0..<currentIdentifiers.count).reversed() {
+            if !targetSet.contains(currentIdentifiers[index]) {
+                removeItem(at: index)
+            }
         }
-        for (index, identifier) in identifiers.enumerated() {
-            insertItem(withItemIdentifier: identifier, at: index)
+
+        // Insert new items at their correct target position.  Items already
+        // present keep their existing toolbar item object, avoiding the visual
+        // flicker that a full remove-all / insert-all would cause.
+        for (targetIndex, identifier) in identifiers.enumerated() {
+            if !originalSet.contains(identifier) {
+                insertItem(withItemIdentifier: identifier, at: targetIndex)
+            }
         }
+
         CATransaction.commit()
     }
 

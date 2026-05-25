@@ -40,7 +40,11 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         } else if previousSelectedIndex != selectedIndex {
             refreshVisibleSelection()
         }
+        let selectionChanged = previousSelectedIndex != selectedIndex
         syncSelection()
+        if selectionChanged {
+            scrollToSelectedItem()
+        }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int {
@@ -142,8 +146,16 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
             return
         }
         isApplyingSelection = true
-        collectionView.selectItems(at: [IndexPath(item: selectedIndex, section: 0)], scrollPosition: .centeredHorizontally)
+        collectionView.selectItems(at: [IndexPath(item: selectedIndex, section: 0)], scrollPosition: [])
         isApplyingSelection = false
+    }
+
+    private func scrollToSelectedItem() {
+        guard slots.indices.contains(selectedIndex) else { return }
+        collectionView.scrollToItems(
+            at: [IndexPath(item: selectedIndex, section: 0)],
+            scrollPosition: .centeredHorizontally
+        )
     }
 
     private func refreshVisibleSelection() {
