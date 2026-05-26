@@ -23,7 +23,7 @@ enum MissKonFavoritesBridge {
         guard let section = MissKonSection(rawValue: record.sourceID),
               section != .favorites,
               let detailURL = URL(string: record.detailURL),
-              detailURL.host?.contains("misskon.com") == true else {
+              isAllowedHost(detailURL.host) else {
             return nil
         }
 
@@ -48,5 +48,10 @@ enum MissKonFavoritesBridge {
         return (1...count).map { pageNumber in
             pageNumber == 1 ? detailURL : detailURL.appendingPathComponent("\(pageNumber)")
         }
+    }
+
+    private nonisolated static func isAllowedHost(_ host: String?) -> Bool {
+        guard let host = host?.lowercased() else { return false }
+        return host == "misskon.com" || host.hasSuffix(".misskon.com")
     }
 }

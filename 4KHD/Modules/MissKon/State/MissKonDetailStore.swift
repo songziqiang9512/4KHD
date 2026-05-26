@@ -106,6 +106,17 @@ final class MissKonDetailStore {
         }
     }
 
+    func clear() {
+        cancelResolveTask()
+        currentItem = nil
+        imageSlots = []
+        selectedSlotID = nil
+        isResolving = false
+        errorMessage = nil
+        resolvedPages = [:]
+        failedPageURLs = []
+    }
+
     private func publishSlots() {
         let sortedPages = resolvedPages.keys.sorted { a, b in
             let aNum = a.trailingPageNumber ?? 1

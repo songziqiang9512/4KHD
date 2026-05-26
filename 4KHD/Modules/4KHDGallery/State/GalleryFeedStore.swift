@@ -120,8 +120,8 @@ final class GalleryFeedStore {
                 let page = try await SiteListResolver.resolve(section: currentSection)
                 self?.applyNetworkPage(page, section: currentSection)
             } catch {
-                self?.errorMessage = "网络请求失败"
-                self?.finishListRefresh(section: currentSection)
+                guard !Task.isCancelled else { return }
+                self?.finishListRefresh(section: currentSection, errorMessage: "网络请求失败")
             }
         }
     }
@@ -181,26 +181,27 @@ final class GalleryFeedStore {
                 let page = try await SiteListResolver.resolve(pageURL: nextPageURL, section: currentSection)
                 self?.appendNetworkPage(page, section: currentSection)
             } catch {
-                self?.errorMessage = "网络请求失败"
-                self?.finishListRefresh(section: currentSection)
+                guard !Task.isCancelled else { return }
+                self?.finishListRefresh(section: currentSection, errorMessage: "网络请求失败")
             }
         }
     }
 
     private func applyNetworkPage(_ page: SiteListPage, section: GallerySection) {
-        guard activeSearchQuery == nil else {
-            finishListRefresh(section: section)
-            return
-        }
         let items = page.items
         guard !items.isEmpty else {
             finishListRefresh(section: section)
             return
         }
-        let oldSelectedID = selectedItemID
 
         library = library.replacing(section: section, with: items)
         listNextPageURLs[section] = page.nextPageURL
+        guard section == self.section, activeSearchQuery == nil else {
+            finishListRefresh(section: section)
+            return
+        }
+
+        let oldSelectedID = selectedItemID
         visibleCount = min(visibleCount, allItems.count)
 
         let stillHasSelection = oldSelectedID.flatMap { id in
@@ -222,18 +223,21 @@ final class GalleryFeedStore {
             finishListRefresh(section: section)
             return
         }
-        let oldCount = allItems.count
+        let oldCount = section == self.section ? allItems.count : 0
         library = library.appending(section: section, items: page.items)
         listNextPageURLs[section] = page.nextPageURL
-        if section == self.section {
+        if section == self.section, activeSearchQuery == nil {
             visibleCount = min(max(visibleCount + 18, oldCount + 1), allItems.count)
         }
         finishListRefresh(section: section)
     }
 
-    private func finishListRefresh(section: GallerySection) {
+    private func finishListRefresh(section: GallerySection, errorMessage: String? = nil) {
         listRefreshTasks[section] = nil
         if section == self.section {
+            if let errorMessage {
+                self.errorMessage = errorMessage
+            }
             isRefreshingList = false
             if pendingListLoadMoreSections.remove(section) != nil {
                 loadMoreListIfNeeded()

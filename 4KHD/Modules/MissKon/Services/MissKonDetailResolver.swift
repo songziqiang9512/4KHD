@@ -108,7 +108,7 @@ enum MissKonDetailResolver {
             .compactMap(URL.init(string:))
             .filter { url in
                 let host = url.host?.lowercased() ?? ""
-                return host.contains("misskon.com")
+                return host == "misskon.com" || host.hasSuffix(".misskon.com")
             }
         return orderedUnique(urls)
     }

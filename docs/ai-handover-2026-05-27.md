@@ -8,7 +8,7 @@
 - **环境**: macOS 26+, Xcode 26+, Swift 6, SPM(Nuke)
 - **构建**: `xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
 - **文件数**: ~130 Swift 文件，MissKon 模块占 18 个
-- **最新提交**: `c31c863` — 文档同步提交；本轮如有未提交 P3 改动，以 `git status` 为准
+- **最新提交**: 用 `git log -1 --oneline` 查看；本文件只记录结构和注意事项，避免提交号频繁 stale
 
 ## 四个模块当前状态
 
@@ -37,6 +37,8 @@
 3. **收藏隔离：** 两桥均需 `detailURL.host` 域名验证，防止跨模块记录泄漏。
 4. **详情切换：** `resolve()` 中同步创建初始占位 slot（coverURL），避免空状态闪烁。
 5. **详情面板：** 同模块内 route 变化不重建 detailController，跟踪 `lastDetailModuleID`。
+6. **异步隔离：** MissKon feed 的网络/搜索分页结果必须按请求时 section/query 回写；Gallery 非当前 section 的列表返回不能触发当前选择/详情刷新。
+7. **详情解析：** Gallery 详情 HTML 截取使用 `NSString`/`NSRange`，不要重新引入 `lowercased()` 索引切原字符串。
 
 ### Shell 集成点
 
@@ -78,6 +80,7 @@ find 4KHD -name '*.swift' | wc -l
 4. **详情面板复用：** `lastDetailModuleID` 跟踪在 WorkspaceShell 中，跨模块切换时正确重建。
 5. **缓存过期：** `cacheMaxAge = 3600`（1 小时），仅对网络刷新章节生效，收藏 section 始终实时读取 FavoritesStore。
 6. **单元测试：** 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；后续补测试需先建立测试 target 和可测的纯逻辑入口。
+7. **域名验证：** 收藏桥和详情图片解析使用 exact/subdomain allowlist；不要回退到 `host.contains(...)`。
 
 ### 共享层清单
 

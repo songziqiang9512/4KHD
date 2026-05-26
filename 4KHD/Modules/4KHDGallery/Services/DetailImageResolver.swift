@@ -142,8 +142,15 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
       };
       const allowed = (value) => {
         if (!value) return false;
-        const lower = value.toLowerCase();
-        return lower.includes("pic.4khd.com") || lower.includes("img.4khd.com") || lower.includes("i0.wp.com");
+        try {
+          const url = new URL(value, window.location.href);
+          const host = url.hostname.toLowerCase();
+          return host === "pic.4khd.com" ||
+            host === "img.4khd.com" ||
+            (host === "i0.wp.com" && url.pathname.startsWith("/pic.4khd.com/"));
+        } catch {
+          return false;
+        }
       };
       const root =
         document.querySelector(".entry-content, .wp-block-post-content") ||
@@ -180,7 +187,8 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
           try {
             const url = new URL(href);
             const path = url.pathname.replace(/\/+$/, "").replace(/\/\d+$/, "");
-            return url.hostname.includes("4khd.com") && path === currentPath;
+            const host = url.hostname.toLowerCase();
+            return (host === "4khd.com" || host.endsWith(".4khd.com")) && path === currentPath;
           } catch {
             return false;
           }

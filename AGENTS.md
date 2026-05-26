@@ -148,6 +148,13 @@
 **列表/网格滚动位置：** Gallery/MissKon 在双视图切换时用第一个可见图集 ID 恢复位置，避免切换后跳回选中项或顶部；Gallery 收藏分组列表也按图集 ID 对齐。
 **测试现状：** 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；单元测试仍是后续 P3。
 
+### 第八轮：在线模块审查修复
+
+**Gallery 详情解析：** `DetailPageHTMLResolver.galleryContent` 改用 `NSString`/`NSRange` 做大小写不敏感范围定位，避免 `lowercased()` 索引切原字符串导致 crash。
+**异步状态隔离：** Gallery 列表网络返回只在请求 section 仍为当前 section 时更新选择/详情；MissKon 列表、分页、搜索分页均按请求时的 section/query 回写，避免切换栏目或清搜索后旧任务污染当前列表。
+**MissKon 初始详情：** GalleryStore 接线后立即 resolve 已缓存选中项；选中清空时同步清空 detail store。
+**域名边界：** 收藏桥和详情图片解析从 `contains(host)` 收紧为精确域名/子域名 allowlist，避免跨站记录或图片 URL 误入。
+
 ### 模块状态评估
 
 **4KHDGallery：** 稳定完整。新增 `gridColumnCount` 支持（列数 2-6 可调），列表/网格切换保留滚动位置。

@@ -93,39 +93,46 @@ final class MissKonFeedStore {
             if section == .favorites { restoreSectionCache() }
             return
         }
+        let requestSection = section
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingList = true
             self.feedErrorMessage = nil
             do {
-                let page = try await MissKonListResolver.resolve(section: self.section)
+                let page = try await MissKonListResolver.resolve(section: requestSection)
                 guard !Task.isCancelled else { return }
-                let existing = self.cachedItems[self.section] ?? []
+                let existing = self.cachedItems[requestSection] ?? []
                 let existingIDs = Set(existing.map(\.id))
                 let newItems = page.items.filter { !existingIDs.contains($0.id) }
                 let merged = existing + newItems
-                self.cachedItems[self.section] = merged
-                self.allItems = merged
-                self.visibleItems = merged
-                self.nextPageURL = page.nextPageURL
-                self.cachedNextPageURLs[self.section] = page.nextPageURL
-                self.canLoadMoreList = page.nextPageURL != nil
-                self.feedErrorMessage = nil
-                self.cacheTimestamps[self.section] = Date()
+                self.cachedItems[requestSection] = merged
+                self.cachedNextPageURLs[requestSection] = page.nextPageURL
+                self.cacheTimestamps[requestSection] = Date()
                 self.saveCacheIfNeeded()
-                // Auto-select first item if nothing is selected (e.g., first launch)
-                if self.selectedItemID == nil || !merged.contains(where: { $0.id == self.selectedItemID }) {
-                    let firstItem = merged.first
-                    self.selectedItemID = firstItem?.id
-                    self.onSelectionChanged?(firstItem)
+                if self.section == requestSection, self.activeSearchQuery == nil {
+                    self.allItems = merged
+                    self.visibleItems = merged
+                    self.nextPageURL = page.nextPageURL
+                    self.canLoadMoreList = page.nextPageURL != nil
+                    self.feedErrorMessage = nil
+                    // Auto-select first item if nothing is selected (e.g., first launch)
+                    if self.selectedItemID == nil || !merged.contains(where: { $0.id == self.selectedItemID }) {
+                        let firstItem = merged.first
+                        self.selectedItemID = firstItem?.id
+                        self.onSelectionChanged?(firstItem)
+                    }
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                self.feedErrorMessage = error.localizedDescription
+                if self.section == requestSection {
+                    self.feedErrorMessage = error.localizedDescription
+                }
             }
-            self.isRefreshingList = false
-            self.loadTask = nil
+            if self.section == requestSection {
+                self.isRefreshingList = false
+                self.loadTask = nil
+            }
         }
     }
 
@@ -135,46 +142,56 @@ final class MissKonFeedStore {
             return
         }
         guard !isRefreshingList, canLoadMoreList else { return }
+        let requestSection = section
+        let requestURL = nextPageURL
         loadTask?.cancel()
         loadTask = Task { [weak self] in
-            guard let self, let url = self.nextPageURL else { return }
+            guard let self, let url = requestURL else { return }
             self.isRefreshingList = true
             self.feedErrorMessage = nil
             do {
-                let page = try await MissKonListResolver.resolve(pageURL: url, section: self.section)
+                let page = try await MissKonListResolver.resolve(pageURL: url, section: requestSection)
                 guard !Task.isCancelled else { return }
-                var existing = self.cachedItems[self.section] ?? []
+                var existing = self.cachedItems[requestSection] ?? []
                 let existingIDs = Set(existing.map(\.id))
                 let newItems = page.items.filter { !existingIDs.contains($0.id) }
                 existing.append(contentsOf: newItems)
-                self.cachedItems[self.section] = existing
-                self.allItems = existing
-                self.visibleItems = existing
-                self.nextPageURL = page.nextPageURL
-                self.cachedNextPageURLs[self.section] = page.nextPageURL
-                self.canLoadMoreList = page.nextPageURL != nil
-                self.feedErrorMessage = nil
-                self.cacheTimestamps[self.section] = Date()
+                self.cachedItems[requestSection] = existing
+                self.cachedNextPageURLs[requestSection] = page.nextPageURL
+                self.cacheTimestamps[requestSection] = Date()
                 self.saveCacheIfNeeded()
+                if self.section == requestSection, self.activeSearchQuery == nil {
+                    self.allItems = existing
+                    self.visibleItems = existing
+                    self.nextPageURL = page.nextPageURL
+                    self.canLoadMoreList = page.nextPageURL != nil
+                    self.feedErrorMessage = nil
+                }
             } catch {
                 guard !Task.isCancelled else { return }
-                self.feedErrorMessage = error.localizedDescription
+                if self.section == requestSection {
+                    self.feedErrorMessage = error.localizedDescription
+                }
             }
-            self.isRefreshingList = false
-            self.loadTask = nil
+            if self.section == requestSection {
+                self.isRefreshingList = false
+                self.loadTask = nil
+            }
         }
     }
 
     func loadMoreSearchIfNeeded() {
         guard !isRefreshingList, canLoadMoreList, activeSearchQuery != nil else { return }
+        let requestQuery = activeSearchQuery
+        let requestURL = nextSearchPageURL
         loadTask?.cancel()
         loadTask = Task { [weak self] in
-            guard let self, let url = self.nextSearchPageURL else { return }
+            guard let self, let url = requestURL else { return }
             self.isRefreshingList = true
             self.feedErrorMessage = nil
             do {
                 let page = try await MissKonListResolver.resolveSearch(pageURL: url)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
                 var existingIDs = Set(self.allItems.map(\.id))
                 let newItems = page.items.filter { existingIDs.insert($0.id).inserted }
                 self.allItems.append(contentsOf: newItems)
@@ -184,10 +201,14 @@ final class MissKonFeedStore {
                 self.feedErrorMessage = nil
             } catch {
                 guard !Task.isCancelled else { return }
-                self.feedErrorMessage = error.localizedDescription
+                if self.activeSearchQuery == requestQuery {
+                    self.feedErrorMessage = error.localizedDescription
+                }
             }
-            self.isRefreshingList = false
-            self.loadTask = nil
+            if self.activeSearchQuery == requestQuery {
+                self.isRefreshingList = false
+                self.loadTask = nil
+            }
         }
     }
 
@@ -203,7 +224,7 @@ final class MissKonFeedStore {
             self.feedErrorMessage = nil
             do {
                 let page = try await MissKonListResolver.resolveSearch(query: trimmed)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.activeSearchQuery == trimmed else { return }
                 self.allItems = page.items
                 self.visibleItems = page.items
                 self.nextSearchPageURL = page.nextPageURL
@@ -214,20 +235,27 @@ final class MissKonFeedStore {
                 self.onSelectionChanged?(firstItem)
             } catch {
                 guard !Task.isCancelled else { return }
-                self.feedErrorMessage = error.localizedDescription
+                if self.activeSearchQuery == trimmed {
+                    self.feedErrorMessage = error.localizedDescription
+                }
             }
-            self.isRefreshingList = false
-            self.searchTask = nil
+            if self.activeSearchQuery == trimmed {
+                self.isRefreshingList = false
+                self.searchTask = nil
+            }
         }
     }
 
     func clearSearch() {
         searchTask?.cancel()
         searchTask = nil
+        loadTask?.cancel()
+        loadTask = nil
         activeSearchQuery = nil
         searchText = ""
         nextSearchPageURL = nil
         canLoadMoreList = false
+        isRefreshingList = false
         restoreSectionCache()
     }
 
@@ -248,6 +276,8 @@ final class MissKonFeedStore {
         searchTask?.cancel()
         searchTask = nil
         loadTask?.cancel()
+        loadTask = nil
+        isRefreshingList = false
         activeSearchQuery = nil
         searchText = ""
         nextSearchPageURL = nil

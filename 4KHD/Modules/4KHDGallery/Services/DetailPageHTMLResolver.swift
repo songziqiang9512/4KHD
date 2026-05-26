@@ -45,18 +45,25 @@ enum DetailPageHTMLResolver {
     }
 
     private nonisolated static func galleryContent(in html: String) -> String {
-        let lower = html.lowercased()
-        let contentStart = lower.range(of: "entry-content")?.lowerBound ?? html.startIndex
-        let start = lower[contentStart...].range(of: ">")?.upperBound ?? contentStart
+        let nsHTML = html as NSString
+        let fullRange = NSRange(location: 0, length: nsHTML.length)
+        let contentRange = nsHTML.range(of: "entry-content", options: .caseInsensitive, range: fullRange)
+        let contentStart = contentRange.location == NSNotFound ? 0 : contentRange.location
+        let startSearchRange = NSRange(location: contentStart, length: nsHTML.length - contentStart)
+        let startMarker = nsHTML.range(of: ">", options: [], range: startSearchRange)
+        let start = startMarker.location == NSNotFound ? contentStart : startMarker.upperBound
         let endMarkers = [
             "<div class=\"page-link-box\"",
             "<div id=\"basice\"",
             "<p id=\"khd\""
         ]
+        let endSearchRange = NSRange(location: start, length: nsHTML.length - start)
         let end = endMarkers
-            .compactMap { lower[start...].range(of: $0)?.lowerBound }
-            .min() ?? html.endIndex
-        return String(html[start..<end])
+            .map { nsHTML.range(of: $0, options: .caseInsensitive, range: endSearchRange).location }
+            .filter { $0 != NSNotFound }
+            .min() ?? nsHTML.length
+        guard start < end else { return "" }
+        return nsHTML.substring(with: NSRange(location: start, length: end - start))
     }
 
     private nonisolated static func urls(in html: String) -> [URL] {
@@ -144,9 +151,13 @@ enum DetailPageHTMLResolver {
 
     private nonisolated static func isGalleryImageURL(_ url: URL) -> Bool {
         let value = url.absoluteString.lowercased()
-        guard value.contains("pic.4khd.com") || value.contains("img.4khd.com") || value.contains("i0.wp.com") else {
+        guard let host = url.host?.lowercased() else {
             return false
         }
+        let isAllowedHost = host == "pic.4khd.com"
+            || host == "img.4khd.com"
+            || (host == "i0.wp.com" && url.path.hasPrefix("/pic.4khd.com/"))
+        guard isAllowedHost else { return false }
         return !value.contains("w1090-h1500-p-k-no-rw")
     }
 

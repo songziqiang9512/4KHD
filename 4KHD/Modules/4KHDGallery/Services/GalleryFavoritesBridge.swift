@@ -23,7 +23,7 @@ enum GalleryFavoritesBridge {
         guard let section = GallerySection(rawValue: record.sourceID),
               section != .favorites,
               let detailURL = URL(string: record.detailURL),
-              detailURL.host?.contains("4khd.com") == true else {
+              isAllowedHost(detailURL.host) else {
             return nil
         }
 
@@ -51,5 +51,10 @@ enum GalleryFavoritesBridge {
         return (1...count).map { pageNumber in
             pageNumber == 1 ? detailURL : detailURL.appendingPathComponent("\(pageNumber)")
         }
+    }
+
+    private nonisolated static func isAllowedHost(_ host: String?) -> Bool {
+        guard let host = host?.lowercased() else { return false }
+        return host == "4khd.com" || host.hasSuffix(".4khd.com")
     }
 }
