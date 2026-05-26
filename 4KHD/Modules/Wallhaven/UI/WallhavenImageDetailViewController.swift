@@ -346,9 +346,8 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
     @objc private func uploaderClicked() {
         guard let wallpaper = library.effectiveSelectedWallpaper ?? library.selectedWallpaper,
-              let uploader = wallpaper.uploader,
-              let url = URL(string: "https://wallhaven.cc/user/\(uploader)/uploads") else { return }
-        NSWorkspace.shared.open(url)
+              let uploader = wallpaper.uploader else { return }
+        library.showUploaderWorks(username: uploader)
     }
 
     @objc private func openSourcePage() {

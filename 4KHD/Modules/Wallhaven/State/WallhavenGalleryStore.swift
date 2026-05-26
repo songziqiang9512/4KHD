@@ -74,6 +74,10 @@ final class WallhavenGalleryStore {
     func resolveDetail(for wallpaper: Wallpaper) { feed.resolveDetail(for: wallpaper) }
     func cancelResolveDetail() { feed.cancelResolveDetail() }
 
+    var isBrowsingUploader: Bool { feed.isBrowsingUploader }
+    func showUploaderWorks(username: String) { feed.showUploaderWorks(username: username) }
+    func restorePreviousBrowseState() { feed.restorePreviousBrowseState() }
+
     // MARK: - Favorites
 
     func isFavorite(_ wallpaper: Wallpaper) -> Bool {

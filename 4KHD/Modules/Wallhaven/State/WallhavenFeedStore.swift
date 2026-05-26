@@ -41,6 +41,12 @@ final class WallhavenFeedStore {
     private let preferences: WallhavenContentPreferences
     private let favoritesStore: FavoritesStore
 
+    var isBrowsingUploader = false
+    var uploaderUsername: String?
+
+    /// Saved state for back navigation from uploader view.
+    private var savedState: (wallpapers: [Wallpaper], page: Int, lastPage: Int, seed: String?, scrollItemID: Wallpaper.ID?, searchQuery: String?)?
+
     @ObservationIgnored var onSelectionChanged: ((Wallpaper?) -> Void)?
 
     init(apiClient: WallhavenAPIClient? = nil,
@@ -389,6 +395,80 @@ final class WallhavenFeedStore {
     func refreshFavoritesIfNeeded() {
         guard section == .favorites else { return }
         refreshFavorites()
+    }
+
+    // MARK: - Uploader browsing
+
+    func showUploaderWorks(username: String) {
+        guard !isBrowsingUploader, uploaderUsername != username else { return }
+        // Save current state for back navigation.
+        savedState = (
+            wallpapers: wallpapers,
+            page: currentPage,
+            lastPage: lastPage,
+            seed: seed,
+            scrollItemID: selectedWallpaperID,
+            searchQuery: activeSearchQuery
+        )
+        loadTask?.cancel()
+        searchTask?.cancel()
+        isBrowsingUploader = true
+        uploaderUsername = username
+        isRefreshingList = true
+        feedErrorMessage = nil
+        wallpapers = []
+        canLoadMoreList = false
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let items = try await WallhavenUploaderResolver.resolve(
+                    username: username,
+                    apiKey: self.accountStore.apiKey
+                )
+                guard !Task.isCancelled else { return }
+                self.wallpapers = items
+                self.canLoadMoreList = false
+                self.feedErrorMessage = items.isEmpty ? "未找到 @\(username) 的作品" : nil
+                self.selectedWallpaperID = items.first?.id
+                self.onSelectionChanged?(items.first)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.feedErrorMessage = error.localizedDescription
+            }
+            self.isRefreshingList = false
+            self.loadTask = nil
+        }
+    }
+
+    func restorePreviousBrowseState() {
+        guard isBrowsingUploader else { return }
+        loadTask?.cancel()
+        searchTask?.cancel()
+        guard let saved = savedState else {
+            clearUploaderBrowsing()
+            restoreSectionCache()
+            return
+        }
+        wallpapers = saved.wallpapers
+        currentPage = saved.page
+        lastPage = saved.lastPage
+        seed = saved.seed
+        activeSearchQuery = saved.searchQuery
+        if saved.searchQuery != nil {
+            searchText = saved.searchQuery ?? ""
+        }
+        canLoadMoreList = currentPage < lastPage
+        isRefreshingList = false
+        feedErrorMessage = nil
+        selectedWallpaperID = saved.scrollItemID
+        onSelectionChanged?(saved.scrollItemID.flatMap { id in saved.wallpapers.first { $0.id == id } })
+        clearUploaderBrowsing()
+    }
+
+    private func clearUploaderBrowsing() {
+        isBrowsingUploader = false
+        uploaderUsername = nil
+        savedState = nil
     }
 
     // MARK: - Detail resolution

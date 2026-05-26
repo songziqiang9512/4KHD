@@ -6,14 +6,17 @@ final class WallhavenAccountStore {
     /// Non-nil when the last Keychain write failed.
     var keychainError: String?
 
+    /// True during init so the didSet doesn't re-write to Keychain.
+    private var isLoading = true
+
     var apiKey: String? {
         didSet {
             guard apiKey != oldValue else { return }
+            guard !isLoading else { return }
             if let key = apiKey, !key.isEmpty {
                 if WallhavenKeychain.save(apiKey: key) {
                     keychainError = nil
                 } else {
-                    // Rollback — keep the old key (may be nil) so purity gating stays correct.
                     apiKey = oldValue
                     keychainError = "无法将 API Key 保存到 Keychain，API Key 未启用"
                     return
@@ -41,7 +44,6 @@ final class WallhavenAccountStore {
         return true
     }
 
-    /// Purity values the user is allowed to select.
     var allowedPurities: [WallhavenPurity] {
         hasAPIKey
             ? [.sfw, .sketchy, .nsfw, .all]
@@ -50,6 +52,7 @@ final class WallhavenAccountStore {
 
     init() {
         apiKey = WallhavenKeychain.load()
+        isLoading = false
         purity = WallhavenPurity(rawValue: UserDefaults.standard.string(forKey: Self.purityDefaultsKey) ?? "") ?? .sfw
         if !hasAPIKey && purity != .sfw {
             purity = .sfw

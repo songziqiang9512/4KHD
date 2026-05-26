@@ -133,7 +133,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.favorite)
         }
         if currentModuleID == .wallhaven {
-            if appContext.wallhavenStore.activeSearchQuery != nil {
+            if appContext.wallhavenStore.activeSearchQuery != nil || appContext.wallhavenStore.isBrowsingUploader {
                 identifiers.append(ItemID.wallhavenBack)
             }
             identifiers.append(ItemID.wallhavenSave)
@@ -1138,7 +1138,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     @objc private func wallhavenClearTagSearch(_ sender: Any?) {
-        appContext.wallhavenStore.clearSearch()
+        if appContext.wallhavenStore.isBrowsingUploader {
+            appContext.wallhavenStore.restorePreviousBrowseState()
+        } else {
+            appContext.wallhavenStore.clearSearch()
+        }
         refresh()
     }
 
