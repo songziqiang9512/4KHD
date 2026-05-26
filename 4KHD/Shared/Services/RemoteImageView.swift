@@ -95,6 +95,11 @@ final class RemoteImagePipeline {
         urlCache.memoryCapacity = min(bytes / 4, 128 * 1024 * 1024)
     }
 
+    func clearAllCaches() {
+        dataCache?.removeAll()
+        urlCache.removeAllCachedResponses()
+    }
+
     func request(
         for url: URL,
         priority: ImageRequest.Priority,

@@ -3,8 +3,16 @@ import AppKit
 @MainActor
 final class WorkspaceStoragePreferencesViewController: NSViewController, WorkspacePreferencesPane {
     private let cacheLimitPopup = NSPopUpButton()
+    private let clearCacheButton: NSButton = {
+        let b = NSButton(title: "清除所有缓存", target: nil, action: nil)
+        b.bezelStyle = .rounded
+        b.controlSize = .regular
+        return b
+    }()
+    private let statusLabel = NSTextField(labelWithString: "")
+    private var clearTask: Task<Void, Never>?
 
-    let paneContentSize = NSSize(width: 430, height: 70)
+    let paneContentSize = NSSize(width: 430, height: 130)
 
     override func loadView() {
         let rootView = NSView(frame: NSRect(origin: .zero, size: paneContentSize))
@@ -31,7 +39,18 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
             cacheLimitPopup.lastItem?.representedObject = limit
         }
 
-        stackView.addArrangedSubview(row(label: "Image cache", control: cacheLimitPopup))
+        clearCacheButton.target = self
+        clearCacheButton.action = #selector(clearCache(_:))
+        statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        statusLabel.textColor = .secondaryLabelColor
+
+        let buttonRow = NSStackView(views: [clearCacheButton, statusLabel])
+        buttonRow.orientation = .horizontal
+        buttonRow.alignment = .centerY
+        buttonRow.spacing = 12
+
+        stackView.addArrangedSubview(row(label: "在线缓存容量", control: cacheLimitPopup))
+        stackView.addArrangedSubview(buttonRow)
         view = rootView
         refresh()
     }
@@ -44,6 +63,36 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
     @objc private func cacheLimitChanged(_ sender: NSPopUpButton) {
         guard let limit = sender.selectedItem?.representedObject as? OnlineCacheLimit else { return }
         OnlineCacheLimit.apply(limit)
+    }
+
+    @objc private func clearCache(_ sender: NSButton) {
+        guard clearTask == nil else { return }
+        clearCacheButton.isEnabled = false
+        statusLabel.stringValue = "清除中..."
+        clearTask = Task.detached(priority: .utility) {
+            // Nuke image/data caches + URL cache
+            await RemoteImagePipeline.shared.clearAllCaches()
+
+            // MissKon feed cache
+            if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                let missKonDir = appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
+                try? FileManager.default.removeItem(at: missKonDir)
+            }
+
+            // Wallhaven temp downloads
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("4KHD-Wallpaper", isDirectory: true)
+            try? FileManager.default.removeItem(at: tempDir)
+
+            await MainActor.run { [weak self] in
+                self?.statusLabel.stringValue = "已清除"
+                self?.clearCacheButton.isEnabled = true
+                self?.clearTask = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    self?.statusLabel.stringValue = ""
+                }
+            }
+        }
     }
 
     private func row(label text: String, control: NSControl) -> NSStackView {
