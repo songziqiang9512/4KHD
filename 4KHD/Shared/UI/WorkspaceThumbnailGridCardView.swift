@@ -143,6 +143,10 @@ final class WorkspaceThumbnailGridCardView: NSView {
         refreshAppearance()
     }
 
+    func setImageContentMode(_ mode: WorkspaceThumbnailImageMode) {
+        imageView.contentMode = mode
+    }
+
     func setImage(_ image: NSImage?) {
         if let image {
             imageView.image = image
@@ -413,8 +417,16 @@ private extension NSRect {
     }
 }
 
+enum WorkspaceThumbnailImageMode {
+    case aspectFill
+    case aspectFit
+}
+
 private final class WorkspaceAspectFillImageView: NSView {
     var image: NSImage? {
+        didSet { needsDisplay = true }
+    }
+    var contentMode: WorkspaceThumbnailImageMode = .aspectFill {
         didSet { needsDisplay = true }
     }
 
@@ -439,7 +451,13 @@ private final class WorkspaceAspectFillImageView: NSView {
         }
         let widthScale = bounds.width / imageSize.width
         let heightScale = bounds.height / imageSize.height
-        let scale = max(widthScale, heightScale)
+        let scale: CGFloat
+        switch contentMode {
+        case .aspectFill:
+            scale = max(widthScale, heightScale)
+        case .aspectFit:
+            scale = min(widthScale, heightScale)
+        }
         guard scale.isFinite, scale > 0 else { return .zero }
 
         let size = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)

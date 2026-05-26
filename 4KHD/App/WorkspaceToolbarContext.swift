@@ -5,6 +5,7 @@ enum WorkspaceToolbarSnapshot {
     case gallery(GallerySnapshot)
     case local(LocalSnapshot)
     case missKon(MissKonSnapshot)
+    case wallhaven(WallhavenSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -36,6 +37,21 @@ enum WorkspaceToolbarSnapshot {
         let canResetZoom: Bool
         let canShare: Bool
         let isFilmstripPresented: Bool
+    }
+
+    struct WallhavenSnapshot {
+        let searchText: String
+        let layout: WallhavenContentLayout
+        let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveImage: Bool
+        let canResetZoom: Bool
+        let canShare: Bool
     }
 
     struct LocalSnapshot {
@@ -106,6 +122,9 @@ final class WorkspaceToolbarContext {
     private let missKonStore: MissKonGalleryStore
     private let missKonPreferences: MissKonContentPreferences
     private let missKonDetailInteraction: MissKonDetailInteractionController
+    private let wallhavenStore: WallhavenGalleryStore
+    private let wallhavenPreferences: WallhavenContentPreferences
+    private let wallhavenDetailInteraction: WallhavenDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -120,6 +139,9 @@ final class WorkspaceToolbarContext {
         missKonStore: MissKonGalleryStore,
         missKonPreferences: MissKonContentPreferences,
         missKonDetailInteraction: MissKonDetailInteractionController,
+        wallhavenStore: WallhavenGalleryStore,
+        wallhavenPreferences: WallhavenContentPreferences,
+        wallhavenDetailInteraction: WallhavenDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -133,6 +155,9 @@ final class WorkspaceToolbarContext {
         self.missKonStore = missKonStore
         self.missKonPreferences = missKonPreferences
         self.missKonDetailInteraction = missKonDetailInteraction
+        self.wallhavenStore = wallhavenStore
+        self.wallhavenPreferences = wallhavenPreferences
+        self.wallhavenDetailInteraction = wallhavenDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -220,6 +245,30 @@ final class WorkspaceToolbarContext {
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
+        case .wallhaven:
+            let wallpapers = wallhavenStore.wallpapers
+            let selectedIndex = wallhavenStore.selectedWallpaperID.flatMap { id in wallpapers.firstIndex { $0.id == id } } ?? -1
+            let effective = wallhavenStore.effectiveSelectedWallpaper
+            return .wallhaven(
+                .init(
+                    searchText: wallhavenStore.searchText,
+                    layout: wallhavenPreferences.layout,
+                    isRefreshing: wallhavenStore.isRefreshingList,
+                    canFavorite: effective != nil,
+                    isFavorite: effective.map { wallhavenStore.isFavorite($0) } ?? false,
+                    canIncreaseGridColumns: wallhavenPreferences.layout == .grid
+                        && !detailPaneController.isPresented
+                        && wallhavenPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: wallhavenPreferences.layout == .grid
+                        && !detailPaneController.isPresented
+                        && wallhavenPreferences.canDecreaseGridColumns,
+                    canSelectPreviousImage: selectedIndex > 0,
+                    canSelectNextImage: selectedIndex < wallpapers.count - 1,
+                    canSaveImage: effective?.fullImageUrl != nil,
+                    canResetZoom: effective != nil,
+                    canShare: effective != nil
+                )
+            )
         }
     }
 
@@ -239,6 +288,12 @@ final class WorkspaceToolbarContext {
                missKonStore.activeSearchQuery != nil {
                 missKonStore.clearSearch()
             }
+        case .wallhaven:
+            wallhavenStore.setSearchText(text)
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               wallhavenStore.activeSearchQuery != nil {
+                wallhavenStore.clearSearch()
+            }
         }
     }
 
@@ -250,6 +305,8 @@ final class WorkspaceToolbarContext {
             break
         case .missKon:
             missKonStore.submitSearch(missKonStore.searchText)
+        case .wallhaven:
+            wallhavenStore.submitSearch(wallhavenStore.searchText)
         }
     }
 
@@ -292,7 +349,15 @@ final class WorkspaceToolbarContext {
             localLibraryStore.refreshSelectedRoot()
         case .missKon:
             missKonStore.refreshFromNetwork()
+        case .wallhaven:
+            wallhavenStore.refreshFromNetwork()
         }
+    }
+
+    func adjustWallhavenGridColumns(delta: Int) {
+        guard wallhavenPreferences.layout == .grid,
+              !detailPaneController.isPresented else { return }
+        wallhavenPreferences.adjustGridColumns(delta: delta)
     }
 
     func importRootFolder() {
@@ -307,6 +372,8 @@ final class WorkspaceToolbarContext {
             return localLibraryStore.selectedImage.map { [$0.url as NSURL] } ?? []
         case .missKon:
             return missKonStore.currentItem.map { [$0.detailURL] } ?? []
+        case .wallhaven:
+            return wallhavenStore.selectedWallpaper.map { [$0.sourcePageUrl] } ?? []
         }
     }
 
@@ -318,6 +385,8 @@ final class WorkspaceToolbarContext {
             return localLibraryStore.selectedImage.map { .file($0.url) }
         case .missKon:
             return missKonStore.currentItem.map { .web($0.detailURL) }
+        case .wallhaven:
+            return wallhavenStore.selectedWallpaper.map { .web($0.sourcePageUrl) }
         }
     }
 
@@ -329,6 +398,9 @@ final class WorkspaceToolbarContext {
         case .missKon:
             guard let item = missKonStore.currentItem else { return }
             missKonStore.toggleFavorite(for: item)
+        case .wallhaven:
+            guard let wallpaper = wallhavenStore.selectedWallpaper else { return }
+            wallhavenStore.toggleFavorite(for: wallpaper)
         case .localLibrary:
             return
         }
@@ -348,6 +420,14 @@ final class WorkspaceToolbarContext {
             let next = min(max(current + delta, 0), slots.count - 1)
             guard next != current else { return }
             missKonStore.detail.selectSlot(at: next)
+        case .wallhaven:
+            guard delta != 0 else { return }
+            let wallpapers = wallhavenStore.wallpapers
+            guard !wallpapers.isEmpty else { return }
+            let current = wallhavenStore.selectedWallpaperID.flatMap { id in wallpapers.firstIndex { $0.id == id } } ?? 0
+            let next = min(max(current + delta, 0), wallpapers.count - 1)
+            guard next != current else { return }
+            wallhavenStore.select(wallpapers[next])
         }
     }
 
@@ -365,6 +445,9 @@ final class WorkspaceToolbarContext {
                   let url = slot.knownURL ?? missKonStore.detail.imageURL(for: slot) else { return }
             let filename = "\(missKonStore.currentItem?.id ?? "misskon")-\(slot.displayIndex + 1).jpg"
             missKonDetailInteraction.save(imageURL: url, filename: filename)
+        case .wallhaven:
+            guard let wallpaper = wallhavenStore.effectiveSelectedWallpaper else { return }
+            wallhavenDetailInteraction.saveWallpaper(wallpaper)
         }
     }
 
@@ -376,6 +459,8 @@ final class WorkspaceToolbarContext {
             localDetailInteraction.resetZoom()
         case .missKon:
             missKonDetailInteraction.resetZoom()
+        case .wallhaven:
+            wallhavenDetailInteraction.resetZoom()
         }
     }
 

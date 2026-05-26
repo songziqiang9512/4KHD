@@ -12,6 +12,11 @@ enum WorkspaceAppAssembly {
         let missKonStore = MissKonGalleryStore(feed: missKonFeedStore, detail: missKonDetailStore, favorites: favoritesStore)
         let missKonPreferences = MissKonContentPreferences()
         let missKonDetailInteraction = MissKonDetailInteractionController()
+        let wallhavenAccountStore = WallhavenAccountStore()
+        let wallhavenPreferences = WallhavenContentPreferences()
+        let wallhavenFeedStore = WallhavenFeedStore(accountStore: wallhavenAccountStore, preferences: wallhavenPreferences, favoritesStore: favoritesStore)
+        let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
+        let wallhavenDetailInteraction = WallhavenDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
         let localPreferences = LocalLibraryContentPreferences()
         let localDetailInteraction = LocalDetailInteractionController()
@@ -28,6 +33,9 @@ enum WorkspaceAppAssembly {
             missKonStore: missKonStore,
             missKonPreferences: missKonPreferences,
             missKonDetailInteraction: missKonDetailInteraction,
+            wallhavenStore: wallhavenStore,
+            wallhavenPreferences: wallhavenPreferences,
+            wallhavenDetailInteraction: wallhavenDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -41,6 +49,9 @@ enum WorkspaceAppAssembly {
             missKonStore: missKonStore,
             missKonPreferences: missKonPreferences,
             missKonDetailInteraction: missKonDetailInteraction,
+            wallhavenStore: wallhavenStore,
+            wallhavenPreferences: wallhavenPreferences,
+            wallhavenDetailInteraction: wallhavenDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -60,6 +71,7 @@ enum WorkspaceAppAssembly {
             detailPaneController: detailPaneController,
             galleryStore: fourKHDGalleryStore,
             missKonStore: missKonStore,
+            wallhavenStore: wallhavenStore,
             localLibraryStore: localLibraryStore,
             toolbarContext: toolbarContext,
             importRootFolderAction: importRootFolderAction
@@ -74,6 +86,9 @@ enum WorkspaceAppAssembly {
         missKonStore: MissKonGalleryStore,
         missKonPreferences: MissKonContentPreferences,
         missKonDetailInteraction: MissKonDetailInteractionController,
+        wallhavenStore: WallhavenGalleryStore,
+        wallhavenPreferences: WallhavenContentPreferences,
+        wallhavenDetailInteraction: WallhavenDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -198,6 +213,43 @@ enum WorkspaceAppAssembly {
                     },
                     bootstrap: {
                         missKonStore.refreshFromNetwork()
+                    }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .wallhaven,
+                    displayName: "Wallhaven",
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .wallhaven, itemID: WallhavenSection.browse.rawValue)
+                    },
+                    makeContentController: { context in
+                        WallhavenContentViewController(
+                            library: wallhavenStore,
+                            preferences: wallhavenPreferences,
+                            detailPane: context.detailPaneController
+                        )
+                    },
+                    makeDetailController: { context in
+                        WallhavenImageDetailViewController(
+                            library: wallhavenStore,
+                            immersive: context.immersive,
+                            detailPane: context.detailPaneController,
+                            detailInteraction: wallhavenDetailInteraction
+                        )
+                    },
+                    normalizeRoute: { route in
+                        guard let section = WallhavenSection(rawValue: route.itemID) else {
+                            return WorkspaceRoute(moduleID: .wallhaven, itemID: WallhavenSection.browse.rawValue)
+                        }
+                        return WorkspaceRoute(moduleID: .wallhaven, itemID: section.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let section = WallhavenSection(rawValue: route.itemID) else { return }
+                        if wallhavenStore.section != section {
+                            wallhavenStore.setSection(section)
+                        }
+                    },
+                    bootstrap: {
+                        wallhavenStore.refreshFromNetwork()
                     }
                 )
             ]

@@ -139,6 +139,15 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             applyMissKon(item: item)
+        case .wallhaven:
+            metadataTask?.cancel()
+            observedImageID = nil
+            currentMetadata = nil
+            guard let wallpaper = appContext.wallhavenStore.selectedWallpaper else {
+                applyEmptyState(module: "Wallhaven")
+                return
+            }
+            applyWallhaven(wallpaper: wallpaper)
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 observedImageID = nil
@@ -309,6 +318,25 @@ private final class WorkspaceInspectorViewController: NSViewController {
         availabilityTextField.textColor = .secondaryLabelColor
     }
 
+    private func applyWallhaven(wallpaper: Wallpaper) {
+        titleLabel.stringValue = wallpaper.tags.prefix(5).joined(separator: ", ").nilIfEmpty ?? wallpaper.displayName
+        moduleLabel.stringValue = "Wallhaven"
+        primaryLabel.stringValue = "Resolution"
+        resolutionValue.stringValue = wallpaper.resolutionText
+        secondaryLabel.stringValue = "Size"
+        fileSizeValue.stringValue = wallpaper.formattedFileSize
+        formatLabel.stringValue = "Format"
+        formatValue.stringValue = wallpaper.fileType?.replacingOccurrences(of: "image/", with: "").uppercased() ?? "-"
+        tertiaryLabel.stringValue = "Category"
+        modifiedValue.stringValue = wallpaper.category ?? "-"
+        quaternaryLabel.stringValue = "Purity"
+        availabilityIconView.isHidden = true
+        availabilityTextField.stringValue = wallpaper.purity.title
+        availabilityTextField.textColor = .secondaryLabelColor
+        pathLabel.stringValue = "URL"
+        pathValue.stringValue = wallpaper.sourcePageUrl.absoluteString
+    }
+
     private func applyAvailability(fileMissing: Bool) {
         if fileMissing {
             if #available(macOS 11.0, *) {
@@ -340,6 +368,8 @@ private final class WorkspaceInspectorViewController: NSViewController {
             _ = appContext.missKonStore.currentItem?.title
             _ = appContext.missKonStore.section
             _ = appContext.missKonStore.favorites.favorites
+            _ = appContext.wallhavenStore.selectedWallpaperID
+            _ = appContext.wallhavenStore.favorites.favorites
             _ = appContext.localLibraryStore.roots
             _ = appContext.localLibraryStore.selectedFolderID
             _ = appContext.localLibraryStore.selectedImageIndex

@@ -218,18 +218,28 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     @objc func increaseLocalGridColumns(_ sender: Any?) {
-        if currentModuleID == .missKon {
+        switch currentModuleID {
+        case .missKon:
             appContext.toolbarContext.adjustMissKonGridColumns(delta: 1)
-        } else {
+        case .wallhaven:
+            appContext.toolbarContext.adjustWallhavenGridColumns(delta: 1)
+        case .fourKHDGallery:
+            appContext.toolbarContext.adjustGalleryGridColumns(delta: 1)
+        case .localLibrary:
             appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
         }
         refreshToolbarState()
     }
 
     @objc func decreaseLocalGridColumns(_ sender: Any?) {
-        if currentModuleID == .missKon {
+        switch currentModuleID {
+        case .missKon:
             appContext.toolbarContext.adjustMissKonGridColumns(delta: -1)
-        } else {
+        case .wallhaven:
+            appContext.toolbarContext.adjustWallhavenGridColumns(delta: -1)
+        case .fourKHDGallery:
+            appContext.toolbarContext.adjustGalleryGridColumns(delta: -1)
+        case .localLibrary:
             appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
         }
         refreshToolbarState()
@@ -446,6 +456,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         case .localLibrary:
             appContext.toolbarContext.setLocalLayout(isList ? .list : .grid)
         case .missKon:
+            break
+        case .wallhaven:
             break
         }
         refreshToolbarState()

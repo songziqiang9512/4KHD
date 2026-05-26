@@ -110,6 +110,11 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
                 return "MissKon"
             }
             return "\(section.title) - MissKon"
+        case .wallhaven:
+            guard let section = WallhavenSection(rawValue: route.itemID) else {
+                return "Wallhaven"
+            }
+            return "\(section.title) - Wallhaven"
         }
     }
 }

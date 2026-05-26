@@ -8,6 +8,7 @@ final class WorkspaceAppContext {
     let detailPaneController: WorkspaceDetailPaneController
     let galleryStore: FourKHDGalleryStore
     let missKonStore: MissKonGalleryStore
+    let wallhavenStore: WallhavenGalleryStore
     let localLibraryStore: LocalLibraryStore
     let toolbarContext: WorkspaceToolbarContext
     @ObservationIgnored private let importRootFolderAction: () -> Void
@@ -18,6 +19,7 @@ final class WorkspaceAppContext {
         detailPaneController: WorkspaceDetailPaneController,
         galleryStore: FourKHDGalleryStore,
         missKonStore: MissKonGalleryStore,
+        wallhavenStore: WallhavenGalleryStore,
         localLibraryStore: LocalLibraryStore,
         toolbarContext: WorkspaceToolbarContext,
         importRootFolderAction: @escaping () -> Void
@@ -27,6 +29,7 @@ final class WorkspaceAppContext {
         self.detailPaneController = detailPaneController
         self.galleryStore = galleryStore
         self.missKonStore = missKonStore
+        self.wallhavenStore = wallhavenStore
         self.localLibraryStore = localLibraryStore
         self.toolbarContext = toolbarContext
         self.importRootFolderAction = importRootFolderAction

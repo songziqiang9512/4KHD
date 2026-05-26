@@ -332,6 +332,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             systemName = "folder"
         case .missKon(let section):
             systemName = section.sidebarSystemImage
+        case .wallhaven(let section):
+            systemName = section.sidebarSystemImage
         }
         let image = NSImage(systemSymbolName: systemName, accessibilityDescription: node.title)
         image?.isTemplate = true
@@ -359,6 +361,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
         case .missKon(let section):
             selectedRoute = WorkspaceRoute(moduleID: .missKon, itemID: section.rawValue)
+        case .wallhaven(let section):
+            selectedRoute = WorkspaceRoute(moduleID: .wallhaven, itemID: section.rawValue)
         case .group:
             selectedRoute = nil
         }
@@ -475,6 +479,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         case (.fourKHDGallery, .gallery(let section)):
             route.itemID == section.rawValue
         case (.missKon, .missKon(let section)):
+            route.itemID == section.rawValue
+        case (.wallhaven, .wallhaven(let section)):
             route.itemID == section.rawValue
         case (.localLibrary, .localFolder(let folder)):
             route.itemID == folder.id

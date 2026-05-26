@@ -4,6 +4,7 @@ enum WorkspaceModuleID: String, Hashable, Codable, Identifiable {
     case fourKHDGallery = "4khdGallery"
     case localLibrary
     case missKon
+    case wallhaven
 
     var id: String { rawValue }
 }

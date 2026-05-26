@@ -97,6 +97,8 @@ final class WorkspaceCommandValidator {
             return !snapshot.isRefreshing && snapshot.hasSelection
         case .missKon(let snapshot):
             return !snapshot.isRefreshing
+        case .wallhaven(let snapshot):
+            return !snapshot.isRefreshing
         }
     }
 
@@ -107,6 +109,8 @@ final class WorkspaceCommandValidator {
         case .local(let snapshot):
             return snapshot.canShare
         case .missKon(let snapshot):
+            return snapshot.canShare
+        case .wallhaven(let snapshot):
             return snapshot.canShare
         }
     }
@@ -119,6 +123,8 @@ final class WorkspaceCommandValidator {
             return snapshot.canSaveImage
         case .missKon(let snapshot):
             return snapshot.canSaveImage
+        case .wallhaven(let snapshot):
+            return snapshot.canSaveImage
         }
     }
 
@@ -129,6 +135,8 @@ final class WorkspaceCommandValidator {
         case .local(let snapshot):
             return snapshot.canResetZoom
         case .missKon(let snapshot):
+            return snapshot.canResetZoom
+        case .wallhaven(let snapshot):
             return snapshot.canResetZoom
         }
     }
@@ -141,6 +149,8 @@ final class WorkspaceCommandValidator {
             return snapshot.hasSelection
         case .missKon(let snapshot):
             return snapshot.canShare
+        case .wallhaven(let snapshot):
+            return snapshot.canShare
         }
     }
 
@@ -149,6 +159,8 @@ final class WorkspaceCommandValidator {
         case .gallery(let snapshot):
             return snapshot.canFavorite
         case .missKon(let snapshot):
+            return snapshot.canFavorite
+        case .wallhaven(let snapshot):
             return snapshot.canFavorite
         case .local:
             return false
@@ -163,6 +175,8 @@ final class WorkspaceCommandValidator {
             return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
         case .missKon(let snapshot):
             return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
+        case .wallhaven(let snapshot):
+            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
         }
     }
 
@@ -172,6 +186,8 @@ final class WorkspaceCommandValidator {
         case .local(let s):
             return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
         case .missKon(let s):
+            return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
+        case .wallhaven(let s):
             return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
         default:
             return false
@@ -188,6 +204,8 @@ final class WorkspaceCommandValidator {
         case .gallery(let snapshot):
             isFavorite = snapshot.isFavorite
         case .missKon(let snapshot):
+            isFavorite = snapshot.isFavorite
+        case .wallhaven(let snapshot):
             isFavorite = snapshot.isFavorite
         case .local:
             menuItem.title = "Favorite"
@@ -211,6 +229,8 @@ final class WorkspaceCommandValidator {
         case .local(let snapshot):
             selectedLayoutIsList = snapshot.layout == .list
         case .missKon(let snapshot):
+            selectedLayoutIsList = snapshot.layout == .list
+        case .wallhaven(let snapshot):
             selectedLayoutIsList = snapshot.layout == .list
         }
         menuItem.state = selectedLayoutIsList == isList ? .on : .off

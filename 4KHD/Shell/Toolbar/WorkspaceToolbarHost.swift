@@ -1,4 +1,5 @@
 import AppKit
+import Nuke
 import Observation
 
 @MainActor
@@ -18,6 +19,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let share = NSToolbarItem.Identifier("WorkspaceToolbar.share")
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
         static let importFolder = NSToolbarItem.Identifier("WorkspaceToolbar.importFolder")
+        static let wallhavenFilters = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenFilters")
     }
 
     private let appContext: WorkspaceAppContext
@@ -27,6 +29,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var searchItem: NSSearchToolbarItem?
     private weak var localGridColumnsControl: NSSegmentedControl?
     private weak var localSortItem: NSMenuToolbarItem?
+    private weak var wallhavenFilterItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
     private weak var favoriteItem: NSToolbarItem?
     private weak var resetZoomItem: NSToolbarItem?
@@ -93,6 +96,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.share,
             ItemID.detailPane,
             ItemID.importFolder,
+            ItemID.wallhavenFilters,
             ItemID.search
         ]
     }
@@ -114,20 +118,25 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.localSort)
             identifiers.append(ItemID.importFolder)
         }
-        if currentModuleID == .missKon || currentModuleID == .fourKHDGallery {
+        if currentModuleID == .missKon || currentModuleID == .fourKHDGallery || currentModuleID == .wallhaven {
             identifiers.append(ItemID.localGridColumns)
         }
-        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon {
+        if currentModuleID == .wallhaven {
+            identifiers.append(ItemID.wallhavenFilters)
+        }
+        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .wallhaven {
             identifiers.append(ItemID.favorite)
         }
         identifiers += [
             ItemID.resetZoom,
             ItemID.immersive,
-            ItemID.filmstrip,
             ItemID.detailActions,
             ItemID.share,
             ItemID.detailPane
         ]
+        if currentModuleID != .wallhaven {
+            identifiers.append(ItemID.filmstrip)
+        }
         identifiers.append(ItemID.search)
         return identifiers
     }
@@ -305,6 +314,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             item.action = #selector(importFolder(_:))
             item.visibilityPriority = .standard
             return item
+        case ItemID.wallhavenFilters:
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "筛选"
+            item.paletteLabel = "筛选"
+            item.image = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: "筛选")
+            item.visibilityPriority = .standard
+            wallhavenFilterItem = item
+            updateWallhavenFilterItem()
+            return item
         default:
             return nil
         }
@@ -371,6 +389,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         switch currentModuleID {
         case .missKon:
             appContext.toolbarContext.adjustMissKonGridColumns(delta: delta)
+        case .wallhaven:
+            appContext.toolbarContext.adjustWallhavenGridColumns(delta: delta)
         case .fourKHDGallery:
             appContext.toolbarContext.adjustGalleryGridColumns(delta: delta)
         default:
@@ -441,6 +461,59 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     @objc private func saveCurrentImage(_ sender: Any?) {
         appContext.toolbarContext.saveCurrentImage(for: currentModuleID)
         refresh()
+    }
+
+    @objc private func setDesktopWallpaper(_ sender: Any?) {
+        guard currentModuleID == .wallhaven,
+              let wallpaper = appContext.wallhavenStore.effectiveSelectedWallpaper else { return }
+        guard let fullImageUrl = wallpaper.fullImageUrl else {
+            appContext.wallhavenStore.resolveDetail(for: wallpaper)
+            let alert = NSAlert()
+            alert.messageText = "正在获取原图"
+            alert.informativeText = "原图地址尚未解析，已开始加载详情。请稍后重试。"
+            alert.alertStyle = .informational
+            alert.runModal()
+            return
+        }
+        downloadAndSetWallhavenDesktop(url: fullImageUrl, wallpaperID: wallpaper.id, ext: wallpaper.fileExtensionForSave)
+    }
+
+    private func downloadAndSetWallhavenDesktop(url: URL, wallpaperID: String, ext: String) {
+        let request = RemoteImagePipeline.shared.request(
+            for: url,
+            priority: .veryHigh,
+            configureURLRequest: WallhavenRequestFactory.configureImageRequest
+        )
+        _ = RemoteImagePipeline.shared.loadData(with: request) { data in
+            guard let data else {
+                Task { @MainActor in
+                    let alert = NSAlert()
+                    alert.messageText = "下载失败"
+                    alert.informativeText = "无法下载壁纸原图"
+                    alert.alertStyle = .warning
+                    alert.runModal()
+                }
+                return
+            }
+            let tempDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("4KHD-Wallpaper", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let tempFile = tempDir.appendingPathComponent("wallhaven-\(wallpaperID).\(ext)")
+            do {
+                try data.write(to: tempFile, options: .atomic)
+                Task { @MainActor in
+                    LocalDesktopWallpaperSetter.setDesktopWallpaper(tempFile)
+                }
+            } catch {
+                Task { @MainActor in
+                    let alert = NSAlert()
+                    alert.messageText = "保存失败"
+                    alert.informativeText = error.localizedDescription
+                    alert.alertStyle = .warning
+                    alert.runModal()
+                }
+            }
+        }
     }
 
     @objc private func revealCurrentFileInFinder(_ sender: Any?) {
@@ -525,6 +598,19 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = snapshot.canResetZoom
             _ = snapshot.canShare
             _ = snapshot.isFilmstripPresented
+        case .wallhaven(let snapshot):
+            _ = snapshot.searchText
+            _ = snapshot.layout
+            _ = snapshot.isRefreshing
+            _ = snapshot.canFavorite
+            _ = snapshot.isFavorite
+            _ = snapshot.canIncreaseGridColumns
+            _ = snapshot.canDecreaseGridColumns
+            _ = snapshot.canSelectPreviousImage
+            _ = snapshot.canSelectNextImage
+            _ = snapshot.canSaveImage
+            _ = snapshot.canResetZoom
+            _ = snapshot.canShare
         }
     }
 
@@ -539,6 +625,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         updateImmersiveItem()
         updateFilmstripItem()
         updateDetailActionsItem()
+        updateWallhavenFilterItem()
         updateShareItem()
         configureDetailPaneItem(detailPaneItem)
         validateVisibleItems()
@@ -558,6 +645,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let snapshot):
             text = snapshot.searchText
             searchField.placeholderString = "搜索 MissKon"
+        case .wallhaven(let snapshot):
+            text = snapshot.searchText
+            searchField.placeholderString = "搜索 Wallhaven"
         }
         if searchField.stringValue != text {
             searchField.stringValue = text
@@ -587,6 +677,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .gallery(let s):
             localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
             localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
+        case .wallhaven(let s):
+            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
+            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
         }
     }
 
@@ -603,6 +696,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let snapshot):
             refreshItem.isEnabled = !snapshot.isRefreshing
             refreshItem.toolTip = snapshot.isRefreshing ? "正在刷新 MissKon" : "刷新 MissKon"
+        case .wallhaven(let snapshot):
+            refreshItem.isEnabled = !snapshot.isRefreshing
+            refreshItem.toolTip = snapshot.isRefreshing ? "正在刷新 Wallhaven" : "刷新 Wallhaven"
         }
     }
 
@@ -616,6 +712,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             canFavorite = s.canFavorite
             isFavorite = s.isFavorite
         case .missKon(let s):
+            canFavorite = s.canFavorite
+            isFavorite = s.isFavorite
+        case .wallhaven(let s):
             canFavorite = s.canFavorite
             isFavorite = s.isFavorite
         case .local:
@@ -656,6 +755,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let snapshot):
             isPresented = snapshot.isFilmstripPresented
             filmstripItem.isEnabled = snapshot.canSaveImage
+        case .wallhaven:
+            isPresented = false
+            filmstripItem.isEnabled = false
         }
         filmstripItem.image = NSImage(
             systemSymbolName: isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle",
@@ -693,6 +795,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let snapshot):
             shareItem.isEnabled = snapshot.canShare
             shareItem.toolTip = snapshot.canShare ? "共享当前链接" : "先选择一个图集"
+        case .wallhaven(let snapshot):
+            shareItem.isEnabled = snapshot.canShare
+            shareItem.toolTip = snapshot.canShare ? "共享当前链接" : "先选择一张壁纸"
         }
     }
 
@@ -705,6 +810,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return !localSnapshot.isRefreshing && localSnapshot.hasSelection
         case .missKon(let snapshot):
             return !snapshot.isRefreshing
+        case .wallhaven(let snapshot):
+            return !snapshot.isRefreshing
         }
     }
 
@@ -713,6 +820,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .gallery(let snapshot):
             return snapshot.canFavorite
         case .missKon(let snapshot):
+            return snapshot.canFavorite
+        case .wallhaven(let snapshot):
             return snapshot.canFavorite
         case .local:
             return false
@@ -727,6 +836,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return snapshot.canResetZoom
         case .missKon(let snapshot):
             return snapshot.canResetZoom
+        case .wallhaven(let snapshot):
+            return snapshot.canResetZoom
         }
     }
 
@@ -737,6 +848,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let snapshot):
             return snapshot.canSaveImage
         case .missKon(let snapshot):
+            return snapshot.canSaveImage
+        case .wallhaven(let snapshot):
             return snapshot.canSaveImage
         }
     }
@@ -749,6 +862,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return snapshot.hasSelection
         case .missKon(let snapshot):
             return snapshot.canSaveImage
+        case .wallhaven:
+            return false
         }
     }
 
@@ -761,6 +876,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return localSnapshot.canShare
         case .missKon(let snapshot):
             return snapshot.canShare
+        case .wallhaven(let snapshot):
+            return snapshot.canShare
         }
     }
 
@@ -771,6 +888,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let snapshot):
             return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
         case .gallery(let snapshot):
+            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
+        case .wallhaven(let snapshot):
             return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
         }
     }
@@ -853,6 +972,28 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
+        case .wallhaven:
+            let openItem = NSMenuItem(title: "在 Wallhaven 打开", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
+            openItem.target = self
+            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
+            menu.addItem(openItem)
+
+            let desktopItem = NSMenuItem(title: "设置为桌面壁纸", action: #selector(setDesktopWallpaper(_:)), keyEquivalent: "")
+            desktopItem.target = self
+            desktopItem.image = NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "设置为桌面壁纸")
+            desktopItem.isEnabled = canSaveCurrentImage
+            menu.addItem(desktopItem)
+
+            let saveItem = NSMenuItem(title: "保存原图...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+            saveItem.target = self
+            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存原图")
+            saveItem.isEnabled = canSaveCurrentImage
+            menu.addItem(saveItem)
+
+            let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
+            infoItem.target = self
+            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
+            menu.addItem(infoItem)
         case .localLibrary:
             let saveItem = NSMenuItem(title: "保存副本...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self
@@ -900,5 +1041,158 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             menu.addItem(item)
         }
         return menu
+    }
+
+    // MARK: - Wallhaven filter menu
+
+    private func makeWallhavenFilterMenu() -> NSMenu {
+        let store = appContext.wallhavenStore
+        let menu = NSMenu(title: "筛选")
+
+        // Category submenu
+        let catItem = NSMenuItem(title: "分类", action: nil, keyEquivalent: "")
+        catItem.submenu = NSMenu(title: "分类")
+        for cat in WallhavenCategory.allCases {
+            let item = NSMenuItem(title: cat.title, action: #selector(wallhavenSelectCategory(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = cat
+            item.state = store.category == cat ? .on : .off
+            catItem.submenu?.addItem(item)
+        }
+        menu.addItem(catItem)
+
+        // Sorting submenu
+        let sortItem = NSMenuItem(title: "排序", action: nil, keyEquivalent: "")
+        sortItem.submenu = NSMenu(title: "排序")
+        for s in WallhavenSorting.allCases {
+            let item = NSMenuItem(title: s.title, action: #selector(wallhavenSelectSorting(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = s
+            item.state = store.sorting == s ? .on : .off
+            sortItem.submenu?.addItem(item)
+        }
+        menu.addItem(sortItem)
+
+        // Ratio submenu
+        let ratioItem = NSMenuItem(title: "比例", action: nil, keyEquivalent: "")
+        ratioItem.submenu = NSMenu(title: "比例")
+        for r in WallhavenRatio.allCases {
+            let item = NSMenuItem(title: r.title, action: #selector(wallhavenSelectRatio(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = r
+            item.state = store.ratio == r ? .on : .off
+            ratioItem.submenu?.addItem(item)
+        }
+        menu.addItem(ratioItem)
+
+        // Resolution submenu
+        let resItem = NSMenuItem(title: "分辨率", action: nil, keyEquivalent: "")
+        resItem.submenu = NSMenu(title: "分辨率")
+        for r in WallhavenResolution.allCases {
+            let item = NSMenuItem(title: r.title, action: #selector(wallhavenSelectResolution(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = r
+            item.state = store.resolution == r ? .on : .off
+            resItem.submenu?.addItem(item)
+        }
+        menu.addItem(resItem)
+
+        // Purity submenu — only relevant items enabled
+        let purityItem = NSMenuItem(title: "纯度", action: nil, keyEquivalent: "")
+        purityItem.submenu = NSMenu(title: "纯度")
+        let allowed = store.allowedPurities
+        for p in WallhavenPurity.allCases {
+            let item = NSMenuItem(title: p.title, action: #selector(wallhavenSelectPurity(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = p
+            item.state = store.purity == p ? .on : .off
+            if !allowed.contains(p) {
+                item.isEnabled = false
+                item.toolTip = "需要 API Key"
+            }
+            purityItem.submenu?.addItem(item)
+        }
+        menu.addItem(purityItem)
+
+        menu.addItem(.separator())
+
+        let keyItem = NSMenuItem(title: "设置 API Key...", action: #selector(wallhavenSetAPIKey(_:)), keyEquivalent: "")
+        keyItem.target = self
+        keyItem.image = NSImage(systemSymbolName: "key", accessibilityDescription: "设置 API Key")
+        menu.addItem(keyItem)
+
+        return menu
+    }
+
+    private func updateWallhavenFilterItem() {
+        guard currentModuleID == .wallhaven, let wallhavenFilterItem else { return }
+        wallhavenFilterItem.menu = makeWallhavenFilterMenu()
+    }
+
+    @objc private func wallhavenSelectCategory(_ sender: NSMenuItem) {
+        guard let cat = sender.representedObject as? WallhavenCategory else { return }
+        appContext.wallhavenStore.setCategory(cat)
+    }
+
+    @objc private func wallhavenSelectSorting(_ sender: NSMenuItem) {
+        guard let s = sender.representedObject as? WallhavenSorting else { return }
+        appContext.wallhavenStore.setSorting(s)
+    }
+
+    @objc private func wallhavenSelectRatio(_ sender: NSMenuItem) {
+        guard let r = sender.representedObject as? WallhavenRatio else { return }
+        appContext.wallhavenStore.setRatio(r)
+    }
+
+    @objc private func wallhavenSelectResolution(_ sender: NSMenuItem) {
+        guard let r = sender.representedObject as? WallhavenResolution else { return }
+        appContext.wallhavenStore.setResolution(r)
+    }
+
+    @objc private func wallhavenSelectPurity(_ sender: NSMenuItem) {
+        guard let p = sender.representedObject as? WallhavenPurity else { return }
+        appContext.wallhavenStore.setPurity(p)
+    }
+
+    @objc private func wallhavenSetAPIKey(_ sender: NSMenuItem) {
+        let alert = NSAlert()
+        alert.messageText = "Wallhaven API Key"
+        alert.informativeText = "输入你的 Wallhaven API Key。没有 Key 时仅可用 SFW 内容。"
+        alert.alertStyle = .informational
+
+        let inputField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 22))
+        inputField.placeholderString = "粘贴 API Key"
+        inputField.stringValue = appContext.wallhavenStore.feed.accountStore.apiKey ?? ""
+        alert.accessoryView = inputField
+
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: "清除")
+
+        alert.window.initialFirstResponder = inputField
+
+        let response = alert.runModal()
+        let store = appContext.wallhavenStore.feed.accountStore
+        switch response {
+        case .alertFirstButtonReturn:
+            let key = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            store.apiKey = key.isEmpty ? nil : key
+            if let error = store.keychainError {
+                let errorAlert = NSAlert()
+                errorAlert.messageText = "保存失败，API Key 未启用"
+                errorAlert.informativeText = error
+                errorAlert.alertStyle = .warning
+                errorAlert.runModal()
+                // Key was rolled back; don't refresh with invalid state.
+            } else {
+                appContext.wallhavenStore.refreshFromNetwork()
+            }
+        case .alertThirdButtonReturn:
+            store.apiKey = nil
+            appContext.wallhavenStore.refreshFromNetwork()
+        default:
+            break
+        }
+        refresh()
     }
 }

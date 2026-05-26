@@ -9,7 +9,7 @@ extension WorkspaceSidebarViewController {
         switch node {
         case .localFolder(let folder):
             return localFolderMenu(folder)
-        case .group, .gallery, .missKon, .localAllImages:
+        case .group, .gallery, .missKon, .wallhaven, .localAllImages:
             return nil
         }
     }

@@ -34,10 +34,12 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         localRootFolderIDs = Set(localRoots.map(\.tree.id))
         let online = WorkspaceSidebarNode.group("4KHD")
         let misskon = WorkspaceSidebarNode.group("MissKon")
+        let wallhaven = WorkspaceSidebarNode.group("在线壁纸")
         let local = WorkspaceSidebarNode.group("本地")
-        nodes = [local, online, misskon]
+        nodes = [local, online, misskon, wallhaven]
         childrenByNode[online] = GallerySection.allCases.map(WorkspaceSidebarNode.gallery)
         childrenByNode[misskon] = MissKonSection.allCases.map(WorkspaceSidebarNode.missKon)
+        childrenByNode[wallhaven] = WallhavenSection.allCases.map(WorkspaceSidebarNode.wallhaven)
         var localChildren: [WorkspaceSidebarNode] = [
             .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount })
         ]
