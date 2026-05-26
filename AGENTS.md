@@ -90,91 +90,24 @@
 
 结构方向发生实质变化时，必须同步更新 `AGENTS.md`、`README.md` 和 `docs/ai-handover-*.md`。
 
-## 7. 最近完成的工作（2026-05-27）
+## 7. 当前状态与开发注意事项
 
-### 第一轮：功能补全（P0 + P1 + P2）
+- `4KHDGallery`：稳定，是在线模块参考实现；支持网格列数 2-6、列表/网格切换保留位置、详情页 HTML 解析 + WKWebView 后备。
+- `MissKon`：核心链路完整；支持列表/网格、分页、搜索高亮、收藏、Inspector、详情重试、磁盘列表缓存、渐进式详情加载。
+- `LocalLibrary` / `Favorites`：稳定；收藏通过共享 `FavoritesStore` 持久化，业务模块间不直接依赖。
 
-**收藏接入（P0）：** MissKonFavoritesBridge + 共享 FavoritesStore + 工具栏 heart 按钮
-**MissKon Inspector（P1）：** 标签/图片数/页数/Section/收藏状态/URL
-**详情区重试（P1）：** showFailure(retry:) + retry 按钮 + force resolve
-**搜索高亮（P1）：** 列表/网格黄色匹配高亮，复用 highlightedAttributedString
-**缓存持久化（P2）：** Codable MissKonItem，Application Support JSON 文件
-**keyDown 转发（P2）：** Shared/UI/Detail/WorkspaceDetailRootView
+关键约束：
 
-### 第二轮：性能优化 + Bug 修复
+- 修改 Shell 集成 MissKon 时，先搜索 `case .missKon` 覆盖所有 switch。
+- 修改任何在线模块时，以 `4KHDGallery` 的状态流和 UI 行为为参考。
+- 在线模块异步结果必须按请求时的 section/query 回写，不能在 `await` 后直接读当前 section 写状态。
+- 收藏桥和详情图片解析必须使用 exact/subdomain allowlist，不要用 `host.contains(...)`。
+- 详情 HTML 截取不要用 `lowercased()` 产生的 `String.Index` 切原字符串；用 `NSString`/`NSRange` 或原字符串 case-insensitive range。
+- 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；补单元测试前要先建测试 target。
 
-**Bug 修复：** saveMessage 未观察、isApplyingSelection 守卫缺失
-**性能：** 列表增量更新（ID 不变跳过 reloadData）、网格 refreshVisibleItems、缓存 1h 过期
-**共享：** NSView.performWithoutAnimation → Shared/Platform/
-**UI：** SF Symbols 图标对齐（safari/doc.on.doc/square.and.arrow.up）
+常用验证：
 
-### 第三轮：架构对齐
-
-**回调模式：** `feed.onSelectionChanged` 闭包（对齐 GalleryFeedStore）
-**Task 清理：** `loadTask`/`searchTask` 完成后 nil
-**收藏追踪：** 详情区 observeState 添加 `favorites.favorites` 观察
-
-### 第四轮：缺陷修复
-
-**selectedItemID setter：** 修复 setter 不触发 detail 更新，添加 `feed.selectedItem`
-**初始选择：** init 调用 `restoreSectionCache` 确保缓存即时展示
-**拖放：** 表格 `pasteboardWriterForRow` + `forLocal:true`
-**页脚行高：** `tableView(_:heightOfRow:)` 页脚 34pt
-**detailFailed：** 添加状态标志 + "解析失败"/"解析中" 连贯文字
-**@Observable：** MissKonDetailInteractionController 添加宏，保存状态实时更新
-**force-unwrap：** 3 处 `Range(...)!` 替换为 guard-let
-**搜索自动选择：** `submitSearch` 后 auto-select + onSelectionChanged
-
-### 第五轮：数据完整性审计（关键 Bug）
-
-**String.Index 跨实例：** `html.lowercased()` 索引用于 `html` 子脚本，未定义行为可致 crash。重写为 NSString/NSRange API。
-**resolvePageURLs 子页 URL：** 子页 URL 被当作首页构造，多页图集第 2+ 页 URL 错误。从 baseURL 剥离页面号。
-**收藏跨模块泄漏：** 共享 FavoritesStore 导致 Gallery/MissKon 记录互现。两桥添加 `detailURL.host` 域名验证。
-**aspectRatio 安全：** `aspectRatioProvider` 添加 `isFinite` / `>0` 检查。
-**selectAdjacent 回退：** 添加 `collectionView.selectionIndexPaths.first?.item` 回退。
-
-### 第六轮：用户反馈 Bug 修复
-
-**侧边栏选中态：** `routeMatches` 添加 `.missKon` case
-**列数按钮：** GalleryContentPreferences 添加 `gridColumnCount` + 工具栏按钮 + snapshot 字段
-**刷新按钮：** `.favorites` section 调用 `restoreSectionCache`
-**图片张数：** `imageCountRegex` 扩展匹配 photos/pics/images/张/p
-**胶片条闪烁：** `resolve` 创建初始占位 slot（coverURL），消除空状态过渡
-**首次启动无内容：** `refreshFromNetwork` 自动选择第一项
-**详情面板重建：** 同模块内复用 detailController，跟踪 `lastDetailModuleID`
-
-### 第七轮：P3 体验补齐
-
-**列表/网格滚动位置：** Gallery/MissKon 在双视图切换时用第一个可见图集 ID 恢复位置，避免切换后跳回选中项或顶部；Gallery 收藏分组列表也按图集 ID 对齐。
-**测试现状：** 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；单元测试仍是后续 P3。
-
-### 第八轮：在线模块审查修复
-
-**Gallery 详情解析：** `DetailPageHTMLResolver.galleryContent` 改用 `NSString`/`NSRange` 做大小写不敏感范围定位，避免 `lowercased()` 索引切原字符串导致 crash。
-**异步状态隔离：** Gallery 列表网络返回只在请求 section 仍为当前 section 时更新选择/详情；MissKon 列表、分页、搜索分页均按请求时的 section/query 回写，避免切换栏目或清搜索后旧任务污染当前列表。
-**MissKon 初始详情：** GalleryStore 接线后立即 resolve 已缓存选中项；选中清空时同步清空 detail store。
-**域名边界：** 收藏桥和详情图片解析从 `contains(host)` 收紧为精确域名/子域名 allowlist，避免跨站记录或图片 URL 误入。
-
-### 模块状态评估
-
-**4KHDGallery：** 稳定完整。新增 `gridColumnCount` 支持（列数 2-6 可调），列表/网格切换保留滚动位置。
-**MissKon：** 完成度约 98%。核心链路完整，数据安全审计通过，收藏跨模块验证，列表/网格切换保留滚动位置。
-**LocalLibrary / Favorites：** 稳定无变更。
-
-### 共享层清单
-
-| 组件 | 路径 | 状态 |
-|------|------|------|
-| `RemoteImageView` | `Shared/UI/` | 已有 |
-| `WorkspaceDetailRootView` | `Shared/UI/Detail/` | 本轮新增 |
-| `NSView.performWithoutAnimation` | `Shared/Platform/` | 本轮新增 |
-| `highlightedAttributedString` | `Shared/UI/` | 已有 |
-| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 已有 |
-| `WorkspaceZoomableImageView` | `Shared/UI/` | 已有 |
-| `WorkspaceTableView` / `WorkspaceCollectionView` | `Shared/UI/` | 已有 |
-| `RemoteImagePipeline` | `Shared/Services/` | 已有 |
-| `DetailPageImageCache` | `Shared/Services/` | 已有 |
-| `FilmstripVisibilityController` | `Shared/State/` | 已有 |
-| `WorkspaceDetailPaneController` | `Shared/State/` | 已有 |
-| `WorkspaceKeyboardHandler` | `Shared/Platform/` | 已有 |
-| `WorkspaceCoalescingQueue` | `Shared/Platform/` | 已有 |
+```bash
+xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build
+rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
+```

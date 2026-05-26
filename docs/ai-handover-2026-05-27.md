@@ -1,128 +1,54 @@
 # AI Handover — 2026-05-27
 
-> 给下一个 AI 开发助手的上下文恢复文档。先读本文，再读 `AGENTS.md`，然后开始工作。
+给下一个开发助手恢复上下文用。更细的架构规范看 `AGENTS.md`。
 
-## 项目快照
+## 接手顺序
 
-- **项目**: 4KHD — macOS 原生图片浏览 App（纯 AppKit，0 SwiftUI）
-- **环境**: macOS 26+, Xcode 26+, Swift 6, SPM(Nuke)
-- **构建**: `xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
-- **文件数**: ~130 Swift 文件，MissKon 模块占 18 个
-- **最新提交**: 用 `git log -1 --oneline` 查看；本文件只记录结构和注意事项，避免提交号频繁 stale
-
-## 四个模块当前状态
-
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| 4KHDGallery | ✅ 完整稳定 | 参考实现，支持 gridColumnCount 和列表/网格切换位置恢复 |
-| MissKon | ✅ 完成度 98% | 核心链路完整，数据安全审计通过，列表/网格切换位置恢复 |
-| LocalLibrary | ✅ 完整稳定 | — |
-| Favorites | ✅ 完整 | 独立模块，共享 FavoritesStore，域名验证防泄漏 |
-
-## MissKon 模块 — 当前状态 98%
-
-### 已完成的全部能力
-
-**浏览：** 侧边栏 8 分类 + 列表/网格双视图 + 切换保留滚动位置 + 分页加载 + section 缓存 + 磁盘持久化
-**详情：** 渐进加载 + 封面过渡 + 相邻预加载 + 导航按钮 + 键盘 + 胶片条 + 保存/缩放
-**交互：** 工具栏全功能 + 搜索高亮 + 错误重试(footer+详情区) + 右键菜单(SF Symbols)
-**收藏：** MissKonFavoritesBridge + 共享 FavoritesStore + 域名验证防泄漏
-**Inspector：** 标签/图片数/页数/Section/收藏状态/URL
-**数据安全：** NSString API 防 String.Index crash + resolvePageURLs 子页修正 + force-unwrap 消除
-
-### 关键设计决策
-
-1. **feed→detail 回调模式：** `onSelectionChanged` 闭包，对齐 GalleryFeedStore。多个路径自动通知详情更新。
-2. **缓存策略：** `Application Support/4KHD/MissKon/feed-cache.json`，含时间戳 1h 过期自动刷新。
-3. **收藏隔离：** 两桥均需 `detailURL.host` 域名验证，防止跨模块记录泄漏。
-4. **详情切换：** `resolve()` 中同步创建初始占位 slot（coverURL），避免空状态闪烁。
-5. **详情面板：** 同模块内 route 变化不重建 detailController，跟踪 `lastDetailModuleID`。
-6. **异步隔离：** MissKon feed 的网络/搜索分页结果必须按请求时 section/query 回写；Gallery 非当前 section 的列表返回不能触发当前选择/详情刷新。
-7. **详情解析：** Gallery 详情 HTML 截取使用 `NSString`/`NSRange`，不要重新引入 `lowercased()` 索引切原字符串。
-
-### Shell 集成点
-
-搜索 `case .missKon` 确认覆盖的文件：
-- `WorkspaceToolbarHost.swift` — 工具栏按钮（列数/favorite/刷新）
-- `WorkspaceCommandValidator.swift` — 菜单验证
-- `WorkspaceToolbarContext.swift` — snapshot + action
-- `WorkspaceShell.swift` — 布局/列数操作 + detail 复用
-- `WorkspaceSidebarViewController.swift` — 选中态 routeMatches
-- `WorkspaceSidebarNode.swift` — 节点定义
-
-### 常用命令
+1. 读 `AGENTS.md`
+2. 读本文
+3. 运行构建验证：
 
 ```bash
-# 构建
 xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build
+```
 
-# 清理
-rm -rf ~/Library/Developer/Xcode/DerivedData/4KHD-*
+## 当前状态
 
+| 模块 | 状态 | 注意事项 |
+|------|------|----------|
+| `4KHDGallery` | 稳定 | 在线模块参考实现；支持列表/网格切换保留滚动位置 |
+| `MissKon` | 核心链路完整 | 已接入收藏、Inspector、详情重试、搜索高亮、磁盘列表缓存 |
+| `LocalLibrary` | 稳定 | 本地图片导入、扫描、metadata 读取 |
+| `Favorites` | 稳定 | 共享 `FavoritesStore`；收藏桥必须做域名校验 |
+
+项目约束：纯 AppKit，生产代码 `0 SwiftUI`，macOS 26+，Swift 6，SPM/Nuke。
+
+## 在线模块注意事项
+
+- 修改 MissKon 的 Shell 集成时，先搜索 `case .missKon` 覆盖所有 switch。
+- 修改任一在线模块时，以 `4KHDGallery` 的状态流和 UI 行为为参考。
+- 异步请求返回后必须按请求时的 section/query 写回，不能直接读当前 UI 状态。
+- 收藏桥和详情图片解析使用 exact/subdomain allowlist，不要用 `host.contains(...)`。
+- 详情 HTML 截取不要用 `lowercased()` 产生的 `String.Index` 切原字符串；用 `NSString`/`NSRange` 或原字符串 case-insensitive range。
+- MissKon 列表缓存路径：`~/Library/Application Support/4KHD/MissKon/feed-cache.json`，网络缓存 1 小时过期；收藏 section 始终读 `FavoritesStore`。
+
+## 剩余任务
+
+- 当前工程只有 `4KHD` App target，尚未配置 XCTest target；补单元测试前需要先建测试 target 和可测的纯逻辑入口。
+- HTML 解析仍依赖目标站点结构，改解析器时优先保留降级路径和错误信息。
+
+## 常用命令
+
+```bash
 # 验证 0 SwiftUI
 rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 
-# 查找 MissKon 集成点
+# 查 MissKon 集成点
 rg "case \.missKon" 4KHD/Shell 4KHD/App --glob '*.swift'
 
-# 查找 Gallery 参考实现
+# 查 Gallery 参考实现
 rg "case \.fourKHDGallery" 4KHD/Shell 4KHD/App --glob '*.swift'
 
-# 统计文件数
-find 4KHD -name '*.swift' | wc -l
-```
-
-### 已知注意事项
-
-1. **HTML 解析风险：** MissKonDetailResolver.extractImageURLs 已改用 NSString API 防 crash，但 entry div 匹配仍依赖特定 class name。
-2. **子页 URL：** resolvePageURLs 已修正为从 baseURL 剥离页面号，但依赖 `firstMatch(currentRegex)` 正确识别当前页。
-3. **收藏域名验证：** 两桥均验证 `detailURL.host`，新增模块需同步添加。
-4. **详情面板复用：** `lastDetailModuleID` 跟踪在 WorkspaceShell 中，跨模块切换时正确重建。
-5. **缓存过期：** `cacheMaxAge = 3600`（1 小时），仅对网络刷新章节生效，收藏 section 始终实时读取 FavoritesStore。
-6. **单元测试：** 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；后续补测试需先建立测试 target 和可测的纯逻辑入口。
-7. **域名验证：** 收藏桥和详情图片解析使用 exact/subdomain allowlist；不要回退到 `host.contains(...)`。
-
-### 共享层清单
-
-| 组件 | 路径 | 状态 |
-|------|------|------|
-| `RemoteImageView` | `Shared/UI/` | 已有 |
-| `WorkspaceDetailRootView` | `Shared/UI/Detail/` | 本轮新增 |
-| `NSView.performWithoutAnimation` | `Shared/Platform/` | 本轮新增 |
-| `highlightedAttributedString` | `Shared/UI/` | 已有 |
-| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 已有 |
-| `WorkspaceZoomableImageView` | `Shared/UI/` | 已有 |
-| `WorkspaceTableView` / `WorkspaceCollectionView` | `Shared/UI/` | 已有 |
-| `RemoteImagePipeline` | `Shared/Services/` | 已有 |
-| `DetailPageImageCache` | `Shared/Services/` | 已有 |
-| `FilmstripVisibilityController` | `Shared/State/` | 已有 |
-| `WorkspaceDetailPaneController` | `Shared/State/` | 已有 |
-| `WorkspaceKeyboardHandler` | `Shared/Platform/` | 已有 |
-| `WorkspaceCoalescingQueue` | `Shared/Platform/` | 已有 |
-
-### MissKon 文件结构
-
-```
-Modules/MissKon/
-  Domain/
-    MissKonModels.swift           — MissKonSection, MissKonItem, MissKonImageSlot
-  State/
-    MissKonFeedStore.swift        — 列表数据 + 缓存 + 搜索 + 收藏桥接
-    MissKonDetailStore.swift      — 详情页解析 + slot 管理 + retry
-    MissKonGalleryStore.swift     — 门面：组合 feed/detail/favorites
-    MissKonContentPreferences.swift — 布局 + 列数偏好
-    MissKonDetailInteractionController.swift — 保存/缩放交互 (@Observable)
-  Services/
-    MissKonListResolver.swift     — 列表页 HTML 解析 + 搜索
-    MissKonDetailResolver.swift   — 详情页 HTML 解析 (NSString API)
-    MissKonRequestFactory.swift   — URLRequest 配置 (Cookie/UA/Referer)
-    MissKonFavoritesBridge.swift  — MissKonItem ↔ FavoriteRecord 转换
-  UI/
-    MissKonContentViewController.swift — 列表/网格内容视图
-    MissKonContentViews.swift     — 列表行/网格项/页脚视图
-    MissKonGridContainerView.swift — 网格容器 (NSCollectionView)
-    MissKonImageDetailViewController.swift — 详情区视图控制器
-    MissKonZoomableImageView.swift — 可缩放图片视图
-    MissKonFilmstripView.swift    — 胶卷条视图
-    MissKonRemoteImageView.swift  — 远程图片视图 (Nuke wrapper)
+# 清理 DerivedData
+rm -rf ~/Library/Developer/Xcode/DerivedData/4KHD-*
 ```
