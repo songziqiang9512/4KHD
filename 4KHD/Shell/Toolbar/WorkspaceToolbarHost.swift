@@ -114,7 +114,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.localSort)
             identifiers.append(ItemID.importFolder)
         }
-        if currentModuleID == .missKon {
+        if currentModuleID == .missKon || currentModuleID == .fourKHDGallery {
             identifiers.append(ItemID.localGridColumns)
         }
         if currentModuleID == .fourKHDGallery || currentModuleID == .missKon {
@@ -368,9 +368,12 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case 1: delta = -1
         default: return
         }
-        if currentModuleID == .missKon {
+        switch currentModuleID {
+        case .missKon:
             appContext.toolbarContext.adjustMissKonGridColumns(delta: delta)
-        } else {
+        case .fourKHDGallery:
+            appContext.toolbarContext.adjustGalleryGridColumns(delta: delta)
+        default:
             appContext.toolbarContext.adjustLocalGridColumns(delta: delta)
         }
         refresh()
@@ -485,6 +488,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = gallerySnapshot.isRefreshing
             _ = gallerySnapshot.canFavorite
             _ = gallerySnapshot.isFavorite
+            _ = gallerySnapshot.canIncreaseGridColumns
+            _ = gallerySnapshot.canDecreaseGridColumns
             _ = gallerySnapshot.canSelectPreviousImage
             _ = gallerySnapshot.canSelectNextImage
             _ = gallerySnapshot.canSaveImage
@@ -579,9 +584,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let s):
             localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
             localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
-        default:
-            localGridColumnsControl.setEnabled(false, forSegment: 0)
-            localGridColumnsControl.setEnabled(false, forSegment: 1)
+        case .gallery(let s):
+            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
+            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
         }
     }
 
@@ -760,10 +765,14 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     private var canAdjustLocalGridColumns: Bool {
-        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
-            return false
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .local(let snapshot):
+            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
+        case .missKon(let snapshot):
+            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
+        case .gallery(let snapshot):
+            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
         }
-        return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
     }
 
     private func configureDetailPaneItem(_ item: NSToolbarItem?) {

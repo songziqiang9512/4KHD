@@ -13,7 +13,7 @@ enum MissKonListResolver {
     private static let coverSrcRegex = regex(#"<img[^>]+(?:src|data-src)=["']([^"']+)["']"#)
     private static let coverWidthRegex = regex(#"<img[^>]+width=["']([0-9]+)["']"#)
     private static let coverHeightRegex = regex(#"<img[^>]+height=["']([0-9]+)["']"#)
-    private static let imageCountRegex = regex(#"\((\d+)\s*photos\)"#)
+    private static let imageCountRegex = regex(#"\((\d+)\s*(?:photos|pics|images|张|p)\)"#)
     private static let paginationCurrentRegex = regex(#"<span\s+class=["'][^"']*current[^"']*["'][^>]*>\s*(\d+)\s*</span>"#)
     private static let paginationNextRegex = regex(#"<a[^>]+class=["'][^"']*(?:page|next)["'][^"']*["'][^>]+href=["']([^"']+)["']"#)
     private static let tagRegex = regex(#"<a[^>]+href=["']https?://misskon\.com/tag/([^/"']+)["'][^>]*>"#)
@@ -141,9 +141,9 @@ enum MissKonListResolver {
         // Image count from title: "Name: Title (122 photos)"
         let imageCount = Int(firstMatch(imageCountRegex, in: rawTitle) ?? "0") ?? 0
         let displayTitle = rawTitle.replacingOccurrences(
-            of: #"\s*\(\d+\s*photos\)\s*"#,
+            of: #"\s*\(\d+\s*(?:photos|pics|images|张|p)\)\s*"#,
             with: "",
-            options: .regularExpression
+            options: [.regularExpression, .caseInsensitive]
         ).trimmingCharacters(in: .whitespacesAndNewlines)
 
         let pageCount = max(Int(ceil(Double(imageCount) / 12.0)), 1)

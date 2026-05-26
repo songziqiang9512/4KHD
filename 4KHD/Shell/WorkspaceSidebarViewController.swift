@@ -474,6 +474,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         switch (route.moduleID, node) {
         case (.fourKHDGallery, .gallery(let section)):
             route.itemID == section.rawValue
+        case (.missKon, .missKon(let section)):
+            route.itemID == section.rawValue
         case (.localLibrary, .localFolder(let folder)):
             route.itemID == folder.id
         case (.localLibrary, .localAllImages):

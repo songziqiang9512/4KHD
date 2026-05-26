@@ -34,6 +34,8 @@ final class MissKonDetailStore {
         failedPageURLs = []
         isResolving = false
         errorMessage = nil
+        imageSlots = []
+        selectedSlotID = nil
 
         currentItem = item
         let pageURLs = item.pageURLs

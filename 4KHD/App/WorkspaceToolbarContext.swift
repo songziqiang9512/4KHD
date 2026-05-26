@@ -12,6 +12,8 @@ enum WorkspaceToolbarSnapshot {
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
@@ -143,6 +145,8 @@ final class WorkspaceToolbarContext {
         switch moduleID {
         case .fourKHDGallery:
             let selectedItem = galleryStore.selectedItem
+            let canAdjustGridColumns = galleryPreferences.layout == .grid
+                && !detailPaneController.isPresented
             return .gallery(
                 .init(
                     searchText: galleryStore.searchText,
@@ -150,6 +154,8 @@ final class WorkspaceToolbarContext {
                     isRefreshing: galleryStore.isRefreshingList,
                     canFavorite: selectedItem != nil,
                     isFavorite: selectedItem.map { galleryStore.isFavorite($0) } ?? false,
+                    canIncreaseGridColumns: canAdjustGridColumns && galleryPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: canAdjustGridColumns && galleryPreferences.canDecreaseGridColumns,
                     canSelectPreviousImage: galleryStore.selectedImageIndex > 0,
                     canSelectNextImage: selectedItem.map { item in
                         galleryStore.selectedImageIndex < max(item.imageCount - 1, 0)
@@ -270,6 +276,12 @@ final class WorkspaceToolbarContext {
         guard missKonPreferences.layout == .grid,
               !detailPaneController.isPresented else { return }
         missKonPreferences.adjustGridColumns(delta: delta)
+    }
+
+    func adjustGalleryGridColumns(delta: Int) {
+        guard galleryPreferences.layout == .grid,
+              !detailPaneController.isPresented else { return }
+        galleryPreferences.adjustGridColumns(delta: delta)
     }
 
     func refresh(for moduleID: WorkspaceModuleID) {

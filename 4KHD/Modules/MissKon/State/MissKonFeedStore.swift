@@ -89,7 +89,10 @@ final class MissKonFeedStore {
     // MARK: - Network
 
     func refreshFromNetwork() {
-        guard section.isNetworkBacked else { return }
+        if !section.isNetworkBacked {
+            if section == .favorites { restoreSectionCache() }
+            return
+        }
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }

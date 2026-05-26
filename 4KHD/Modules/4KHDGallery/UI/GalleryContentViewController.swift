@@ -139,8 +139,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
                 gridView.update(
                     items: library.visibleItems,
                     selectedItemID: library.selectedItemID,
-                    minimumColumnCount: nil,
-                    maximumColumnCount: nil,
+                    minimumColumnCount: GalleryContentPreferences.minimumGridColumnCount,
+                    maximumColumnCount: preferences.gridColumnCount,
                     preferredCardMinimumWidth: 136,
                     showsFooter: shouldShowFooter,
                     isRefreshing: library.isRefreshingList,
@@ -181,6 +181,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             _ = library.activeSearchQuery
             _ = library.favorites.favorites
             _ = preferences.layout
+            _ = preferences.gridColumnCount
             _ = detailPane.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
