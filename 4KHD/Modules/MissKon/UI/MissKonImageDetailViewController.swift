@@ -164,6 +164,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = library.imageSlots
             _ = library.isResolving
             _ = library.errorMessage
+            _ = library.favorites.favorites.last?.id
             _ = detailInteraction.resetToken
             _ = detailInteraction.saveMessage
             _ = immersive.isImmersive

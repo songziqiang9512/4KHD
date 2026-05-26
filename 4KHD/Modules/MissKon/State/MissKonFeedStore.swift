@@ -28,6 +28,9 @@ final class MissKonFeedStore {
     /// Auto-refresh cache if older than this interval.
     private static let cacheMaxAge: TimeInterval = 3600 // 1 hour
 
+    /// Called when the selected item changes, so the detail store can stay in sync.
+    @ObservationIgnored var onSelectionChanged: ((MissKonItem?) -> Void)?
+
     private let favoritesStore: FavoritesStore
 
     private static var cacheDirectory: URL? {
@@ -112,6 +115,7 @@ final class MissKonFeedStore {
                 self.feedErrorMessage = error.localizedDescription
             }
             self.isRefreshingList = false
+            self.loadTask = nil
         }
     }
 
@@ -147,6 +151,7 @@ final class MissKonFeedStore {
                 self.feedErrorMessage = error.localizedDescription
             }
             self.isRefreshingList = false
+            self.loadTask = nil
         }
     }
 
@@ -172,6 +177,7 @@ final class MissKonFeedStore {
                 self.feedErrorMessage = error.localizedDescription
             }
             self.isRefreshingList = false
+            self.loadTask = nil
         }
     }
 
@@ -198,6 +204,7 @@ final class MissKonFeedStore {
                 self.feedErrorMessage = error.localizedDescription
             }
             self.isRefreshingList = false
+            self.searchTask = nil
         }
     }
 
@@ -212,7 +219,9 @@ final class MissKonFeedStore {
     }
 
     func select(_ item: MissKonItem) {
+        guard selectedItemID != item.id else { return }
         selectedItemID = item.id
+        onSelectionChanged?(item)
     }
 
     // MARK: - Private
@@ -235,8 +244,12 @@ final class MissKonFeedStore {
             nextPageURL = nil
             canLoadMoreList = false
             feedErrorMessage = nil
+            let previousID = selectedItemID
             if selectedItemID == nil || !items.contains(where: { $0.id == selectedItemID }) {
                 selectedItemID = items.first?.id
+            }
+            if selectedItemID != previousID {
+                onSelectionChanged?(selectedItemID.flatMap { id in items.first { $0.id == id } })
             }
             return
         }
@@ -246,8 +259,12 @@ final class MissKonFeedStore {
             nextPageURL = cachedNextPageURLs[self.section]
             canLoadMoreList = nextPageURL != nil
             feedErrorMessage = nil
+            let previousID = selectedItemID
             if selectedItemID == nil || !cached.contains(where: { $0.id == selectedItemID }) {
                 selectedItemID = cached.first?.id
+            }
+            if selectedItemID != previousID {
+                onSelectionChanged?(selectedItemID.flatMap { id in cached.first { $0.id == id } })
             }
             // Auto-refresh if cache is older than the max age
             if let timestamp = cacheTimestamps[self.section],
@@ -257,7 +274,11 @@ final class MissKonFeedStore {
         } else {
             allItems = []
             visibleItems = []
+            let previousID = selectedItemID
             selectedItemID = nil
+            if previousID != nil {
+                onSelectionChanged?(nil)
+            }
             feedErrorMessage = nil
             canLoadMoreList = false
             refreshFromNetwork()

@@ -12,6 +12,11 @@ final class MissKonGalleryStore {
         self.feed = feed
         self.detail = detail
         self.favorites = favorites
+        // Wire feed selection changes to detail resolution, matching FourKHDGalleryStore pattern.
+        feed.onSelectionChanged = { [weak detail] item in
+            guard let item else { return }
+            detail?.resolve(item: item)
+        }
     }
 
     var section: MissKonSection {
@@ -42,7 +47,6 @@ final class MissKonGalleryStore {
 
     func select(_ item: MissKonItem) {
         feed.select(item)
-        detail.resolve(item: item)
     }
 
     func refreshFromNetwork() { feed.refreshFromNetwork() }
