@@ -231,6 +231,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             currentItemID = item.id
             detailInteraction.saveMessage = ""
             isDetailReady = false
+            RemoteImagePipeline.shared.stopDetailPrefetching()
             // Show cover image immediately while detail resolves
             if let coverURL = item.coverURL {
                 imageView.setImageURL(coverURL)
@@ -243,6 +244,11 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             detailInteraction.saveMessage = ""
             // Preserve current image (cover or previous detail) while new detail loads
             imageView.setImageURL(url, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
+            // Prefetch adjacent images for smoother navigation
+            let start = max(selectedIndex - 2, 0)
+            let end = min(selectedIndex + 2, slots.count - 1)
+            let adjacentURLs = slots[start...end].compactMap { $0.knownURL ?? library.detail.imageURL(for: $0) }
+            RemoteImagePipeline.shared.prefetchDetailImages(adjacentURLs)
         }
 
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
