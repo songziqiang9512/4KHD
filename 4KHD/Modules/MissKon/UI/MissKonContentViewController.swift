@@ -65,6 +65,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         tableView.dataSource = self
         tableView.delegate = self
         tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: true)
         tableView.contextMenuProvider = { [weak self] row in self?.makeContextMenu(forRow: row) }
         tableView.arrowKeyHandler = { [weak self] delta in self?.selectAdjacentFromTable(delta: delta) ?? false }
         tableView.keyboardContext = WorkspaceKeyboardContext(
@@ -210,6 +211,14 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         let cell = tableView.makeView(withIdentifier: MissKonListRowView.reuseID, owner: self) as? MissKonListRowView ?? MissKonListRowView()
         cell.configure(item: library.visibleItems[row], searchQuery: library.activeSearchQuery)
         return cell
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        library.visibleItems.indices.contains(row) ? library.visibleItems[row].detailURL as NSURL : nil
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        row >= library.visibleItems.count ? 34 : 96
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {

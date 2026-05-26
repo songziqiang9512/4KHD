@@ -47,6 +47,7 @@ final class MissKonFeedStore {
     init(favoritesStore: FavoritesStore) {
         self.favoritesStore = favoritesStore
         loadCache()
+        restoreSectionCache()
     }
 
     // MARK: - Cache Persistence
@@ -216,6 +217,11 @@ final class MissKonFeedStore {
         nextSearchPageURL = nil
         canLoadMoreList = false
         restoreSectionCache()
+    }
+
+    var selectedItem: MissKonItem? {
+        guard let selectedItemID else { return nil }
+        return allItems.first { $0.id == selectedItemID }
     }
 
     func select(_ item: MissKonItem) {

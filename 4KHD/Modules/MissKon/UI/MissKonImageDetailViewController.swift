@@ -23,6 +23,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     private var currentSlotID: MissKonImageSlot.ID?
     private var currentImageURL: URL?
     private var isDetailReady = false
+    private var detailFailed = false
     private var resetTokenSeen = UUID()
     private let reloadQueue = WorkspaceCoalescingQueue(name: "MissKonDetail Reload", interval: 0.05, maxInterval: 0.1)
 
@@ -185,6 +186,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             currentItemID = nil
             currentSlotID = nil
             currentImageURL = nil
+            detailFailed = false
             imageView.setImageURL(nil)
             imageView.isHidden = true
             emptyLabel.isHidden = false
@@ -200,6 +202,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         guard shouldLoadDetailContent else {
             currentSlotID = nil
             currentImageURL = nil
+            detailFailed = false
             imageView.setImageURL(nil)
             isDetailReady = false
             return
@@ -208,6 +211,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         let slots = library.imageSlots
         guard !slots.isEmpty else {
             if !library.isResolving, library.errorMessage != nil {
+                detailFailed = true
                 imageView.isHidden = false
                 imageView.showFailure { [weak self] in
                     self?.library.detail.retry()
@@ -226,6 +230,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
+        detailFailed = false
         imageView.isHidden = false
         emptyLabel.isHidden = true
         previousButton.isHidden = false
@@ -301,6 +306,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     }
 
     private var detailStatusText: String {
+        if detailFailed { return "解析失败" }
         if let errorMessage = library.errorMessage { return errorMessage }
         switch detailInteraction.saveMessage {
         case "保存中", "已保存", "保存失败":
@@ -308,7 +314,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         default:
             break
         }
-        if !isDetailReady { return "加载中" }
+        if !isDetailReady { return "解析中" }
         if library.isResolving { return "解析中" }
         return ""
     }

@@ -28,7 +28,12 @@ final class MissKonGalleryStore {
     var allItems: [MissKonItem] { feed.allItems }
     var selectedItemID: MissKonItem.ID? {
         get { feed.selectedItemID }
-        set { feed.selectedItemID = newValue }
+        set {
+            feed.selectedItemID = newValue
+            if let item = feed.selectedItem {
+                detail.resolve(item: item)
+            }
+        }
     }
     var isRefreshingList: Bool { feed.isRefreshingList }
     var canLoadMoreList: Bool { feed.canLoadMoreList }
