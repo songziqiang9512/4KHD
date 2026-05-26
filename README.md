@@ -13,10 +13,14 @@
 - Nuke 图片加载管线（缓存、优先级、请求去重）
 
 ### 在线图库 — MissKon
-- 浏览 misskon.com 内容（最新、热门、Cosplay、AI 生成、私房摄影、秀人、花漾）
-- 渐进式详情加载：先展示封面，大图加载后平滑切换
+- 浏览 misskon.com 内容（最新、热门、Cosplay、AI 生成、私房摄影、秀人、花漾、收藏）
+- 列表/网格双视图，分页加载，按 section 内存缓存
+- 渐进式详情加载：首页立即解析展示，后台继续解析剩余页
+- 封面→大图过渡，相邻图片预加载（前后各 2 张）
 - 网格列数可调（工具栏 +/- 按钮，2~6 列）
 - 详情上/下张浮层导航按钮
+- 搜索高亮、收藏集成、Inspector 信息展示
+- 保存图片、重置缩放、键盘导航
 
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
@@ -85,12 +89,14 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 
 ## 缓存
 
-- 详情页解析结果：`~/Library/Application Support/4KHD/DetailPageCache/pages.json`
-- 图片：Nuke 管线管理
+- Gallery 详情页解析结果：`~/Library/Application Support/4KHD/DetailPageCache/pages.json`
+- MissKon 列表缓存：`~/Library/Application Support/4KHD/MissKon/feed-cache.json`
+- 图片：Nuke 管线管理（384MB 内存缓存 + 1GB 磁盘缓存）
+- 收藏记录：UserDefaults 持久化
 
 ## 注意事项
 
 - 软件依赖目标网站当前 HTML 结构，结构变化可能需要调整解析规则
-- 在线列表、搜索和详情解析失败会在列表 footer 或详情状态条中显示错误
+- 在线列表、搜索和详情解析失败会在列表 footer（可点击重试）或详情状态条中显示错误
 - 图片内容运行时从网站读取，不随仓库分发
 - 请遵守来源网站的访问规则和使用限制

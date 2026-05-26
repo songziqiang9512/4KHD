@@ -92,59 +92,83 @@
 
 ## 7. 最近完成的工作（2026-05-27）
 
-### MissKon 模块重大完善（本轮会话）
+### 第一轮：功能补全（P0 + P1 + P2）
 
-**功能补全：**
-- 保存图片（Nuke loadData + NSSavePanel + 进度消息）
-- 重置缩放（resetToken 观察链，detailInteraction → imageView）
-- 网格列数调整（工具栏 +/- 按钮，2~6 列，UserDefaults 持久化）
-- 详情区上/下一张导航按钮浮层（DetailNavigationButton）
-- 键盘导航（方向键切图、Escape 关闭详情/清除搜索、Enter 打开详情）
+**收藏接入（P0）：**
+- 新建 `MissKonFavoritesBridge`（参考 GalleryFavoritesBridge）
+- `MissKonFeedStore` 注入 `FavoritesStore`，`.favorites` section 从持久化收藏读取
+- `MissKonGalleryStore` 新增 `isFavorite`/`toggleFavorite`
+- `WorkspaceAppAssembly` 中 `FavoritesStore` 单例在 Gallery/MissKon 间共享
+- 工具栏 heart 按钮支持 missKon，操作菜单新增保存/info 项
+- `FourKHDGalleryStore.init()` 改为接受外部 `FavoritesStore` 参数
 
-**加载优化：**
-- 详情渐进加载：首页立即解析并展示，后台继续解析剩余页
-- 封面→大图过渡：选中图集先展示封面图，大图加载完成后平滑切换
-- 相邻图片预加载（前后各 2 张，RemoteImagePipeline.prefetchDetailImages）
-- 按 section 内存缓存：切换侧边栏分类保留已加载数据，避免空白闪烁
+**MissKon Inspector（P1）：**
+- 展示标签/图片数/页数/Section/收藏状态/详情 URL
+- `observeState` 添加 missKon 状态追踪
 
-**翻页修复：**
-- 标准归档页：从 HTML 提取分页链接
-- top30 等特殊模板：HTML 无分页元素但有 ≥12 篇文章时自动构造 /page/N/ URL
-- 搜索结果去重 + 分页
-- 搜索分页路由修复（loadMoreListIfNeeded → loadMoreSearchIfNeeded）
+**详情区重试（P1）：**
+- `MissKonDetailStore.resolve(item:force:)` 添加 force 参数 + `retry()` 方法
+- `MissKonZoomableImageView.showFailure(retry:)` + retryButton
+- 全部解析失败时展示重试 overlay
 
-**UI 对齐 4KHDGallery：**
-- 胶片条重写：NSVisualEffectView(.hudWindow)、DetailOverlayChromeView、72×96 item、diff-based 更新
-- 详情区：.clear 背景、safeArea 顶部约束、chrome 尺寸对齐 Gallery
-- 胶片条开关动画（0.2s ease-in-out）、工具栏 toggle 按钮
-- 布局偏好传递到工具栏 snapshot（不再硬编码 .grid）
+**搜索高亮（P1）：**
+- 列表/网格中搜索匹配文字黄色高亮
+- 复用 `Shared/UI/highlightedAttributedString`
 
-**稳定性：**
-- 错误状态红色显示 + "点击重试"，表格/网格 footer 均可点击重试
-- 无内容/加载中/已到末尾等清晰状态提示
-- section 切换时清除搜索状态，避免竞态
-- main actor 隔离警告修复
+**缓存持久化（P2）：**
+- `MissKonItem`/`MissKonSection` 支持 Codable
+- `Application Support/4KHD/MissKon/feed-cache.json` 读写
+- 网络刷新/加载更多成功后自动保存
 
-**代码共享：**
-- 提取 `Shared/UI/SharedRemoteImageView.swift`：GalleryRemoteImageView 和 MissKonRemoteImageView 从 86/130 行缩减到 10 行
-- MissKon 和 Gallery 共用同一 RemoteImageView 基类，仅 `configureRequest` 闭包不同
+**keyDown 转发（P2）：**
+- 新建 `Shared/UI/Detail/WorkspaceDetailRootView` 共享基类
 
-**侧边栏分类（8 节点）：**
-| 节点 | URL | 说明 |
-|------|-----|------|
-| 最新 | 首页 | 最新发布 |
-| 热门 | /top30/ | 站内热门（支持翻页） |
-| Cosplay | /tag/cosplay/ | Cosplay |
-| AI 生成 | /tag/ai-enhanced/ | AI 增强/生成 |
-| 私房摄影 | /tag/private-photoshoot/ | 私房摄影 |
-| 秀人 | /tag/xiuren/ | 国产写真机构 |
-| 花漾 | /tag/huayang/ | 人气写真杂志 |
-| 收藏 | — | 预留（siteURL = nil） |
+### 第二轮：性能优化 + Bug 修复
+
+**Bug 修复：**
+- MissKon 详情区未观察 `saveMessage`（保存状态文字不更新）
+- `syncTableSelection` 的 `deselectAll` 缺少 `isApplyingSelection` 守卫
+
+**性能优化：**
+- 列表增量更新：ID 不变时跳过 `reloadData`，仅 `reloadVisibleListRows`
+- 网格 `refreshVisibleItems`：元数据仅变化时更新可见卡片，避免全量重载
+- 缓存时间戳 + 1 小时自动刷新，防止永久展示过期数据
+
+**共享代码提取：**
+- `NSView.performWithoutAnimation` → `Shared/Platform/NSView+AnimationSuppression.swift`
+
+**UI 对齐：**
+- MissKon 上下文菜单添加 SF Symbols 图标（safari/doc.on.doc/square.and.arrow.up）
+
+### 第三轮：架构对齐
+
+**feed→detail 回调模式：**
+- `MissKonFeedStore.onSelectionChanged` 闭包（对齐 GalleryFeedStore）
+- `MissKonGalleryStore.init` 自动布线，`select(_:)` 简化为单次委托
+
+**Task 清理：**
+- `loadTask`/`searchTask` 完成后 nil 清理
+
+**收藏状态追踪：**
+- 详情区 `observeState` 添加 `favorites.favorites` 观察
 
 ### 模块状态评估
 
-MissKon 模块整体完成度约 85%：
+MissKon 模块整体完成度约 95%：
 - 核心浏览链路完整（侧边栏→列表/网格→分页加载→详情大图→图片切换）
-- 边界处理完善（错误重试、空状态、加载态、缓存）
-- 用户体验对齐 4KHDGallery（导航按钮、胶片条、键盘、工具栏）
-- 已知缺失：收藏集成（独立模块待接入）、Inspector 信息展示、搜索高亮、单元测试
+- 收藏/Inspector/搜索高亮/重试/缓存持久化 全部完成
+- 架构对齐 4KHDGallery（onSelectionChanged 回调、task 清理、动画抑制共享）
+- 已知缺失：单元测试（P3）、列表/网格切换保留滚动位置（P3）
+
+### 共享层清单
+
+| 组件 | 路径 | 状态 |
+|------|------|------|
+| `RemoteImageView` | `Shared/UI/` | 已有 |
+| `WorkspaceDetailRootView` | `Shared/UI/Detail/` | 本轮新增 |
+| `NSView.performWithoutAnimation` | `Shared/Platform/` | 本轮新增 |
+| `highlightedAttributedString` | `Shared/UI/` | 已有 |
+| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 已有 |
+| `WorkspaceZoomableImageView` | `Shared/UI/` | 已有 |
+| `RemoteImagePipeline` | `Shared/Services/` | 已有 |
+| `FilmstripVisibilityController` | `Shared/State/` | 已有 |

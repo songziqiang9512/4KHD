@@ -7,62 +7,58 @@
 - **项目**: 4KHD — macOS 原生图片浏览 App（纯 AppKit，0 SwiftUI）
 - **环境**: macOS 26+, Xcode 26+, Swift 6, SPM(Nuke)
 - **构建**: `xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
-- **文件数**: ~120 Swift 文件，MissKon 模块占 16 个
+- **文件数**: ~128 Swift 文件，MissKon 模块占 18 个
+- **最新提交**: `dece945` — task cleanup, favorites observation, feed-detail callback
 
 ## 四个模块当前状态
 
 | 模块 | 状态 | 需关注 |
 |------|------|--------|
 | 4KHDGallery | ✅ 完整稳定 | 参考实现，其他模块对齐标准 |
-| MissKon | ⚠️ 核心完成 85% | 本次开发重点，详见下文 |
+| MissKon | ✅ 核心完成 95% | 详见下文 |
 | LocalLibrary | ✅ 完整稳定 | — |
 | Favorites | ✅ 完整 | 独立模块，通过 FavoritesStore 桥接接入 |
 
-## MissKon 模块 — 当前状态 85%
+## MissKon 模块 — 当前状态 95%
 
-### 已完成的（17 项核心能力）
+### 已完成的全部能力
 
-1. **侧边栏** 8 个分类：最新/热门/Cosplay/AI生成/私房摄影/秀人/花漾/收藏
-2. **列表/网格** 双视图 + 分页加载（含 top30 /page/N/ 自动构造）
-3. **按 section 内存缓存**：切换分类保留数据，不空白
-4. **详情渐进加载**：首页先解析展示，后台继续解析剩余页
-5. **封面→大图过渡**：选中图集先看封面，大图加载完平滑切换
-6. **相邻图片预加载**：前后各 2 张（RemoteImagePipeline.prefetchDetailImages）
-7. **保存图片**：Nuke loadData + NSSavePanel + 进度消息
-8. **重置缩放**：resetToken 观察链
-9. **上/下张导航**：浮层按钮（DetailNavigationButton）+ 键盘方向键
-10. **键盘导航**：Escape 关闭详情/清除搜索，Enter 打开详情
-11. **胶片条**：NSVisualEffectView + DetailOverlayChromeView + 72×96 + 动画开关
-12. **工具栏**：搜索/刷新/胶片条开关/网格列数+/-/分享/详情面板
-13. **错误重试**：footer 红色提示 + 点击重试
-14. **搜索**：服务端搜索 + 分页 + 去重
-15. **右键菜单**：浏览器打开/复制链接/分享
-16. **代码共享**：RemoteImageView 提取到 Shared（MissKon/Gallery 各缩减到 10 行 wrapper）
-17. **拖拽复制** URL
+**浏览：**
+- 侧边栏 8 个分类（含收藏）+ 列表/网格双视图 + 分页加载
+- 按 section 内存缓存 + 磁盘持久化（Application Support JSON）+ 1 小时过期自动刷新
 
-### 待做的（按优先级）
+**详情：**
+- 渐进式加载（首页立即展示 + 后台继续解析）
+- 封面→大图过渡 + 相邻图片预加载（前后各 2 张）
+- 上/下张导航按钮 + 键盘方向键
+- 胶片条（NSVisualEffectView + 72×96 + 动画开关）
 
-**P0 — 影响基本功能：**
-- [ ] **收藏接入** — `MissKonSection.favorites` 的 siteURL 为 nil，需要：
-  1. 在 `MissKonFeedStore` 中注入 `FavoritesStore`（参考 `GalleryFeedStore`）
-  2. 创建 `MissKonFavoritesBridge`（参考 `GalleryFavoritesBridge`）
-  3. 收藏/取消收藏操作接入工具栏的 heart 按钮
-  4. 注意：收藏是独立模块，不要在 MissKon 内部重新实现收藏逻辑
+**交互：**
+- 工具栏：搜索/刷新/收藏/胶片条/列数±/分享/详情面板
+- 键盘：Escape 关闭详情/清除搜索，Enter 打开详情
+- 右键菜单（SF Symbols 图标）：浏览器打开/复制链接/分享
+- 错误重试：footer 红色可点击 + 详情区 retry 按钮
+- 搜索高亮（列表 + 网格）
+- 保存图片 + 重置缩放
 
-**P1 — 用户体验明显缺失：**
-- [ ] **MissKon Inspector** — `WorkspaceInspectorWindowController` 中 missKon case 显示空白占位。参考 Gallery Inspector 实现：展示当前图集标题/图片数/标签/详情链接
-- [ ] **详情区重试** — 全部页解析失败时仅显示文字错误。应在 MissKonZoomableImageView 中添加重试按钮（参考 GalleryZoomableImageView.showFailure）
-- [ ] **搜索高亮** — 列表/网格中搜索匹配文字高亮。复用 `Shared/UI/WorkspaceThumbnailGridCardView` 中的 `highlightedAttributedString`
+**收藏：**
+- `MissKonFavoritesBridge` + 共享 `FavoritesStore`
+- 工具栏 heart 按钮 + 菜单验证
 
-**P2 — 细节打磨：**
-- [ ] **缓存持久化** — 当前仅内存缓存，重启丢失。可将 loaded items JSON 写入 `Application Support/4KHD/MissKon/`
-- [ ] **详情区 RootView** — Gallery 使用 `GalleryImageDetailRootView` 转发 keyDown。MissKon 用普通 NSView，沉浸模式下键盘事件可能丢失
-- [ ] **封面 aspect ratio** — HTML 无 width/height 时回退到 0.74，实际加载后通过 `onAspectRatio` 更新
+**Inspector：**
+- 标签/图片数/页数/Section/收藏状态/详情 URL
 
-**P3 — 非紧急：**
+**架构对齐 Gallery：**
+- feed→detail `onSelectionChanged` 回调模式
+- task 完成后 nil 清理
+- `NSView.performWithoutAnimation` 共享
+- `WorkspaceDetailRootView` 共享
+
+### 待做的（仅 P3）
+
 - [ ] 单元测试（整个项目零覆盖）
 - [ ] 列表/网格切换时保留滚动位置
-- [ ] 详情区图片加载失败占位图 + 重试按钮
+- [ ] Gallery 页脚可参考 MissKon 添加交互式重试
 
 ## 开发要点
 
@@ -103,7 +99,28 @@ rg "case \.fourKHDGallery" 4KHD/Shell 4KHD/App --glob '*.swift'
 
 # 查找所有 switch 语句（新增 case 时使用）
 rg "case \.fourKHDGallery" 4KHD --glob '*.swift' -l
+
+# 统计文件数
+find 4KHD -name '*.swift' | wc -l
 ```
+
+### 共享层清单（2026-05-27 更新）
+
+| 组件 | 路径 | 新增/已有 |
+|------|------|-----------|
+| `RemoteImageView` | `Shared/UI/` | 已有 |
+| `WorkspaceDetailRootView` | `Shared/UI/Detail/` | 本轮新增 |
+| `NSView.performWithoutAnimation` | `Shared/Platform/` | 本轮新增 |
+| `highlightedAttributedString` | `Shared/UI/` | 已有 |
+| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 已有 |
+| `WorkspaceZoomableImageView` | `Shared/UI/` | 已有 |
+| `WorkspaceTableView` / `WorkspaceCollectionView` | `Shared/UI/` | 已有 |
+| `RemoteImagePipeline` | `Shared/Services/` | 已有 |
+| `DetailPageImageCache` | `Shared/Services/` | 已有 |
+| `FilmstripVisibilityController` | `Shared/State/` | 已有 |
+| `WorkspaceDetailPaneController` | `Shared/State/` | 已有 |
+| `WorkspaceKeyboardHandler` | `Shared/Platform/` | 已有 |
+| `WorkspaceCoalescingQueue` | `Shared/Platform/` | 已有 |
 
 ### MissKon FeedStore 关键设计
 
