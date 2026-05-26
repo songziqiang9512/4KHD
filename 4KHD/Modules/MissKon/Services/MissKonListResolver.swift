@@ -8,7 +8,7 @@ struct MissKonListPage {
 enum MissKonListResolver {
     private static let requestCoalescer = MissKonHTMLRequestCoalescer()
     private static let articleRegex = regex(#"<article\s+class=["'][^"']*item-list[^"']*["'][\s\S]*?</article>"#)
-    private static let titleRegex = regex(#"<h2\s+class=["'][^"']*post-box-title[^"']*["'][^>]*>\s*<a[^>]*>([\s\S]*?)</a>"#)
+    private static let titleRegex = regex(#"<h2\s+class=["'][^"']*post-box-title[^"']*["'][^>]*>\s*(<a[^>]*>[\s\S]*?</a>)"#)
     private static let detailURLRegex = regex(#"<a\s+href=["']([^"']+)["']"#)
     private static let coverSrcRegex = regex(#"<img[^>]+(?:src|data-src)=["']([^"']+)["']"#)
     private static let coverWidthRegex = regex(#"<img[^>]+width=["']([0-9]+)["']"#)
