@@ -19,6 +19,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
         static let importFolder = NSToolbarItem.Identifier("WorkspaceToolbar.importFolder")
         static let wallhavenFilters = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenFilters")
+        static let wallhavenSave = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenSave")
+        static let wallhavenInfo = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenInfo")
+        static let wallhavenBack = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenBack")
     }
 
     private let appContext: WorkspaceAppContext
@@ -96,6 +99,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.detailPane,
             ItemID.importFolder,
             ItemID.wallhavenFilters,
+            ItemID.wallhavenSave,
+            ItemID.wallhavenInfo,
+            ItemID.wallhavenBack,
             ItemID.search
         ]
     }
@@ -126,10 +132,18 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .wallhaven {
             identifiers.append(ItemID.favorite)
         }
+        if currentModuleID == .wallhaven {
+            if appContext.wallhavenStore.activeSearchQuery != nil {
+                identifiers.append(ItemID.wallhavenBack)
+            }
+            identifiers.append(ItemID.wallhavenSave)
+            identifiers.append(ItemID.wallhavenInfo)
+        } else {
+            identifiers.append(ItemID.detailActions)
+        }
         identifiers += [
             ItemID.resetZoom,
             ItemID.immersive,
-            ItemID.detailActions,
             ItemID.share,
             ItemID.detailPane
         ]
@@ -322,6 +336,36 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             wallhavenFilterItem = item
             updateWallhavenFilterItem()
             return item
+        case ItemID.wallhavenSave:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(saveCurrentImage(_:))
+            item.label = "保存原图"
+            item.paletteLabel = "保存原图"
+            item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存原图")
+            item.toolTip = "保存原图"
+            item.visibilityPriority = .standard
+            return item
+        case ItemID.wallhavenInfo:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(showCurrentInspector(_:))
+            item.label = "显示信息"
+            item.paletteLabel = "显示信息"
+            item.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
+            item.toolTip = "显示简介"
+            item.visibilityPriority = .standard
+            return item
+        case ItemID.wallhavenBack:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(wallhavenClearTagSearch(_:))
+            item.label = "返回浏览"
+            item.paletteLabel = "返回浏览"
+            item.image = NSImage(systemSymbolName: "arrow.backward", accessibilityDescription: "返回浏览")
+            item.toolTip = "返回默认浏览"
+            item.visibilityPriority = .high
+            return item
         default:
             return nil
         }
@@ -353,6 +397,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.share:
             canShareCurrentModule
+        case ItemID.wallhavenSave:
+            canSaveCurrentImage
+        case ItemID.wallhavenInfo:
+            true
         default:
             true
         }
@@ -1087,6 +1135,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     @objc private func wallhavenSelectResolution(_ sender: NSMenuItem) {
         guard let r = sender.representedObject as? WallhavenResolution else { return }
         appContext.wallhavenStore.setResolution(r)
+    }
+
+    @objc private func wallhavenClearTagSearch(_ sender: Any?) {
+        appContext.wallhavenStore.clearSearch()
+        refresh()
     }
 
     @objc private func wallhavenSelectPurity(_ sender: NSMenuItem) {

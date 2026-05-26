@@ -26,13 +26,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         return b
     }()
     private let tagsChrome = DetailOverlayChromeView(cornerRadius: 11)
-    private let tagsStack: NSStackView = {
-        let s = NSStackView()
-        s.orientation = .horizontal
-        s.alignment = .centerY
-        s.spacing = 4
-        return s
-    }()
+    private let tagsView = WallhavenTagsView()
     private let actionChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let actionLabel = NSTextField(labelWithString: "")
     private let desktopButton: NSButton = {
@@ -105,7 +99,10 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         sourceButton.action = #selector(openSourcePage)
         sourceChrome.addSubview(sourceButton)
 
-        tagsChrome.addSubview(tagsStack)
+        tagsChrome.addSubview(tagsView)
+        tagsView.onTagClick = { [weak self] tag in
+            self?.library.submitSearch(tag)
+        }
         tagsChrome.isHidden = true
 
         actionLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
@@ -128,7 +125,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         }
         infoLabel.translatesAutoresizingMaskIntoConstraints = false
         sourceButton.translatesAutoresizingMaskIntoConstraints = false
-        tagsStack.translatesAutoresizingMaskIntoConstraints = false
+        tagsView.translatesAutoresizingMaskIntoConstraints = false
         actionLabel.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
@@ -150,21 +147,23 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             nextButton.widthAnchor.constraint(equalToConstant: 40),
             nextButton.heightAnchor.constraint(equalToConstant: 40),
 
+            tagsChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            tagsChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            tagsChrome.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
+            tagsChrome.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
+            tagsChrome.heightAnchor.constraint(equalTo: tagsView.heightAnchor, constant: 12),
+            tagsView.leadingAnchor.constraint(equalTo: tagsChrome.leadingAnchor, constant: 8),
+            tagsView.trailingAnchor.constraint(equalTo: tagsChrome.trailingAnchor, constant: -8),
+            tagsView.topAnchor.constraint(equalTo: tagsChrome.topAnchor, constant: 6),
+
             infoChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            infoChrome.bottomAnchor.constraint(equalTo: tagsChrome.topAnchor, constant: -4),
+            infoChrome.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -4),
             infoChrome.heightAnchor.constraint(greaterThanOrEqualToConstant: 24),
             infoChrome.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
             infoChrome.widthAnchor.constraint(greaterThanOrEqualTo: infoLabel.widthAnchor, constant: 20),
             infoLabel.leadingAnchor.constraint(equalTo: infoChrome.leadingAnchor, constant: 10),
             infoLabel.trailingAnchor.constraint(equalTo: infoChrome.trailingAnchor, constant: -10),
             infoLabel.centerYAnchor.constraint(equalTo: infoChrome.centerYAnchor),
-
-            tagsChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            tagsChrome.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -4),
-            tagsChrome.heightAnchor.constraint(equalToConstant: 24),
-            tagsStack.leadingAnchor.constraint(equalTo: tagsChrome.leadingAnchor, constant: 8),
-            tagsStack.trailingAnchor.constraint(equalTo: tagsChrome.trailingAnchor, constant: -8),
-            tagsStack.centerYAnchor.constraint(equalTo: tagsChrome.centerYAnchor),
 
             sourceChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             sourceChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
@@ -334,24 +333,12 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
     }
 
     private func buildTagButtons(for wallpaper: Wallpaper) {
-        tagsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let topTags = wallpaper.tags.prefix(8)
-        guard !topTags.isEmpty else {
+        guard !wallpaper.tags.isEmpty else {
             tagsChrome.isHidden = true
             return
         }
         tagsChrome.isHidden = false
-        for tag in topTags {
-            let btn = NSButton(title: tag, target: self, action: #selector(tagClicked(_:)))
-            btn.bezelStyle = .recessed
-            btn.controlSize = .small
-            btn.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            tagsStack.addArrangedSubview(btn)
-        }
-    }
-
-    @objc private func tagClicked(_ sender: NSButton) {
-        library.submitSearch(sender.title)
+        tagsView.setTags(wallpaper.tags, maxWidth: 420)
     }
 
     @objc private func openSourcePage() {
