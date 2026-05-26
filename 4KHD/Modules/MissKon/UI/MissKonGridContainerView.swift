@@ -82,8 +82,21 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             lastAppliedIDs = items.map(\.id)
             lastShowsFooter = showsFooter
             performWithoutAnimation { collectionView.reloadData() }
+        } else {
+            refreshVisibleItems()
         }
         syncSelection()
+    }
+
+    private func refreshVisibleItems() {
+        for indexPath in collectionView.indexPathsForVisibleItems() {
+            guard indexPath.item < items.count,
+                  let cell = collectionView.item(at: indexPath) as? MissKonGridItemView else { continue }
+            let item = items[indexPath.item]
+            cell.configure(item: item, isSelected: item.id == selectedItemID, searchQuery: searchQuery) { [weak self] ratio in
+                self?.updateAspectRatio(ratio, for: item.id)
+            }
+        }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
@@ -279,9 +292,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     }
 
     private func performWithoutAnimation(_ updates: () -> Void) {
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0; ctx.allowsImplicitAnimation = false; updates() }
-        CATransaction.commit()
+        NSView.performWithoutAnimation(updates)
     }
 }
 

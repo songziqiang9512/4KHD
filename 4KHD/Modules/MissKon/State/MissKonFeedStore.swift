@@ -23,6 +23,10 @@ final class MissKonFeedStore {
     /// Per-section cache preserves items across section switches.
     private var cachedItems: [MissKonSection: [MissKonItem]] = [:]
     private var cachedNextPageURLs: [MissKonSection: URL] = [:]
+    private var cacheTimestamps: [MissKonSection: Date] = [:]
+
+    /// Auto-refresh cache if older than this interval.
+    private static let cacheMaxAge: TimeInterval = 3600 // 1 hour
 
     private let favoritesStore: FavoritesStore
 
@@ -48,7 +52,8 @@ final class MissKonFeedStore {
         guard let fileURL = Self.cacheFileURL else { return }
         let snapshot = CacheSnapshot(
             items: cachedItems.mapKeys { $0.rawValue },
-            nextPageURLs: cachedNextPageURLs.mapKeys { $0.rawValue }.mapValues { $0.absoluteString }
+            nextPageURLs: cachedNextPageURLs.mapKeys { $0.rawValue }.mapValues { $0.absoluteString },
+            timestamps: cacheTimestamps.mapKeys { $0.rawValue }.mapValues { $0.timeIntervalSince1970 }
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         try? data.write(to: fileURL, options: .atomicWrite)
@@ -66,6 +71,10 @@ final class MissKonFeedStore {
             guard let section = MissKonSection(rawValue: key),
                   let url = URL(string: urlString) else { continue }
             cachedNextPageURLs[section] = url
+        }
+        for (key, timestamp) in snapshot.timestamps ?? [:] {
+            guard let section = MissKonSection(rawValue: key) else { continue }
+            cacheTimestamps[section] = Date(timeIntervalSince1970: timestamp)
         }
     }
 
@@ -96,6 +105,7 @@ final class MissKonFeedStore {
                 self.cachedNextPageURLs[self.section] = page.nextPageURL
                 self.canLoadMoreList = page.nextPageURL != nil
                 self.feedErrorMessage = nil
+                self.cacheTimestamps[self.section] = Date()
                 self.saveCacheIfNeeded()
             } catch {
                 guard !Task.isCancelled else { return }
@@ -130,6 +140,7 @@ final class MissKonFeedStore {
                 self.cachedNextPageURLs[self.section] = page.nextPageURL
                 self.canLoadMoreList = page.nextPageURL != nil
                 self.feedErrorMessage = nil
+                self.cacheTimestamps[self.section] = Date()
                 self.saveCacheIfNeeded()
             } catch {
                 guard !Task.isCancelled else { return }
@@ -238,6 +249,11 @@ final class MissKonFeedStore {
             if selectedItemID == nil || !cached.contains(where: { $0.id == selectedItemID }) {
                 selectedItemID = cached.first?.id
             }
+            // Auto-refresh if cache is older than the max age
+            if let timestamp = cacheTimestamps[self.section],
+               Date().timeIntervalSince(timestamp) > Self.cacheMaxAge {
+                refreshFromNetwork()
+            }
         } else {
             allItems = []
             visibleItems = []
@@ -254,6 +270,7 @@ final class MissKonFeedStore {
 private struct CacheSnapshot: Codable {
     let items: [String: [MissKonItem]]
     let nextPageURLs: [String: String]
+    var timestamps: [String: TimeInterval]?
 }
 
 extension Dictionary {

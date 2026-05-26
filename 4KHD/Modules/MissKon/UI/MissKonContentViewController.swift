@@ -14,6 +14,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     private var activeView: NSView?
     private var isObserving = false
     private var isApplyingSelection = false
+    private var lastAppliedVisibleIDs: [MissKonItem.ID] = []
+    private var lastShowsFooter = false
     private let reloadQueue = WorkspaceCoalescingQueue(name: "MissKonContent Reload", interval: 0.05, maxInterval: 0.12)
 
     init(library: MissKonGalleryStore, preferences: MissKonContentPreferences, detailPane: WorkspaceDetailPaneController) {
@@ -91,7 +93,16 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         switch preferences.layout {
         case .list:
             setActiveView(tableScrollView)
-            tableView.reloadData()
+            let currentShowsFooter = shouldShowFooter
+            let currentIDs = library.visibleItems.map(\.id)
+            if currentIDs != lastAppliedVisibleIDs || currentShowsFooter != lastShowsFooter {
+                lastAppliedVisibleIDs = currentIDs
+                lastShowsFooter = currentShowsFooter
+                NSView.performWithoutAnimation { tableView.reloadData() }
+            } else {
+                // Content unchanged; refresh visible rows for metadata updates (e.g., search highlight)
+                reloadVisibleListRows()
+            }
             syncTableSelection()
         case .grid:
             setActiveView(gridView)
@@ -108,6 +119,14 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 canLoadMore: library.canLoadMoreList
             )
         }
+    }
+
+    private func reloadVisibleListRows() {
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        let rowRange = NSRange(location: visibleRows.location, length: min(visibleRows.length, library.visibleItems.count - visibleRows.location))
+        guard rowRange.length > 0 else { return }
+        let columnIndexes = IndexSet(integer: 0)
+        tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: columnIndexes)
     }
 
     private func setActiveView(_ nextView: NSView) {
@@ -142,7 +161,10 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     private func syncTableSelection() {
         guard let selectedID = library.selectedItemID,
               let row = library.visibleItems.firstIndex(where: { $0.id == selectedID }) else {
-            tableView.deselectAll(nil); return
+            isApplyingSelection = true
+            tableView.deselectAll(nil)
+            isApplyingSelection = false
+            return
         }
         guard tableView.selectedRow != row else { return }
         isApplyingSelection = true
@@ -218,16 +240,19 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
         let openItem = NSMenuItem(title: "在浏览器中打开", action: #selector(openInBrowser(_:)), keyEquivalent: "")
         openItem.target = self
+        openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
         menu.addItem(openItem)
 
         menu.addItem(.separator())
 
         let copyItem = NSMenuItem(title: "复制链接", action: #selector(copyDetailLink(_:)), keyEquivalent: "")
         copyItem.target = self
+        copyItem.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "复制链接")
         menu.addItem(copyItem)
 
         let shareItem = NSMenuItem(title: "分享...", action: #selector(shareItem(_:)), keyEquivalent: "")
         shareItem.target = self
+        shareItem.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "分享")
         menu.addItem(shareItem)
 
         return menu
