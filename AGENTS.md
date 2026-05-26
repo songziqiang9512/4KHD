@@ -153,3 +153,28 @@
 - Gallery/Local 胶卷条统一 112pt 高度，并修复显示/隐藏 0.2s 动画的 hidden 时序
 - `WorkspaceKeyboardHandler` 的 Escape/Tab/Enter 接入工作区行为：退出沉浸/隐藏详情、切换列焦点、打开当前详情
 - 验证：`xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
+
+## 7. 架构与功能改进（2026-05-26，本轮会话）
+
+### 共享基类提取（2 文件新增，4 文件精简）
+
+- 新建 `Shared/UI/WorkspaceTableView.swift` — NSTableView 基类，统一 `acceptsFirstResponder`、`contextMenuProvider`、`menu(for:)`、`keyDown(with:)`、live resize、`WorkspaceLiveResizeScrollerHiding`
+- 新建 `Shared/UI/WorkspaceCollectionView.swift` — NSCollectionView 基类，统一 tracking area 管理、hover 状态、`menu(for:)`、`keyDown(with:)`、live resize、滚动时 hover 更新
+- `GalleryContentTableView` 和 `LocalImageListTableView` 改为继承 `WorkspaceTableView`（各精简 ~30 行）
+- `GalleryGridCollectionView` 和 `LocalImageGridCollectionView` 改为继承 `WorkspaceCollectionView`（各精简 ~60 行）
+- 净减少约 109 行重复 AppKit 样板代码
+
+### 详情区布局状态（1 行补全）
+
+- `LocalImageContentViewController.observeState()` 添加 `_ = detailPane.isPresented`，使本地模块与 Gallery 一致：详情区开合时触发中栏重载
+
+### 本地搜索增强（用户可感知）
+
+- 搜索扩展到匹配图片所在文件夹名称（`deletingLastPathComponent().lastPathComponent`）
+- 匹配文字黄色半透明背景高亮，适用于列表视图（`LocalImageListCellView`）和网格视图（`WorkspaceThumbnailGridCardView`）
+- 新建 `highlightedAttributedString` 工具函数（`Shared/UI/WorkspaceThumbnailGridCardView.swift`）
+- `searchQuery` 通过 `LocalImageGridContainerView` → `LocalImageGridItemView` 透传
+
+### Bug 修复
+
+- 修复网格视图滚动时 hover 状态 stuck：`WorkspaceCollectionView` 添加 `NSView.boundsDidChangeNotification` 监听，滚动时重新计算鼠标下方卡片并更新 hover 状态。根因：滚动时卡片在鼠标下方移动，但 `mouseExited` 不会触发（鼠标位置未变）
