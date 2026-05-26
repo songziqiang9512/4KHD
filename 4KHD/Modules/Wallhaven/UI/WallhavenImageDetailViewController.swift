@@ -293,7 +293,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         // Uploader display
         if let uploader = displayWallpaper.uploader {
             uploaderButton.title = "\(uploader) 的作品"
-            uploaderButton.toolTip = "搜索 @\(uploader) 的作品"
+            uploaderButton.toolTip = "在浏览器中打开 wallhaven.cc/user/\(uploader)/uploads"
             uploaderChrome.isHidden = false
         } else {
             uploaderChrome.isHidden = true
@@ -346,9 +346,9 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
     @objc private func uploaderClicked() {
         guard let wallpaper = library.effectiveSelectedWallpaper ?? library.selectedWallpaper,
-              let uploader = wallpaper.uploader else { return }
-        // Wallhaven API q parameter supports @username syntax to filter by uploader.
-        library.submitSearch("@\(uploader)")
+              let uploader = wallpaper.uploader,
+              let url = URL(string: "https://wallhaven.cc/user/\(uploader)/uploads") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func openSourcePage() {
