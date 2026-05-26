@@ -26,12 +26,13 @@
     Platform/     — 系统桥接（键盘、QuickLook、壁纸设置、Inspector、CoalescingQueue、NSView/AppKit 扩展）
     Services/     — 图片缓存、远程图片加载、Cookie 桥接
     State/        — 详情区状态、胶卷条可见性
-    UI/           — 瀑布流布局、缩略图卡片、缩放图片视图、胶卷条覆盖层
+    UI/           — 瀑布流布局、缩略图卡片、缩放图片视图、RemoteImageView、胶卷条覆盖层
       Detail/       — 详情区覆盖层组件
   Modules/      — 业务模块实现
-    4KHDGallery/  — 在线图库模块
-     LocalLibrary/ — 本地图片模块
-     Favorites/   — 收藏记录模块
+    4KHDGallery/  — 4KHD.com 在线图库模块
+    LocalLibrary/ — 本地图片模块
+    Favorites/   — 收藏记录模块
+    MissKon/     — misskon.com 在线图库模块
 ```
 
 ### 模块内部结构
@@ -56,125 +57,94 @@
 | 模块 | 名称 | 说明 |
 |------|------|------|
 | 在线图库 | `4KHDGallery` | 4KHD 网站栏目浏览、详情页解析、图片提取 |
+| 在线图库 | `MissKon` | misskon.com 标签/热门浏览、详情 HTML 解析、渐进式图片加载 |
 | 本地图片 | `LocalLibrary` | 本地目录导入、扫描、metadata 读取 |
 | 收藏 | `Favorites` | 收藏记录与分组，独立于业务模块 |
 
-## 4. 变更优先级
+## 4. 共享能力清单
+
+| 组件 | 路径 | 用途 |
+|------|------|------|
+| `WorkspaceTableView` | `Shared/UI/` | 统一 NSTableView 基类（menu、keyDown、live resize） |
+| `WorkspaceCollectionView` | `Shared/UI/` | 统一 NSCollectionView 基类（hover、tracking area、keyDown） |
+| `WorkspaceZoomableImageView` | `Shared/UI/` | 可缩放图片视图基类（pinch zoom、fit、reset） |
+| `WorkspaceThumbnailWaterfallLayout` | `Shared/UI/` | 瀑布流布局 |
+| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 缩略图卡片视图（图片+文字+高亮+hover） |
+| `RemoteImageView` | `Shared/UI/` | 共享远程图片视图（Nuke 加载、占位符、aspectFill/Fit） |
+| `DetailOverlayChromeView` | `Shared/UI/Detail/` | 详情区覆盖层圆角背景 |
+| `DetailNavigationButton` | `Shared/UI/Detail/` | 详情区导航按钮（圆形毛玻璃） |
+| `RemoteImagePipeline` | `Shared/Services/` | Nuke 图片加载管线 |
+| `WorkspaceKeyboardHandler` | `Shared/Platform/` | 键盘事件分发 |
+| `WorkspaceCoalescingQueue` | `Shared/Platform/` | 合并高频刷新 |
+| `FilmstripVisibilityController` | `Shared/State/` | 胶卷条显示/隐藏动画状态 |
+| `WorkspaceDetailPaneController` | `Shared/State/` | 详情窗格展开/收起 |
+
+## 5. 变更优先级
 
 1. 先保持底壳稳定
 2. 再保证模块可独立维护
 3. 再抽共享能力
 4. 最后才考虑更大规模重构
 
-## 5. 文档维护
+## 6. 文档维护
 
-结构方向发生实质变化时，必须同步更新 `AGENTS.md` 和 `README.md`。
+结构方向发生实质变化时，必须同步更新 `AGENTS.md`、`README.md` 和 `docs/ai-handover-*.md`。
 
-## 6. 最近完成的工作（2026-05-26）
+## 7. 最近完成的工作（2026-05-27）
 
-以下是在本次开发会话中完成的所有改进，供下次继续开发时参考上下文：
+### MissKon 模块重大完善（本轮会话）
 
-### UI 稳定性（30 项）
+**功能补全：**
+- 保存图片（Nuke loadData + NSSavePanel + 进度消息）
+- 重置缩放（resetToken 观察链，detailInteraction → imageView）
+- 网格列数调整（工具栏 +/- 按钮，2~6 列，UserDefaults 持久化）
+- 详情区上/下一张导航按钮浮层（DetailNavigationButton）
+- 键盘导航（方向键切图、Escape 关闭详情/清除搜索、Enter 打开详情）
 
-- 工具栏增量更新替代完全重建，消除图标闪烁
-- 胶卷条 `syncSelection` 不再强制居中覆盖用户滚动
-- 沉浸模式工具栏添加 0.6s 延迟隐藏，消除闪烁
-- 移除滚动回调中的 hover 状态清除（由 `mouseExited` 处理）
-- 胶卷条显示/隐藏添加 0.2s ease-in-out 动画
-- 缩放弹回使用 `allowsImplicitAnimation` 确保动画生效
-- 捏合缩放使用事件位置替代视口中心，跟手
-- 卡片缩放动画先移除旧动画避免反弹
-- Live-resize 滚动条切换改为 no-op（`autohidesScrollers` 已处理）
-- 启动时在 `viewDidLoad` 恢复分割宽度，消除默认→恢复布局闪烁
-- GalleryContentVC 行不变时跳过 `gridView.update()`，使用轻量 `refreshMetadata()`
-- 瀑布流列重映射改为标准最短列优先算法
-- 侧边栏仅节点结构变化时才 `reloadData()`
-- 详情视图添加 `WorkspaceCoalescingQueue` 合并快速刷新
-- 图片切换保留当前图片直到新图加载完成
-- 滚动夹紧仅从上方限制（负 Y），不再从下方对抗用户滚动
-- 消除 `layout()` 中的双布局循环（`lastFitSize` guard）
-- `applySnapshot` 改为同步，消除 `DispatchQueue.main.async` 数据源窗口
-- 表行动画同时有插入和删除时 fallback 到 `reloadData()`
-- Live-resize 后用 `clearVisibleHoverState()` 替代 `syncVisibleHoverState`
-- 缩略图加载保留旧图片直到新图片就绪，消除复用闪烁
-- 网格→列表切换保存/恢复滚动位置
-- 移除热路径中的强制 `layoutSubtreeIfNeeded` 和 `needsLayout`
-- 移除无效的 `animator().isCollapsed` 调用
-- `viewDidAppear` 中移除冗余的 `Task` 包装
+**加载优化：**
+- 详情渐进加载：首页立即解析并展示，后台继续解析剩余页
+- 封面→大图过渡：选中图集先展示封面图，大图加载完成后平滑切换
+- 相邻图片预加载（前后各 2 张，RemoteImagePipeline.prefetchDetailImages）
+- 按 section 内存缓存：切换侧边栏分类保留已加载数据，避免空白闪烁
 
-### UI 美观度（4 项）
+**翻页修复：**
+- 标准归档页：从 HTML 提取分页链接
+- top30 等特殊模板：HTML 无分页元素但有 ≥12 篇文章时自动构造 /page/N/ URL
+- 搜索结果去重 + 分页
+- 搜索分页路由修复（loadMoreListIfNeeded → loadMoreSearchIfNeeded）
 
-- 添加 `viewDidChangeEffectiveAppearance` 到缺失的视图
-- 卡片渐变适配 light/dark 模式，hover 边框使用 `controlAccentColor`
-- 统一 Gallery/Local 胶卷条间距（8pt）、圆角（7）、字体（10pt）
-- 添加 `NSVisualEffectView(.titlebar)` 提供标准半透明标题栏
+**UI 对齐 4KHDGallery：**
+- 胶片条重写：NSVisualEffectView(.hudWindow)、DetailOverlayChromeView、72×96 item、diff-based 更新
+- 详情区：.clear 背景、safeArea 顶部约束、chrome 尺寸对齐 Gallery
+- 胶片条开关动画（0.2s ease-in-out）、工具栏 toggle 按钮
+- 布局偏好传递到工具栏 snapshot（不再硬编码 .grid）
 
-### 内存/鲁棒性（4 项）
+**稳定性：**
+- 错误状态红色显示 + "点击重试"，表格/网格 footer 均可点击重试
+- 无内容/加载中/已到末尾等清晰状态提示
+- section 切换时清除搜索状态，避免竞态
+- main actor 隔离警告修复
 
-- 修复 `DetailImageResolver` retain cycle（`[weak self]`）
-- `GalleryDetailInteractionController` 添加 `deinit` 取消 `saveTask`，Nuke 回调使用 `Task { @MainActor }`
-- 添加 `failedThumbnailSignatures` 缓存避免反复解码失败文件
-- 修复 `self?.` 在非可选上下文的编译错误
+**代码共享：**
+- 提取 `Shared/UI/SharedRemoteImageView.swift`：GalleryRemoteImageView 和 MissKonRemoteImageView 从 86/130 行缩减到 10 行
+- MissKon 和 Gallery 共用同一 RemoteImageView 基类，仅 `configureRequest` 闭包不同
 
-### 错误处理/键盘/无障碍（7 项）
+**侧边栏分类（8 节点）：**
+| 节点 | URL | 说明 |
+|------|-----|------|
+| 最新 | 首页 | 最新发布 |
+| 热门 | /top30/ | 站内热门（支持翻页） |
+| Cosplay | /tag/cosplay/ | Cosplay |
+| AI 生成 | /tag/ai-enhanced/ | AI 增强/生成 |
+| 私房摄影 | /tag/private-photoshoot/ | 私房摄影 |
+| 秀人 | /tag/xiuren/ | 国产写真机构 |
+| 花漾 | /tag/huayang/ | 人气写真杂志 |
+| 收藏 | — | 预留（siteURL = nil） |
 
-- `GalleryFeedStore` 和 `GalleryDetailStore` 添加 `errorMessage` 属性
-- `WorkspaceKeyboardHandler` 添加 Escape/Tab/Enter 支持
-- 10 个 SF Symbol 图标添加 `accessibilityDescription`
-- 偏好设置窗口高度优化
-- 侧边栏组标题 leading inset 4→12pt
-- `WorkspaceColumnHostController` 添加 vibrancy 层
+### 模块状态评估
 
-### MyWallpaperX 移植（6 项）
-
-- Inspector 添加格式列、可选中值、样式化缺失文件警告
-- 新建 `NSView+Appearance.swift`（`isDarkAppearance`、`ensureLayerAnchorCentered`）
-- 新建 `ModalPresentation.swift`（统一 alert 样式）
-- 瀑布流布局添加 `hoverScaleFactor` 动态间距
-- 网格选择刷新改为 diff-based（仅更新状态变化项）
-
-### 工具栏精简（3 项）
-
-- 移除列表/网格切换按钮（已在偏好设置中）
-- 收藏图标 `bookmark` → `heart`/`heart.fill`（已收藏红色实心）
-- 排序图标 `arrow.up.arrow.down` → `line.3.horizontal.decrease`
-- 移除缓存容量按钮（已在偏好设置中）
-
-### 胶卷条改进（2 项）
-
-- 仅在选中项超出可见区域时才滚动（不再频繁居中）
-- 同数量时用 `reloadItems` 替代 `reloadData` 避免销毁交互中的 cell
-
-### 漏洞复查修复（2026-05-26）
-
-- 侧边栏节点结构不变但标题/数量变化时，直接刷新可见 cell，避免本地图片数量显示陈旧
-- Gallery 大图切换时正确执行 `preservesCurrentImageUntilLoaded`，未解析 slot 不再错误保留上一张图
-- Gallery 列表/网格 footer 和详情状态条接入 `errorMessage`，网络、搜索、详情解析失败可见
-- Gallery/Local 胶卷条统一 112pt 高度，并修复显示/隐藏 0.2s 动画的 hidden 时序
-- `WorkspaceKeyboardHandler` 的 Escape/Tab/Enter 接入工作区行为：退出沉浸/隐藏详情、切换列焦点、打开当前详情
-- 验证：`xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
-
-## 7. 架构与功能改进（2026-05-26，本轮会话）
-
-### 共享基类提取（2 文件新增，4 文件精简）
-
-- 新建 `Shared/UI/WorkspaceTableView.swift` — NSTableView 基类，统一 `acceptsFirstResponder`、`contextMenuProvider`、`menu(for:)`、`keyDown(with:)`、live resize、`WorkspaceLiveResizeScrollerHiding`
-- 新建 `Shared/UI/WorkspaceCollectionView.swift` — NSCollectionView 基类，统一 tracking area 管理、hover 状态、`menu(for:)`、`keyDown(with:)`、live resize、滚动时 hover 更新
-- `GalleryContentTableView` 和 `LocalImageListTableView` 改为继承 `WorkspaceTableView`（各精简 ~30 行）
-- `GalleryGridCollectionView` 和 `LocalImageGridCollectionView` 改为继承 `WorkspaceCollectionView`（各精简 ~60 行）
-- 净减少约 109 行重复 AppKit 样板代码
-
-### 详情区布局状态（1 行补全）
-
-- `LocalImageContentViewController.observeState()` 添加 `_ = detailPane.isPresented`，使本地模块与 Gallery 一致：详情区开合时触发中栏重载
-
-### 本地搜索增强（用户可感知）
-
-- 搜索扩展到匹配图片所在文件夹名称（`deletingLastPathComponent().lastPathComponent`）
-- 匹配文字黄色半透明背景高亮，适用于列表视图（`LocalImageListCellView`）和网格视图（`WorkspaceThumbnailGridCardView`）
-- 新建 `highlightedAttributedString` 工具函数（`Shared/UI/WorkspaceThumbnailGridCardView.swift`）
-- `searchQuery` 通过 `LocalImageGridContainerView` → `LocalImageGridItemView` 透传
-
-### Bug 修复
-
-- 修复网格视图滚动时 hover 状态 stuck：`WorkspaceCollectionView` 添加 `NSView.boundsDidChangeNotification` 监听，滚动时重新计算鼠标下方卡片并更新 hover 状态。根因：滚动时卡片在鼠标下方移动，但 `mouseExited` 不会触发（鼠标位置未变）
+MissKon 模块整体完成度约 85%：
+- 核心浏览链路完整（侧边栏→列表/网格→分页加载→详情大图→图片切换）
+- 边界处理完善（错误重试、空状态、加载态、缓存）
+- 用户体验对齐 4KHDGallery（导航按钮、胶片条、键盘、工具栏）
+- 已知缺失：收藏集成（独立模块待接入）、Inspector 信息展示、搜索高亮、单元测试

@@ -1,10 +1,10 @@
 # 4KHD 项目 AI 交接文档
 
-> 日期: 2026-05-26 | 总 Swift 文件: ~110 | 0 SwiftUI | 纯 AppKit
+> 日期: 2026-05-26 → 更新于 2026-05-27 | 总 Swift 文件: ~120 | 0 SwiftUI | 纯 AppKit
 
 ## 1. 项目是什么
 
-macOS 原生图片浏览应用。三个业务模块：在线图库 (4KHDGallery)、本地图片 (LocalLibrary)、收藏 (Favorites)，以及本次新增的 MissKon 模块。底壳提供三栏工作区（侧边栏 + 中栏列表/网格 + 右侧详情大图），模块通过 WorkspaceModuleRegistry 插拔。
+macOS 原生图片浏览应用。四个业务模块：在线图库 (4KHDGallery)、在线图库 (MissKon)、本地图片 (LocalLibrary)、收藏 (Favorites)。底壳提供三栏工作区（侧边栏 + 中栏列表/网格 + 右侧详情大图），模块通过 WorkspaceModuleRegistry 插拔。
 
 ## 2. 如何最快恢复上下文
 
@@ -30,12 +30,13 @@ macOS 原生图片浏览应用。三个业务模块：在线图库 (4KHDGallery)
     UI/         — WorkspaceTableView、WorkspaceCollectionView（共享基类）
                  WorkspaceThumbnailGridCardView、WorkspaceThumbnailWaterfallLayout
                  WorkspaceZoomableImageView（缩放图片基类）
-                 Detail/ — DetailOverlayChromeView
+                 SharedRemoteImageView（远程图片加载基类 — 2026-05-27 新增）
+                 Detail/ — DetailOverlayChromeView、DetailNavigationButton
   Modules/
     4KHDGallery/ — 4KHD.com 在线图库（Domain/State/Services/UI）
     LocalLibrary/ — 本地图片（Domain/State/Services/UI）
     Favorites/   — 收藏记录（Domain/State）
-    MissKon/     — misskon.com 在线图库（本次新增，16 文件）
+    MissKon/     — misskon.com 在线图库（Domain/State/Services/UI，16 文件）
   docs/          — misskon-page-structure.md 等文档
 ```
 
@@ -50,78 +51,115 @@ macOS 原生图片浏览应用。三个业务模块：在线图库 (4KHDGallery)
 
 ## 5. 新模块接入模板
 
-要新增一个在线图库模块，参考 `Modules/MissKon/` 的结构：
+参考 `Modules/MissKon/` 的结构：
 
 1. `Domain/` — Section 枚举、Item 结构体、ImageSlot、ResolvedImagePage
 2. `Services/` — RequestFactory（HTTP 请求头）、ListResolver（列表页 HTML 解析）、DetailResolver（详情页图片提取）
 3. `State/` — FeedStore（列表状态+网络请求）、DetailStore（详情解析状态）、GalleryStore（门面聚合）、ContentPreferences、DetailInteractionController
 4. `UI/` — ContentViewController、GridContainerView、ContentViews（列表单元格）、FilmstripView、ImageDetailViewController、RemoteImageView、ZoomableImageView
 
-然后修改 Shell 集成点（共约 10 个文件，搜索 `case .missKon` 或 `case .fourKHDGallery` 找到所有需要添加新 case 的 switch 语句）：
+Shell 集成点（约 12 个文件，搜索 `case .missKon` 找到所有需要添加 case 的 switch 语句）：
 - `WorkspaceRoute.swift` — 添加 moduleID case
 - `WorkspaceSidebarNode.swift` — 添加 sidebar 节点 case
 - `WorkspaceSidebarDataSource.swift` — 添加 sidebar 分组
 - `WorkspaceAppContext.swift` — 添加 store 属性
 - `WorkspaceAppAssembly.swift` — 创建并注册模块
 - `WorkspaceToolbarContext.swift` — 添加工具栏快照和操作 case
-- `WorkspaceToolbarHost.swift` — 添加工具栏 UI 更新 case（约 8 个 switch）
-- `WorkspaceCommandValidator.swift` — 添加命令验证 case（约 7 个 switch）
-- `WorkspaceShell.swift` — 添加布局切换 case
+- `WorkspaceToolbarHost.swift` — 添加工具栏 UI 更新 case
+- `WorkspaceCommandValidator.swift` — 添加命令验证 case
+- `WorkspaceShell.swift` — 添加布局/列数切换 case
 - `WorkspaceSidebarViewController.swift` — 添加侧边栏选择和图标 case
 - `WorkspaceWindowController.swift` — 添加窗口标题 case
 - `WorkspaceInspectorWindowController.swift` — 添加 Inspector 刷新 case
 
-## 6. 本轮已完成的工作
+## 6. 已完成的工作（截至 2026-05-27）
 
-### 共享基类提取
-- `Shared/UI/WorkspaceTableView.swift` — NSTableView 基类，统一 menu、keyDown、live resize
-- `Shared/UI/WorkspaceCollectionView.swift` — NSCollectionView 基类，统一 tracking area、hover、滚动时 hover 更新
-- 4 个子类（GalleryContentTableView、LocalImageListTableView、GalleryGridCollectionView、LocalImageGridCollectionView）改为继承共享基类
+### MissKon 模块重大完善
 
-### 详情区自适应布局
-- `LocalImageContentViewController` 观察 `detailPane.isPresented`，详情区开合时触发重载
+- 保存图片、重置缩放、网格列数调整（工具栏 +/-）
+- 详情渐进加载（首页先出，后台继续）+ 封面→大图过渡
+- 相邻图片预加载
+- 翻页修复（标准归档 + top30 特殊模板 /page/N/ 构造）
+- 胶片条重写（NSVisualEffectView + DetailOverlayChromeView + 72×96）
+- 详情区导航按钮浮层、键盘导航（Escape/Enter/方向键）
+- 侧边栏 8 个分类（最新/热门/Cosplay/AI生成/私房摄影/秀人/花漾/收藏）
+- 按 section 内存缓存 + 错误重试
+- 搜索分页修复、结果去重
 
-### 本地搜索增强
-- 搜索匹配文件夹名（不仅是文件名）
-- 列表和网格视图中匹配文字黄色高亮
+### 代码共享
 
-### Bug 修复
-- 网格视图滚动时 hover 状态 stuck（`WorkspaceCollectionView` 监听 bounds 变化更新 hover）
-- MissKon 列表页 titleRegex 捕获组不含 href 属性导致 detailURL 为空
-- MissKon 详情页双 page-link 结构导致图片提取失败（已修复 + 添加文档）
+- 提取 `Shared/UI/SharedRemoteImageView.swift`：Gallery 和 MissKon 的 RemoteImageView 从 86/130 行缩减到各 10 行
 
-## 7. 已知问题
+### 底壳稳定性
 
-### MissKon 模块
-- 详情页 page-link 只显示首尾几页（如 1-4），pageCount 估算为 ceil(imageCount/12)，实际总页数需运行时探测。当前通过遍历估算的 pageURLs 解决，404 的页面会被跳过
-- 未实现收藏功能（MissKonSection.favorites 的 siteURL 为 nil）
-- 图片保存功能未接入（saveCurrentImage 在 toolbar context 中为 break）
-- 搜索仅支持服务端搜索，无本地过滤
-- 封面图 aspect ratio 依赖 HTML 中的 width/height 属性，可能不准确
+- 工具栏增量更新、胶卷条动画、缩放弹回、hover 状态修复等（详见 AGENTS.md 第 7 节）
 
-### 整体
-- Sparkle 自动更新需要通过 Xcode GUI 添加 SPM（`File → Add Package Dependencies → https://github.com/sparkle-project/Sparkle`），CLI 无法完成二进制框架的添加
-- 项目无单元测试
-
-## 8. 建议的下一步
+## 7. 已知问题和待办
 
 ### 高优先级
-1. **端到端测试 MissKon 模块** — 启动应用，点击 MissKon 侧边栏，验证列表加载、详情页图片浏览、翻页、搜索
-2. **修复 MissKon 图片保存** — 在 `MissKonDetailInteractionController` 和 toolbar context 中补全保存逻辑
+1. **收藏集成** — 收藏是独立模块（Favorites），应在 MissKon 中通过 `FavoritesStore` 桥接，而不是在 MissKon 内部重新实现。需对接 FavoriteSection 的 siteURL
+2. **MissKon Inspector** — 当前显示空白占位，需展示当前图片/图集的元信息
+3. **详情区重试** — 详情页解析全部失败时，大图区没有重试按钮（仅有状态文字），应添加重试 UI
 
 ### 中优先级
-3. **完善 MissKon 收藏** — 复用 Favorites 模块，添加收藏存储和侧边栏显示
-4. **MissKon section 扩展** — 添加更多 tag 页面作为 section（当前只有 latest 和 cosplay）
+4. **搜索高亮** — Gallery 对匹配文字有黄色高亮，MissKon 没有（可在 `MissKonContentViews` 中复用 `highlightedAttributedString`）
+5. **缓存持久化** — 当前仅内存缓存，重启丢失。可考虑将已加载的 item 列表写入 UserDefaults/JSON
+6. **详情区 RootView** — Gallery 使用 `GalleryImageDetailRootView` 转发 keyDown，MissKon 用普通 NSView，可能丢失部分键盘事件
 
 ### 低优先级
-5. 图片预加载 — 详情浏览时预加载相邻图片
-6. 保存进度反馈 — 保存大图时显示进度
-7. 侧边栏拖拽导入本地文件夹
-8. 在线搜索防抖（当前每次按键触发网络请求）
+7. 封面 aspect ratio 依赖 HTML 中 width/height，不准确时回退到 0.74
+8. 项目无单元测试
+9. Sparkle 自动更新需通过 Xcode GUI 添加 SPM
+
+## 8. MissKon 模块当前状态（2026-05-27）
+
+### 文件结构（16 文件）
+
+```
+MissKon/
+  Domain/    MissKonModels.swift        — 8 个 Section + 数据模型
+  Services/  MissKonRequestFactory.swift — HTTP 请求头
+             MissKonListResolver.swift   — 列表 HTML 解析 + 分页
+             MissKonDetailResolver.swift — 详情页图片提取
+  State/     MissKonFeedStore.swift      — 列表状态/缓存/搜索/分页
+             MissKonDetailStore.swift    — 渐进解析/slot管理
+             MissKonGalleryStore.swift   — 门面聚合
+             MissKonContentPreferences.swift — 布局+列数偏好
+             MissKonDetailInteractionController.swift — 保存/缩放
+  UI/        MissKonContentViewController.swift — 中栏(列表+网格)
+             MissKonContentViews.swift   — 单元格+footer
+             MissKonGridContainerView.swift — 瀑布流网格
+             MissKonFilmstripView.swift  — 胶卷条
+             MissKonImageDetailViewController.swift — 详情大图
+             MissKonRemoteImageView.swift — 远程缩略图(10行wrapper)
+             MissKonZoomableImageView.swift — 可缩放图片
+```
+
+### 侧边栏分类
+
+| Section | siteURL | 翻页 |
+|---------|---------|------|
+| latest (最新) | 首页 | ✅ |
+| top30 (热门) | /top30/ | ✅ /page/N/ |
+| cosplay (Cosplay) | /tag/cosplay/ | ✅ |
+| aiGenerated (AI 生成) | /tag/ai-enhanced/ | ✅ |
+| privatePhotoshoot (私房摄影) | /tag/private-photoshoot/ | ✅ |
+| xiuren (秀人) | /tag/xiuren/ | ✅ |
+| huayang (花漾) | /tag/huayang/ | ✅ |
+| favorites (收藏) | nil | ❌ |
+
+### Shell 集成验证清单
+
+搜索以下关键字确认所有 switch 已覆盖：
+- `case .missKon` 在 Shell/ 和 App/ 中至少出现 14 处
+- `MissKonSection` 的 8 个 case 在 WorkspaceSidebarNode 中覆盖
+- `WorkspaceToolbarHost` 中：observeState、searchField、refreshItem、filmstripItem、shareItem、gridColumnsControl
+- `WorkspaceCommandValidator` 中：adjustGridColumns 等 8+ switch
 
 ## 9. 常见编译问题
 
-- 新增模块文件会自动被 Xcode 发现（项目使用文件自动发现），无需手动添加到 pbxproj
+- 新增模块文件会被 Xcode 自动发现（文件自动发现），无需手动添加到 pbxproj
 - 如果 `xcodebuild` 报 SPM 相关错误，清理派生数据: `rm -rf ~/Library/Developer/Xcode/DerivedData/4KHD-*`
-- 如果新增 switch case 后编译报 `switch must be exhaustive`，搜索整个项目中的 `case .fourKHDGallery` 或 `case .localLibrary` 找到所有需要更新的 switch 语句
-- `WorkspaceToolbarHost.swift` 和 `WorkspaceCommandValidator.swift` 中有最多的 switch 语句需要更新
+- 如果新增 switch case 后编译报 `switch must be exhaustive`，搜索 `case .fourKHDGallery` 找到所有需更新的 switch
+- `WorkspaceToolbarHost.swift` 和 `WorkspaceCommandValidator.swift` 中有最多的 switch 语句需更新
+- 文件名冲突：两个不同目录的同名 .swift 文件会产生 `Multiple commands produce` 错误，需重命名其中一个

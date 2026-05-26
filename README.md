@@ -1,20 +1,26 @@
 # 4KHD
 
-4KHD 是一款 macOS 原生图片浏览软件，用于浏览 4KHD 网站的图集内容和管理本地图片目录。
+4KHD 是一款 macOS 原生图片浏览软件，用于浏览在线图库内容和本地图片目录。
 
 **纯 AppKit 实现**：主窗口、三栏工作区、侧边栏、工具栏、中栏列表/网格、详情区、胶卷条全部由 AppKit 原生控件承载。生产代码 0 SwiftUI。
 
 ## 功能
 
-### 在线图库
+### 在线图库 — 4KHD
 - 浏览 4KHD 网站栏目（最新、推荐、Cosplay、写真、收藏）
 - 列表/网格双视图，封面缩略图 + 标题 + 元信息
 - 后台解析详情页提取原图地址
 - Nuke 图片加载管线（缓存、优先级、请求去重）
 
+### 在线图库 — MissKon
+- 浏览 misskon.com 内容（最新、热门、Cosplay、AI 生成、私房摄影、秀人、花漾）
+- 渐进式详情加载：先展示封面，大图加载后平滑切换
+- 网格列数可调（工具栏 +/- 按钮，2~6 列）
+- 详情上/下张浮层导航按钮
+
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
-- 上一张/下一张键盘导航，Escape/Tab/Enter 支持工作区级退出、切换焦点和打开详情
+- 上/下张键盘/浮层按钮导航，Escape/Tab/Enter 键盘支持
 - 窗内大图模式（自动隐藏工具栏和胶卷条）
 - 底部缩略图胶卷条，自动翻页加载
 - 保存原图到本地
@@ -39,9 +45,10 @@
   Shell/        — 三栏工作区、侧边栏、工具栏、模块路由
   Shared/       — 跨模块能力（图片缓存、键盘处理、UI 组件、共享基类）
   Modules/
-    4KHDGallery/ — 在线图库模块
-    LocalLibrary/ — 本地图片模块
-    Favorites/  — 收藏记录模块
+    4KHDGallery/ — 4KHD.com 在线图库
+    MissKon/    — misskon.com 在线图库
+    LocalLibrary/ — 本地图片
+    Favorites/  — 收藏记录
 ```
 
 详见 `AGENTS.md`。
@@ -65,7 +72,7 @@ xcodebuild -scheme 4KHD -project 4KHD.xcodeproj -configuration Debug build
 
 ### 设计原则
 
-1. 优先使用 macOS 系统原生 API（`NSToolbar`、`NSSplitViewController`、`NSCollectionView`、`NSVisualEffectView`）
+1. 优先使用 macOS 系统原生 API（NSToolbar、NSSplitViewController、NSCollectionView、NSVisualEffectView）
 2. 不自定义绘制，不引入第三方 UI 框架
 3. 50 行能搞定的功能绝不写 200 行
 4. 模块间零直接依赖，通过 Shared 层共享能力
@@ -83,7 +90,7 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 
 ## 注意事项
 
-- 软件依赖 4KHD 网站当前结构，HTML 变化可能需要调整解析规则
+- 软件依赖目标网站当前 HTML 结构，结构变化可能需要调整解析规则
 - 在线列表、搜索和详情解析失败会在列表 footer 或详情状态条中显示错误
 - 图片内容运行时从网站读取，不随仓库分发
 - 请遵守来源网站的访问规则和使用限制
