@@ -94,71 +94,60 @@
 
 ### 第一轮：功能补全（P0 + P1 + P2）
 
-**收藏接入（P0）：**
-- 新建 `MissKonFavoritesBridge`（参考 GalleryFavoritesBridge）
-- `MissKonFeedStore` 注入 `FavoritesStore`，`.favorites` section 从持久化收藏读取
-- `MissKonGalleryStore` 新增 `isFavorite`/`toggleFavorite`
-- `WorkspaceAppAssembly` 中 `FavoritesStore` 单例在 Gallery/MissKon 间共享
-- 工具栏 heart 按钮支持 missKon，操作菜单新增保存/info 项
-- `FourKHDGalleryStore.init()` 改为接受外部 `FavoritesStore` 参数
-
-**MissKon Inspector（P1）：**
-- 展示标签/图片数/页数/Section/收藏状态/详情 URL
-- `observeState` 添加 missKon 状态追踪
-
-**详情区重试（P1）：**
-- `MissKonDetailStore.resolve(item:force:)` 添加 force 参数 + `retry()` 方法
-- `MissKonZoomableImageView.showFailure(retry:)` + retryButton
-- 全部解析失败时展示重试 overlay
-
-**搜索高亮（P1）：**
-- 列表/网格中搜索匹配文字黄色高亮
-- 复用 `Shared/UI/highlightedAttributedString`
-
-**缓存持久化（P2）：**
-- `MissKonItem`/`MissKonSection` 支持 Codable
-- `Application Support/4KHD/MissKon/feed-cache.json` 读写
-- 网络刷新/加载更多成功后自动保存
-
-**keyDown 转发（P2）：**
-- 新建 `Shared/UI/Detail/WorkspaceDetailRootView` 共享基类
+**收藏接入（P0）：** MissKonFavoritesBridge + 共享 FavoritesStore + 工具栏 heart 按钮
+**MissKon Inspector（P1）：** 标签/图片数/页数/Section/收藏状态/URL
+**详情区重试（P1）：** showFailure(retry:) + retry 按钮 + force resolve
+**搜索高亮（P1）：** 列表/网格黄色匹配高亮，复用 highlightedAttributedString
+**缓存持久化（P2）：** Codable MissKonItem，Application Support JSON 文件
+**keyDown 转发（P2）：** Shared/UI/Detail/WorkspaceDetailRootView
 
 ### 第二轮：性能优化 + Bug 修复
 
-**Bug 修复：**
-- MissKon 详情区未观察 `saveMessage`（保存状态文字不更新）
-- `syncTableSelection` 的 `deselectAll` 缺少 `isApplyingSelection` 守卫
-
-**性能优化：**
-- 列表增量更新：ID 不变时跳过 `reloadData`，仅 `reloadVisibleListRows`
-- 网格 `refreshVisibleItems`：元数据仅变化时更新可见卡片，避免全量重载
-- 缓存时间戳 + 1 小时自动刷新，防止永久展示过期数据
-
-**共享代码提取：**
-- `NSView.performWithoutAnimation` → `Shared/Platform/NSView+AnimationSuppression.swift`
-
-**UI 对齐：**
-- MissKon 上下文菜单添加 SF Symbols 图标（safari/doc.on.doc/square.and.arrow.up）
+**Bug 修复：** saveMessage 未观察、isApplyingSelection 守卫缺失
+**性能：** 列表增量更新（ID 不变跳过 reloadData）、网格 refreshVisibleItems、缓存 1h 过期
+**共享：** NSView.performWithoutAnimation → Shared/Platform/
+**UI：** SF Symbols 图标对齐（safari/doc.on.doc/square.and.arrow.up）
 
 ### 第三轮：架构对齐
 
-**feed→detail 回调模式：**
-- `MissKonFeedStore.onSelectionChanged` 闭包（对齐 GalleryFeedStore）
-- `MissKonGalleryStore.init` 自动布线，`select(_:)` 简化为单次委托
+**回调模式：** `feed.onSelectionChanged` 闭包（对齐 GalleryFeedStore）
+**Task 清理：** `loadTask`/`searchTask` 完成后 nil
+**收藏追踪：** 详情区 observeState 添加 `favorites.favorites` 观察
 
-**Task 清理：**
-- `loadTask`/`searchTask` 完成后 nil 清理
+### 第四轮：缺陷修复
 
-**收藏状态追踪：**
-- 详情区 `observeState` 添加 `favorites.favorites` 观察
+**selectedItemID setter：** 修复 setter 不触发 detail 更新，添加 `feed.selectedItem`
+**初始选择：** init 调用 `restoreSectionCache` 确保缓存即时展示
+**拖放：** 表格 `pasteboardWriterForRow` + `forLocal:true`
+**页脚行高：** `tableView(_:heightOfRow:)` 页脚 34pt
+**detailFailed：** 添加状态标志 + "解析失败"/"解析中" 连贯文字
+**@Observable：** MissKonDetailInteractionController 添加宏，保存状态实时更新
+**force-unwrap：** 3 处 `Range(...)!` 替换为 guard-let
+**搜索自动选择：** `submitSearch` 后 auto-select + onSelectionChanged
+
+### 第五轮：数据完整性审计（关键 Bug）
+
+**String.Index 跨实例：** `html.lowercased()` 索引用于 `html` 子脚本，未定义行为可致 crash。重写为 NSString/NSRange API。
+**resolvePageURLs 子页 URL：** 子页 URL 被当作首页构造，多页图集第 2+ 页 URL 错误。从 baseURL 剥离页面号。
+**收藏跨模块泄漏：** 共享 FavoritesStore 导致 Gallery/MissKon 记录互现。两桥添加 `detailURL.host` 域名验证。
+**aspectRatio 安全：** `aspectRatioProvider` 添加 `isFinite` / `>0` 检查。
+**selectAdjacent 回退：** 添加 `collectionView.selectionIndexPaths.first?.item` 回退。
+
+### 第六轮：用户反馈 Bug 修复
+
+**侧边栏选中态：** `routeMatches` 添加 `.missKon` case
+**列数按钮：** GalleryContentPreferences 添加 `gridColumnCount` + 工具栏按钮 + snapshot 字段
+**刷新按钮：** `.favorites` section 调用 `restoreSectionCache`
+**图片张数：** `imageCountRegex` 扩展匹配 photos/pics/images/张/p
+**胶片条闪烁：** `resolve` 创建初始占位 slot（coverURL），消除空状态过渡
+**首次启动无内容：** `refreshFromNetwork` 自动选择第一项
+**详情面板重建：** 同模块内复用 detailController，跟踪 `lastDetailModuleID`
 
 ### 模块状态评估
 
-MissKon 模块整体完成度约 95%：
-- 核心浏览链路完整（侧边栏→列表/网格→分页加载→详情大图→图片切换）
-- 收藏/Inspector/搜索高亮/重试/缓存持久化 全部完成
-- 架构对齐 4KHDGallery（onSelectionChanged 回调、task 清理、动画抑制共享）
-- 已知缺失：单元测试（P3）、列表/网格切换保留滚动位置（P3）
+**4KHDGallery：** 稳定完整。新增 `gridColumnCount` 支持（列数 2-6 可调）。
+**MissKon：** 完成度约 98%。核心链路完整，数据安全审计通过，收藏跨模块验证。
+**LocalLibrary / Favorites：** 稳定无变更。
 
 ### 共享层清单
 
@@ -170,5 +159,10 @@ MissKon 模块整体完成度约 95%：
 | `highlightedAttributedString` | `Shared/UI/` | 已有 |
 | `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 已有 |
 | `WorkspaceZoomableImageView` | `Shared/UI/` | 已有 |
+| `WorkspaceTableView` / `WorkspaceCollectionView` | `Shared/UI/` | 已有 |
 | `RemoteImagePipeline` | `Shared/Services/` | 已有 |
+| `DetailPageImageCache` | `Shared/Services/` | 已有 |
 | `FilmstripVisibilityController` | `Shared/State/` | 已有 |
+| `WorkspaceDetailPaneController` | `Shared/State/` | 已有 |
+| `WorkspaceKeyboardHandler` | `Shared/Platform/` | 已有 |
+| `WorkspaceCoalescingQueue` | `Shared/Platform/` | 已有 |

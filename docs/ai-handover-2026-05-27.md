@@ -7,77 +7,46 @@
 - **项目**: 4KHD — macOS 原生图片浏览 App（纯 AppKit，0 SwiftUI）
 - **环境**: macOS 26+, Xcode 26+, Swift 6, SPM(Nuke)
 - **构建**: `xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
-- **文件数**: ~128 Swift 文件，MissKon 模块占 18 个
-- **最新提交**: `dece945` — task cleanup, favorites observation, feed-detail callback
+- **文件数**: ~130 Swift 文件，MissKon 模块占 18 个
+- **最新提交**: `2e9065b` — 10 个提交在本次会话中
 
 ## 四个模块当前状态
 
-| 模块 | 状态 | 需关注 |
-|------|------|--------|
-| 4KHDGallery | ✅ 完整稳定 | 参考实现，其他模块对齐标准 |
-| MissKon | ✅ 核心完成 95% | 详见下文 |
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 4KHDGallery | ✅ 完整稳定 | 参考实现，本轮新增 gridColumnCount 支持 |
+| MissKon | ✅ 完成度 98% | 核心链路完整，数据安全审计通过 |
 | LocalLibrary | ✅ 完整稳定 | — |
-| Favorites | ✅ 完整 | 独立模块，通过 FavoritesStore 桥接接入 |
+| Favorites | ✅ 完整 | 独立模块，共享 FavoritesStore，域名验证防泄漏 |
 
-## MissKon 模块 — 当前状态 95%
+## MissKon 模块 — 当前状态 98%
 
 ### 已完成的全部能力
 
-**浏览：**
-- 侧边栏 8 个分类（含收藏）+ 列表/网格双视图 + 分页加载
-- 按 section 内存缓存 + 磁盘持久化（Application Support JSON）+ 1 小时过期自动刷新
+**浏览：** 侧边栏 8 分类 + 列表/网格双视图 + 分页加载 + section 缓存 + 磁盘持久化
+**详情：** 渐进加载 + 封面过渡 + 相邻预加载 + 导航按钮 + 键盘 + 胶片条 + 保存/缩放
+**交互：** 工具栏全功能 + 搜索高亮 + 错误重试(footer+详情区) + 右键菜单(SF Symbols)
+**收藏：** MissKonFavoritesBridge + 共享 FavoritesStore + 域名验证防泄漏
+**Inspector：** 标签/图片数/页数/Section/收藏状态/URL
+**数据安全：** NSString API 防 String.Index crash + resolvePageURLs 子页修正 + force-unwrap 消除
 
-**详情：**
-- 渐进式加载（首页立即展示 + 后台继续解析）
-- 封面→大图过渡 + 相邻图片预加载（前后各 2 张）
-- 上/下张导航按钮 + 键盘方向键
-- 胶片条（NSVisualEffectView + 72×96 + 动画开关）
+### 关键设计决策
 
-**交互：**
-- 工具栏：搜索/刷新/收藏/胶片条/列数±/分享/详情面板
-- 键盘：Escape 关闭详情/清除搜索，Enter 打开详情
-- 右键菜单（SF Symbols 图标）：浏览器打开/复制链接/分享
-- 错误重试：footer 红色可点击 + 详情区 retry 按钮
-- 搜索高亮（列表 + 网格）
-- 保存图片 + 重置缩放
+1. **feed→detail 回调模式：** `onSelectionChanged` 闭包，对齐 GalleryFeedStore。多个路径自动通知详情更新。
+2. **缓存策略：** `Application Support/4KHD/MissKon/feed-cache.json`，含时间戳 1h 过期自动刷新。
+3. **收藏隔离：** 两桥均需 `detailURL.host` 域名验证，防止跨模块记录泄漏。
+4. **详情切换：** `resolve()` 中同步创建初始占位 slot（coverURL），避免空状态闪烁。
+5. **详情面板：** 同模块内 route 变化不重建 detailController，跟踪 `lastDetailModuleID`。
 
-**收藏：**
-- `MissKonFavoritesBridge` + 共享 `FavoritesStore`
-- 工具栏 heart 按钮 + 菜单验证
+### Shell 集成点
 
-**Inspector：**
-- 标签/图片数/页数/Section/收藏状态/详情 URL
-
-**架构对齐 Gallery：**
-- feed→detail `onSelectionChanged` 回调模式
-- task 完成后 nil 清理
-- `NSView.performWithoutAnimation` 共享
-- `WorkspaceDetailRootView` 共享
-
-### 待做的（仅 P3）
-
-- [ ] 单元测试（整个项目零覆盖）
-- [ ] 列表/网格切换时保留滚动位置
-- [ ] Gallery 页脚可参考 MissKon 添加交互式重试
-
-## 开发要点
-
-### MissKon HTML 解析
-
-网站使用 WordPress Sahifa 经典主题：
-- 列表页：`<article class="item-list">` 容器，封面图 `data-src`（lazy loading），标题含 `(N photos)`
-- 详情页：`<div class="entry">` 内两个 `<div class="page-link">` 夹图片，图片 `data-src`，域名 `tez.misskon.com`
-- 分页：标准 WordPress `/page/N/`，top30 等特殊模板无分页 HTML 但支持 /page/N/ URL
-- 详情见 `docs/misskon-page-structure.md`
-
-### Shell 集成
-
-新增任何模块功能时，搜索以下文件中的 `case .missKon` 确认覆盖：
-- `WorkspaceToolbarHost.swift`（约 8 处 switch）
-- `WorkspaceCommandValidator.swift`（约 7 处 switch）
-- `WorkspaceToolbarContext.swift`（snapshot + action）
-- `WorkspaceShell.swift`（布局/列数操作）
-- `WorkspaceSidebarViewController.swift`（选择+图标）
+搜索 `case .missKon` 确认覆盖的文件：
+- `WorkspaceToolbarHost.swift` — 工具栏按钮（列数/favorite/刷新）
+- `WorkspaceCommandValidator.swift` — 菜单验证
+- `WorkspaceToolbarContext.swift` — snapshot + action
+- `WorkspaceShell.swift` — 布局/列数操作 + detail 复用
+- `WorkspaceSidebarViewController.swift` — 选中态 routeMatches
+- `WorkspaceSidebarNode.swift` — 节点定义
 
 ### 常用命令
 
@@ -94,20 +63,25 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 # 查找 MissKon 集成点
 rg "case \.missKon" 4KHD/Shell 4KHD/App --glob '*.swift'
 
-# 查找 Gallery 参考实现（用于对齐）
+# 查找 Gallery 参考实现
 rg "case \.fourKHDGallery" 4KHD/Shell 4KHD/App --glob '*.swift'
-
-# 查找所有 switch 语句（新增 case 时使用）
-rg "case \.fourKHDGallery" 4KHD --glob '*.swift' -l
 
 # 统计文件数
 find 4KHD -name '*.swift' | wc -l
 ```
 
-### 共享层清单（2026-05-27 更新）
+### 已知注意事项
 
-| 组件 | 路径 | 新增/已有 |
-|------|------|-----------|
+1. **HTML 解析风险：** MissKonDetailResolver.extractImageURLs 已改用 NSString API 防 crash，但 entry div 匹配仍依赖特定 class name。
+2. **子页 URL：** resolvePageURLs 已修正为从 baseURL 剥离页面号，但依赖 `firstMatch(currentRegex)` 正确识别当前页。
+3. **收藏域名验证：** 两桥均验证 `detailURL.host`，新增模块需同步添加。
+4. **详情面板复用：** `lastDetailModuleID` 跟踪在 WorkspaceShell 中，跨模块切换时正确重建。
+5. **缓存过期：** `cacheMaxAge = 3600`（1 小时），仅对网络刷新章节生效，收藏 section 始终实时读取 FavoritesStore。
+
+### 共享层清单
+
+| 组件 | 路径 | 状态 |
+|------|------|------|
 | `RemoteImageView` | `Shared/UI/` | 已有 |
 | `WorkspaceDetailRootView` | `Shared/UI/Detail/` | 本轮新增 |
 | `NSView.performWithoutAnimation` | `Shared/Platform/` | 本轮新增 |
@@ -122,33 +96,29 @@ find 4KHD -name '*.swift' | wc -l
 | `WorkspaceKeyboardHandler` | `Shared/Platform/` | 已有 |
 | `WorkspaceCoalescingQueue` | `Shared/Platform/` | 已有 |
 
-### MissKon FeedStore 关键设计
+### MissKon 文件结构
 
 ```
-MissKonFeedStore
-  ├── cachedItems: [Section: [Item]]     ← 切换 section 时先读缓存
-  ├── cachedNextPageURLs: [Section: URL]  ← 缓存每 section 的下一页
-  ├── refreshFromNetwork()                ← 合并去重到缓存
-  ├── loadMoreListIfNeeded()             ← 搜索时分流到 loadMoreSearchIfNeeded
-  ├── restoreSectionCache()              ← section 切换时调用
-  └── clearSearch()                       ← 恢复缓存 + 清搜索状态
+Modules/MissKon/
+  Domain/
+    MissKonModels.swift           — MissKonSection, MissKonItem, MissKonImageSlot
+  State/
+    MissKonFeedStore.swift        — 列表数据 + 缓存 + 搜索 + 收藏桥接
+    MissKonDetailStore.swift      — 详情页解析 + slot 管理 + retry
+    MissKonGalleryStore.swift     — 门面：组合 feed/detail/favorites
+    MissKonContentPreferences.swift — 布局 + 列数偏好
+    MissKonDetailInteractionController.swift — 保存/缩放交互 (@Observable)
+  Services/
+    MissKonListResolver.swift     — 列表页 HTML 解析 + 搜索
+    MissKonDetailResolver.swift   — 详情页 HTML 解析 (NSString API)
+    MissKonRequestFactory.swift   — URLRequest 配置 (Cookie/UA/Referer)
+    MissKonFavoritesBridge.swift  — MissKonItem ↔ FavoriteRecord 转换
+  UI/
+    MissKonContentViewController.swift — 列表/网格内容视图
+    MissKonContentViews.swift     — 列表行/网格项/页脚视图
+    MissKonGridContainerView.swift — 网格容器 (NSCollectionView)
+    MissKonImageDetailViewController.swift — 详情区视图控制器
+    MissKonZoomableImageView.swift — 可缩放图片视图
+    MissKonFilmstripView.swift    — 胶卷条视图
+    MissKonRemoteImageView.swift  — 远程图片视图 (Nuke wrapper)
 ```
-
-### MissKonDetailStore 渐进加载
-
-```
-resolve(item:)
-  ├── 首页：解析 → publishSlots() 立即展示
-  ├── 其余页：while pendingURLs 逐个解析 → publishSlots() 增量更新
-  └── 结束：isResolving = false
-```
-
-`publishSlots()` 保留当前 `selectedSlotID`（如仍在 slots 中），否则选第一个。
-
-## 已知注意事项
-
-1. **top30 不支持标准分页** — HTML 无分页元素，`nextPageURL` 通过检测 `articleCount >= 12` 后手动构造 `/page/N/` URL
-2. **详情页双 page-link** — entry 内有两个 `<div class="page-link">`，图片在中间。`extractImageURLs` 已处理此结构
-3. **MissKon 列表缓存策略** — `fetchHTML` 使用 `.reloadIgnoringLocalCacheData`（避免 WordPress 缓存页），图片加载走 Nuke 管线
-4. **FilmstripVisibility** — 共享模块 `FilmstripVisibilityController`，MissKon detail view 观察 `filmstripVisibility.isPresented` 并做动画
-5. **GridColumn** — MissKon 工具栏 +/- 按钮与 LocalLibrary 共用同一个 `localGridColumns` toolbar item，action 按 `currentModuleID` 派发
