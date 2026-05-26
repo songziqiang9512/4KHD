@@ -1,5 +1,4 @@
 import AppKit
-import Nuke
 import Observation
 
 @MainActor
@@ -463,59 +462,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         refresh()
     }
 
-    @objc private func setDesktopWallpaper(_ sender: Any?) {
-        guard currentModuleID == .wallhaven,
-              let wallpaper = appContext.wallhavenStore.effectiveSelectedWallpaper else { return }
-        guard let fullImageUrl = wallpaper.fullImageUrl else {
-            appContext.wallhavenStore.resolveDetail(for: wallpaper)
-            let alert = NSAlert()
-            alert.messageText = "正在获取原图"
-            alert.informativeText = "原图地址尚未解析，已开始加载详情。请稍后重试。"
-            alert.alertStyle = .informational
-            alert.runModal()
-            return
-        }
-        downloadAndSetWallhavenDesktop(url: fullImageUrl, wallpaperID: wallpaper.id, ext: wallpaper.fileExtensionForSave)
-    }
-
-    private func downloadAndSetWallhavenDesktop(url: URL, wallpaperID: String, ext: String) {
-        let request = RemoteImagePipeline.shared.request(
-            for: url,
-            priority: .veryHigh,
-            configureURLRequest: WallhavenRequestFactory.configureImageRequest
-        )
-        _ = RemoteImagePipeline.shared.loadData(with: request) { data in
-            guard let data else {
-                Task { @MainActor in
-                    let alert = NSAlert()
-                    alert.messageText = "下载失败"
-                    alert.informativeText = "无法下载壁纸原图"
-                    alert.alertStyle = .warning
-                    alert.runModal()
-                }
-                return
-            }
-            let tempDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("4KHD-Wallpaper", isDirectory: true)
-            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            let tempFile = tempDir.appendingPathComponent("wallhaven-\(wallpaperID).\(ext)")
-            do {
-                try data.write(to: tempFile, options: .atomic)
-                Task { @MainActor in
-                    LocalDesktopWallpaperSetter.setDesktopWallpaper(tempFile)
-                }
-            } catch {
-                Task { @MainActor in
-                    let alert = NSAlert()
-                    alert.messageText = "保存失败"
-                    alert.informativeText = error.localizedDescription
-                    alert.alertStyle = .warning
-                    alert.runModal()
-                }
-            }
-        }
-    }
-
     @objc private func revealCurrentFileInFinder(_ sender: Any?) {
         guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
@@ -977,12 +923,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             openItem.target = self
             openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
             menu.addItem(openItem)
-
-            let desktopItem = NSMenuItem(title: "设置为桌面壁纸", action: #selector(setDesktopWallpaper(_:)), keyEquivalent: "")
-            desktopItem.target = self
-            desktopItem.image = NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "设置为桌面壁纸")
-            desktopItem.isEnabled = canSaveCurrentImage
-            menu.addItem(desktopItem)
 
             let saveItem = NSMenuItem(title: "保存原图...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self

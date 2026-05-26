@@ -15,18 +15,32 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
     private let infoChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let infoLabel = NSTextField(labelWithString: "")
     private let sourceChrome = DetailOverlayChromeView(cornerRadius: 11)
-    private let sourceLabel = NSTextField(labelWithString: "来源: Wallhaven")
+    private let sourceButton: NSButton = {
+        let b = NSButton(title: "来源: Wallhaven", target: nil, action: nil)
+        b.bezelStyle = .inline
+        b.controlSize = .small
+        b.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        b.isBordered = false
+        b.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "打开来源")
+        b.imagePosition = .imageLeading
+        return b
+    }()
+    private let tagsChrome = DetailOverlayChromeView(cornerRadius: 11)
+    private let tagsStack: NSStackView = {
+        let s = NSStackView()
+        s.orientation = .horizontal
+        s.alignment = .centerY
+        s.spacing = 4
+        return s
+    }()
     private let actionChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let actionLabel = NSTextField(labelWithString: "")
     private let desktopButton: NSButton = {
-        let b = NSButton(title: "设为桌面", target: nil, action: nil)
-        b.bezelStyle = .recessed
+        let b = NSButton(image: NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "设为桌面壁纸")!,
+                         target: nil, action: nil)
+        b.bezelStyle = .accessoryBarAction
         b.controlSize = .small
-        b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        if #available(macOS 11.0, *) {
-            b.image = NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: "设为桌面壁纸")
-            b.imagePosition = .imageLeading
-        }
+        b.toolTip = "设为桌面壁纸"
         return b
     }()
     private var isObserving = false
@@ -87,11 +101,12 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         infoLabel.maximumNumberOfLines = 3
         infoChrome.addSubview(infoLabel)
 
-        sourceLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-        sourceLabel.textColor = .secondaryLabelColor
-        sourceLabel.alignment = .center
-        sourceLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        sourceChrome.addSubview(sourceLabel)
+        sourceButton.target = self
+        sourceButton.action = #selector(openSourcePage)
+        sourceChrome.addSubview(sourceButton)
+
+        tagsChrome.addSubview(tagsStack)
+        tagsChrome.isHidden = true
 
         actionLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         actionLabel.textColor = .labelColor
@@ -106,12 +121,14 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         desktopButton.target = self
         desktopButton.action = #selector(setAsDesktopFromDetail)
 
-        for subview in [imageView, emptyLabel, previousButton, nextButton, infoChrome, sourceChrome, actionChrome, desktopButton] {
+        for subview in [imageView, emptyLabel, previousButton, nextButton,
+                        infoChrome, tagsChrome, sourceChrome, actionChrome, desktopButton] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
         infoLabel.translatesAutoresizingMaskIntoConstraints = false
-        sourceLabel.translatesAutoresizingMaskIntoConstraints = false
+        sourceButton.translatesAutoresizingMaskIntoConstraints = false
+        tagsStack.translatesAutoresizingMaskIntoConstraints = false
         actionLabel.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
@@ -134,7 +151,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             nextButton.heightAnchor.constraint(equalToConstant: 40),
 
             infoChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            infoChrome.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -6),
+            infoChrome.bottomAnchor.constraint(equalTo: tagsChrome.topAnchor, constant: -4),
             infoChrome.heightAnchor.constraint(greaterThanOrEqualToConstant: 24),
             infoChrome.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
             infoChrome.widthAnchor.constraint(greaterThanOrEqualTo: infoLabel.widthAnchor, constant: 20),
@@ -142,13 +159,19 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             infoLabel.trailingAnchor.constraint(equalTo: infoChrome.trailingAnchor, constant: -10),
             infoLabel.centerYAnchor.constraint(equalTo: infoChrome.centerYAnchor),
 
+            tagsChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            tagsChrome.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -4),
+            tagsChrome.heightAnchor.constraint(equalToConstant: 24),
+            tagsStack.leadingAnchor.constraint(equalTo: tagsChrome.leadingAnchor, constant: 8),
+            tagsStack.trailingAnchor.constraint(equalTo: tagsChrome.trailingAnchor, constant: -8),
+            tagsStack.centerYAnchor.constraint(equalTo: tagsChrome.centerYAnchor),
+
             sourceChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             sourceChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
             sourceChrome.heightAnchor.constraint(equalToConstant: 24),
-            sourceChrome.widthAnchor.constraint(greaterThanOrEqualTo: sourceLabel.widthAnchor, constant: 16),
-            sourceLabel.leadingAnchor.constraint(equalTo: sourceChrome.leadingAnchor, constant: 8),
-            sourceLabel.trailingAnchor.constraint(equalTo: sourceChrome.trailingAnchor, constant: -8),
-            sourceLabel.centerYAnchor.constraint(equalTo: sourceChrome.centerYAnchor),
+            sourceButton.leadingAnchor.constraint(equalTo: sourceChrome.leadingAnchor, constant: 8),
+            sourceButton.trailingAnchor.constraint(equalTo: sourceChrome.trailingAnchor, constant: -8),
+            sourceButton.centerYAnchor.constraint(equalTo: sourceChrome.centerYAnchor),
 
             actionChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             actionChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
@@ -159,9 +182,9 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             actionLabel.centerYAnchor.constraint(equalTo: actionChrome.centerYAnchor),
 
             desktopButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            desktopButton.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -12),
-            desktopButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 90),
-            desktopButton.heightAnchor.constraint(equalToConstant: 26)
+            desktopButton.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -6),
+            desktopButton.widthAnchor.constraint(equalToConstant: 28),
+            desktopButton.heightAnchor.constraint(equalToConstant: 28)
         ])
     }
 
@@ -196,6 +219,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             previousButton.isHidden = true
             nextButton.isHidden = true
             infoChrome.isHidden = true
+            tagsChrome.isHidden = true
             sourceChrome.isHidden = true
             actionChrome.isHidden = true
             desktopButton.isHidden = true
@@ -211,6 +235,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             previousButton.isHidden = true
             nextButton.isHidden = true
             infoChrome.isHidden = true
+            tagsChrome.isHidden = true
             sourceChrome.isHidden = true
             actionChrome.isHidden = true
             desktopButton.isHidden = true
@@ -220,6 +245,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         imageView.isHidden = false
         emptyLabel.isHidden = true
         desktopButton.isHidden = false
+        sourceChrome.isHidden = false
         previousButton.isHidden = false
         nextButton.isHidden = false
         infoChrome.isHidden = false
@@ -254,9 +280,13 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             infoLabel.stringValue = infoLabel.stringValue + " · \(tags)"
         }
 
-        sourceLabel.stringValue = "来源: Wallhaven"
+        sourceButton.title = "来源: Wallhaven"
+        sourceButton.toolTip = displayWallpaper.sourcePageUrl.absoluteString
         actionLabel.stringValue = detailStatusText
         actionChrome.isHidden = detailStatusText.isEmpty
+
+        // Build tag buttons
+        buildTagButtons(for: displayWallpaper)
 
         // Load image — prefer fullImageUrl from detail; fall back to search data.
         let imageURL = displayWallpaper.fullImageUrl ?? displayWallpaper.previewUrl ?? wallpaper.previewUrl ?? wallpaper.fullImageUrl
@@ -301,6 +331,32 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
               let index = wallpaperList.firstIndex(where: { $0.id == current.id }),
               index < wallpaperList.count - 1 else { return }
         library.select(wallpaperList[index + 1])
+    }
+
+    private func buildTagButtons(for wallpaper: Wallpaper) {
+        tagsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let topTags = wallpaper.tags.prefix(8)
+        guard !topTags.isEmpty else {
+            tagsChrome.isHidden = true
+            return
+        }
+        tagsChrome.isHidden = false
+        for tag in topTags {
+            let btn = NSButton(title: tag, target: self, action: #selector(tagClicked(_:)))
+            btn.bezelStyle = .recessed
+            btn.controlSize = .small
+            btn.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            tagsStack.addArrangedSubview(btn)
+        }
+    }
+
+    @objc private func tagClicked(_ sender: NSButton) {
+        library.submitSearch(sender.title)
+    }
+
+    @objc private func openSourcePage() {
+        guard let wallpaper = library.effectiveSelectedWallpaper ?? library.selectedWallpaper else { return }
+        NSWorkspace.shared.open(wallpaper.sourcePageUrl)
     }
 
     @objc func saveImage(_ sender: Any?) {

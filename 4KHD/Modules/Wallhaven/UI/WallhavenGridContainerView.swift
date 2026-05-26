@@ -91,7 +91,10 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         if updateItemSize() || contentChanged {
             lastAppliedIDs = wallpapers.map(\.id)
             lastShowsFooter = showsFooter
-            performWithoutAnimation { collectionView.reloadData() }
+            performWithoutAnimation {
+                gridLayout.invalidateLayout()
+                collectionView.reloadData()
+            }
         } else {
             refreshVisibleItems()
         }
@@ -171,6 +174,8 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         gridLayout.columnSpacing = 8
         gridLayout.rowSpacing = 10
         gridLayout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        gridLayout.minAspectRatio = 0.15
+        gridLayout.maxAspectRatio = 6.0
         gridLayout.aspectRatioProvider = { [weak self] indexPath in
             guard let self, indexPath.item < self.wallpapers.count else { return 16.0 / 9.0 }
             let wallpaper = self.wallpapers[indexPath.item]

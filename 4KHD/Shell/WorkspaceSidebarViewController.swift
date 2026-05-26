@@ -109,16 +109,22 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         super.viewDidLoad()
         reload()
         observeLocalLibrary()
+        observeModuleVisibility()
         routeObserverID = appContext.routeController.addObserver { [weak self] _ in
             self?.selectCurrentRoute()
         }
     }
+
+    private var moduleVisibilityObserver: NSObjectProtocol?
 
     deinit {
         if let routeObserverID {
             Task { @MainActor [appContext] in
                 appContext.routeController.removeObserver(id: routeObserverID)
             }
+        }
+        if let observer = moduleVisibilityObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -382,6 +388,14 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             moduleID: .localLibrary,
             itemID: LocalLibraryStore.allImagesFolderID
         ))
+    }
+
+    private func observeModuleVisibility() {
+        moduleVisibilityObserver = NotificationCenter.default.addObserver(
+            forName: SidebarModuleVisibility.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.reload() }
+        }
     }
 
     private func observeLocalLibrary() {

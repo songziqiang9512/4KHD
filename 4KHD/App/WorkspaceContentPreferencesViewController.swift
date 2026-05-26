@@ -7,8 +7,13 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
     private let localLayoutPopup = NSPopUpButton()
     private let localSortFieldPopup = NSPopUpButton()
     private let localSortDirectionPopup = NSPopUpButton()
+    private let showAdvancedModulesCheckbox: NSButton = {
+        let checkbox = NSButton(checkboxWithTitle: "显示 4KHD 和 MissKon 模块", target: nil, action: nil)
+        checkbox.font = .systemFont(ofSize: NSFont.systemFontSize)
+        return checkbox
+    }()
 
-    let paneContentSize = NSSize(width: 430, height: 160)
+    let paneContentSize = NSSize(width: 430, height: 200)
 
     init(toolbarContext: WorkspaceToolbarContext) {
         self.toolbarContext = toolbarContext
@@ -43,6 +48,10 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         stackView.addArrangedSubview(row(label: "Layout", control: localLayoutPopup))
         stackView.addArrangedSubview(row(label: "Sort by", control: localSortFieldPopup))
         stackView.addArrangedSubview(row(label: "Direction", control: localSortDirectionPopup))
+        stackView.addArrangedSubview(sectionLabel("Sidebar"))
+        showAdvancedModulesCheckbox.target = self
+        showAdvancedModulesCheckbox.action = #selector(toggleAdvancedModules(_:))
+        stackView.addArrangedSubview(showAdvancedModulesCheckbox)
 
         view = rootView
         refresh()
@@ -50,6 +59,7 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
 
     func refresh() {
         guard isViewLoaded else { return }
+        showAdvancedModulesCheckbox.state = SidebarModuleVisibility.showAdvancedModules ? .on : .off
         if case .gallery(let snapshot) = toolbarContext.snapshot(for: .fourKHDGallery) {
             galleryLayoutPopup.selectItem(representedObject: snapshot.layout)
         }
@@ -74,6 +84,10 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         guard let field = sender.selectedItem?.representedObject as? LocalImageSortField,
               case .local(let snapshot) = toolbarContext.snapshot(for: .localLibrary) else { return }
         toolbarContext.setLocalSort(field: field, direction: snapshot.sortDirection)
+    }
+
+    @objc private func toggleAdvancedModules(_ sender: NSButton) {
+        SidebarModuleVisibility.showAdvancedModules = (sender.state == .on)
     }
 
     @objc private func localSortDirectionChanged(_ sender: NSPopUpButton) {

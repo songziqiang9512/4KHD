@@ -36,7 +36,11 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         let misskon = WorkspaceSidebarNode.group("MissKon")
         let wallhaven = WorkspaceSidebarNode.group("在线壁纸")
         let local = WorkspaceSidebarNode.group("本地")
-        nodes = [local, online, misskon, wallhaven]
+
+        let showAdvanced = SidebarModuleVisibility.showAdvancedModules
+        nodes = [local, wallhaven]
+        if showAdvanced { nodes.append(online); nodes.append(misskon) }
+
         childrenByNode[online] = GallerySection.allCases.map(WorkspaceSidebarNode.gallery)
         childrenByNode[misskon] = MissKonSection.allCases.map(WorkspaceSidebarNode.missKon)
         childrenByNode[wallhaven] = WallhavenSection.allCases.map(WorkspaceSidebarNode.wallhaven)
