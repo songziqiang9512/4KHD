@@ -38,6 +38,8 @@ enum WorkspaceAppAssembly {
             galleryPreferences: galleryPreferences,
             galleryDetailInteraction: galleryDetailInteraction,
             missKonStore: missKonStore,
+            missKonPreferences: missKonPreferences,
+            missKonDetailInteraction: missKonDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,

@@ -107,9 +107,14 @@ enum MissKonDetailResolver {
         guard contentStart < contentEnd else { return [] }
         let content = String(entryTail[contentStart..<contentEnd])
 
-        // Extract image URLs — misskon uses data-src for lazy loading
-        let pattern = #"<img[^>]+data-src=["']([^"']+)["']"#
-        let urls = matches(pattern: pattern, in: content)
+        // Extract image URLs — misskon uses data-src for lazy loading, with src fallback
+        let dataSrcPattern = #"<img[^>]+data-src=["']([^"']+)["']"#
+        let srcPattern = #"<img[^>]+src=["'](https?://[^"']+)["']"#
+        let dataSrcUrls = matches(pattern: dataSrcPattern, in: content)
+        let srcUrls = matches(pattern: srcPattern, in: content)
+            .filter { !$0.hasPrefix("data:image/svg") }
+        let allUrls = dataSrcUrls + srcUrls
+        let urls = allUrls
             .compactMap { $0.removingPercentEncoding }
             .compactMap(URL.init(string:))
             .filter { url in

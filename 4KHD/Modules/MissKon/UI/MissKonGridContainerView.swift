@@ -6,6 +6,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     var onSelect: ((MissKonItem) -> Void)?
     var onOpenDetail: (() -> Void)?
     var onNeedsMore: (() -> Void)?
+    var onEscape: (() -> Bool)?
     var contextMenuProvider: ((MissKonItem) -> NSMenu?)?
 
     private let scrollView = NSScrollView()
@@ -153,6 +154,15 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         collectionView.setDraggingSourceOperationMask(.copy, forLocal: false)
         collectionView.setDraggingSourceOperationMask(.copy, forLocal: true)
         collectionView.arrowKeyHandler = { [weak self] delta in self?.selectAdjacent(delta: delta) ?? false }
+        collectionView.keyboardContext = WorkspaceKeyboardContext(
+            stepSelection: { [weak self] delta in self?.selectAdjacent(delta: delta) ?? false },
+            onEscape: { [weak self] in self?.onEscape?() ?? false },
+            onEnter: { [weak self] in
+                guard let self, let id = self.selectedItemID, let indexPath = self.items.firstIndex(where: { $0.id == id }) else { return false }
+                self.openDetail(for: IndexPath(item: indexPath, section: 0))
+                return true
+            }
+        )
         collectionView.contextMenuProvider = { [weak self] indexPath in self?.makeContextMenu(for: indexPath) }
         collectionView.doubleClickHandler = { [weak self] indexPath in self?.openDetail(for: indexPath) }
         collectionView.register(MissKonGridItemView.self, forItemWithIdentifier: MissKonGridItemView.reuseID)

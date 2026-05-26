@@ -195,8 +195,8 @@ final class WorkspaceCommandValidator {
             selectedLayoutIsList = snapshot.layout == .list
         case .local(let snapshot):
             selectedLayoutIsList = snapshot.layout == .list
-        case .missKon:
-            selectedLayoutIsList = false
+        case .missKon(let snapshot):
+            selectedLayoutIsList = snapshot.layout == .list
         }
         menuItem.state = selectedLayoutIsList == isList ? .on : .off
     }

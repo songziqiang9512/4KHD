@@ -75,8 +75,11 @@ enum MissKonListResolver {
     }
 
     private static func nextPageURL(in html: String, baseURL: URL) -> URL? {
-        let currentText = firstMatch(paginationCurrentRegex, in: html) ?? "1"
-        let currentPage = Int(currentText) ?? 1
+        // If the page has no pagination elements at all, there's no next page.
+        guard let currentText = firstMatch(paginationCurrentRegex, in: html),
+              let currentPage = Int(currentText) else {
+            return nil
+        }
 
         // Try explicit next link first
         let range = NSRange(html.startIndex..<html.endIndex, in: html)

@@ -1,33 +1,50 @@
 import AppKit
+import Foundation
+import Nuke
+import UniformTypeIdentifiers
 
 @MainActor
 final class MissKonDetailInteractionController {
-    private var saveTask: Task<Void, Never>?
+    var resetToken = UUID()
+    var saveMessage = ""
+
+    @ObservationIgnored private var saveTask: ImageTask?
 
     deinit {
         saveTask?.cancel()
     }
 
-    func save(imageURL: URL) {
+    func resetZoom() {
+        resetToken = UUID()
+    }
+
+    func save(imageURL: URL, filename: String) {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = imageURL.lastPathComponent
-        panel.begin { [weak self] response in
-            guard response == .OK, let destination = panel.url else { return }
-            self?.saveTask = Task { @MainActor [weak self] in
-                var request = URLRequest(url: imageURL)
-                MissKonRequestFactory.configureImageRequest(&request)
-                do {
-                    let (data, _) = try await URLSession.shared.data(for: request)
-                    try data.write(to: destination)
-                } catch {
-                    if !Task.isCancelled {
-                        let alert = NSAlert()
-                        alert.messageText = "保存失败"
-                        alert.informativeText = error.localizedDescription
-                        alert.runModal()
-                    }
+        panel.allowedContentTypes = [.image]
+        panel.nameFieldStringValue = filename
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+
+        saveMessage = "保存中"
+        saveTask?.cancel()
+        let request = RemoteImagePipeline.shared.request(
+            for: imageURL,
+            priority: .veryHigh,
+            configureURLRequest: MissKonRequestFactory.configureImageRequest
+        )
+        saveTask = RemoteImagePipeline.shared.loadData(with: request) { [weak self] data in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard let data else {
+                    self.saveMessage = "保存失败"
+                    return
                 }
-                self?.saveTask = nil
+                do {
+                    try data.write(to: target, options: .atomic)
+                    self.saveMessage = "已保存"
+                } catch {
+                    self.saveMessage = "保存失败"
+                }
             }
         }
     }

@@ -63,6 +63,11 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
         tableView.contextMenuProvider = { [weak self] row in self?.makeContextMenu(forRow: row) }
         tableView.arrowKeyHandler = { [weak self] delta in self?.selectAdjacentFromTable(delta: delta) ?? false }
+        tableView.keyboardContext = WorkspaceKeyboardContext(
+            stepSelection: { [weak self] delta in self?.selectAdjacentFromTable(delta: delta) ?? false },
+            onEscape: { [weak self] in self?.clearSearch() ?? false },
+            onEnter: { [weak self] in self?.openSelectedTableItemInDetail(); return true }
+        )
         tableView.target = self
         tableView.doubleAction = #selector(openSelectedTableItemInDetail)
     }
@@ -71,6 +76,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         gridView.onSelect = { [weak self] item in self?.library.select(item) }
         gridView.onOpenDetail = { [weak self] in self?.detailPane.setPresented(true) }
         gridView.onNeedsMore = { [weak self] in self?.library.loadMoreListIfNeeded() }
+        gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
         gridView.contextMenuProvider = { [weak self] item in self?.makeContextMenu(for: item) }
     }
 
@@ -157,9 +163,14 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if row >= library.visibleItems.count {
+            library.loadMoreListIfNeeded()
             let footer = tableView.makeView(withIdentifier: MissKonFooterRowView.reuseID, owner: self) as? MissKonFooterRowView ?? MissKonFooterRowView()
             footer.configure(isRefreshing: library.isRefreshingList, errorMessage: library.feedErrorMessage, canLoadMore: library.canLoadMoreList, hasItems: !library.visibleItems.isEmpty)
             return footer
+        }
+        // Trigger load more when approaching the end
+        if row >= library.visibleItems.count - 3 {
+            library.loadMoreListIfNeeded()
         }
         let cell = tableView.makeView(withIdentifier: MissKonListRowView.reuseID, owner: self) as? MissKonListRowView ?? MissKonListRowView()
         cell.configure(item: library.visibleItems[row])
@@ -224,6 +235,12 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }),
               let row = library.visibleItems.firstIndex(where: { $0.id == item.id }) else { return }
         SharingPresenter.show(items: [item.detailURL as NSURL], relativeTo: tableView.rect(ofRow: row), of: tableView, preferredEdge: .maxX)
+    }
+
+    private func clearSearch() -> Bool {
+        guard library.activeSearchQuery != nil else { return false }
+        library.clearSearch()
+        return true
     }
 }
 

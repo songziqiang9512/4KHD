@@ -45,76 +45,83 @@ final class MissKonDetailStore {
             guard let self else { return }
             self.isResolving = true
 
-            var allSlots: [MissKonImageSlot] = []
-            var globalDisplayIndex = 0
-
+            var pendingURLs = pageURLs
+            var seenURLs = Set(pageURLs)
             var resolvedAny = false
 
-            for pageURL in pageURLs {
-                guard !Task.isCancelled else { return }
+            // Resolve first page eagerly and publish immediately
+            if let firstURL = pendingURLs.first {
+                pendingURLs.removeFirst()
+                do {
+                    let page = try await MissKonDetailResolver.resolve(pageURL: firstURL)
+                    guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
+                    self.resolvedPages[firstURL] = page
+                    for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
+                        pendingURLs.append(newURL)
+                    }
+                    resolvedAny = true
+                    self.publishSlots()
+                } catch {
+                    self.failedPageURLs.insert(firstURL)
+                }
+            }
+
+            // Resolve remaining pages
+            while !pendingURLs.isEmpty, !Task.isCancelled {
+                let pageURL = pendingURLs.removeFirst()
                 do {
                     let page = try await MissKonDetailResolver.resolve(pageURL: pageURL)
                     guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
                     self.resolvedPages[pageURL] = page
-
-                    // Use the union of known page URLs from all resolved pages
-                    let mergedPages: [URL]
-                    if page.pageURLs.count > self.resolvedPageURLs.count {
-                        mergedPages = page.pageURLs
-                    } else {
-                        mergedPages = self.resolvedPageURLs
+                    for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
+                        pendingURLs.append(newURL)
                     }
-
-                    // Ensure subsequent pages exist
-                    for pu in mergedPages {
-                        if self.resolvedPages[pu] == nil && pu != pageURL {
-                            // Will be resolved in the loop
-                        }
-                    }
-
                     resolvedAny = true
+                    self.publishSlots()
                 } catch {
                     self.failedPageURLs.insert(pageURL)
                 }
             }
 
-            // Build slots from all resolved pages
-            allSlots = []
-            globalDisplayIndex = 0
-            let sortedPages = self.resolvedPages.keys.sorted { a, b in
-                let aNum = a.trailingPageNumber ?? 1
-                let bNum = b.trailingPageNumber ?? 1
-                return aNum < bNum
-            }
-
-            for pageURL in sortedPages {
-                guard let page = self.resolvedPages[pageURL] else { continue }
-                for (imageIndex, imageURL) in page.imageURLs.enumerated() {
-                    let slotID = "\(pageURL.absoluteString)-\(imageIndex)"
-                    allSlots.append(MissKonImageSlot(
-                        id: slotID,
-                        displayIndex: globalDisplayIndex,
-                        pageURL: pageURL,
-                        pageImageIndex: imageIndex,
-                        knownURL: imageURL
-                    ))
-                    globalDisplayIndex += 1
-                }
-            }
-
             guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-            self.imageSlots = allSlots
-            if resolvedAny {
-                self.errorMessage = nil
-            } else {
+            if !resolvedAny {
                 self.errorMessage = "无法解析任何图片"
             }
             self.isResolving = false
         }
     }
 
-    private var resolvedPageURLs: [URL] {
-        Array(resolvedPages.keys)
+    private func publishSlots() {
+        let sortedPages = resolvedPages.keys.sorted { a, b in
+            let aNum = a.trailingPageNumber ?? 1
+            let bNum = b.trailingPageNumber ?? 1
+            return aNum < bNum
+        }
+
+        var allSlots: [MissKonImageSlot] = []
+        var globalDisplayIndex = 0
+        for pageURL in sortedPages {
+            guard let page = resolvedPages[pageURL] else { continue }
+            for (imageIndex, imageURL) in page.imageURLs.enumerated() {
+                let slotID = "\(pageURL.absoluteString)-\(imageIndex)"
+                allSlots.append(MissKonImageSlot(
+                    id: slotID,
+                    displayIndex: globalDisplayIndex,
+                    pageURL: pageURL,
+                    pageImageIndex: imageIndex,
+                    knownURL: imageURL
+                ))
+                globalDisplayIndex += 1
+            }
+        }
+
+        if !allSlots.isEmpty {
+            imageSlots = allSlots
+            errorMessage = nil
+            if selectedSlotID == nil || !allSlots.contains(where: { $0.id == selectedSlotID }) {
+                selectedSlotID = allSlots.first?.id
+            }
+        }
     }
 
     func selectSlot(id: MissKonImageSlot.ID) {

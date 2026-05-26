@@ -98,6 +98,8 @@ final class WorkspaceToolbarContext {
     private let galleryPreferences: GalleryContentPreferences
     private let galleryDetailInteraction: GalleryDetailInteractionController
     private let missKonStore: MissKonGalleryStore
+    private let missKonPreferences: MissKonContentPreferences
+    private let missKonDetailInteraction: MissKonDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -110,6 +112,8 @@ final class WorkspaceToolbarContext {
         galleryPreferences: GalleryContentPreferences,
         galleryDetailInteraction: GalleryDetailInteractionController,
         missKonStore: MissKonGalleryStore,
+        missKonPreferences: MissKonContentPreferences,
+        missKonDetailInteraction: MissKonDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -121,6 +125,8 @@ final class WorkspaceToolbarContext {
         self.galleryPreferences = galleryPreferences
         self.galleryDetailInteraction = galleryDetailInteraction
         self.missKonStore = missKonStore
+        self.missKonPreferences = missKonPreferences
+        self.missKonDetailInteraction = missKonDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -178,14 +184,18 @@ final class WorkspaceToolbarContext {
         case .missKon:
             let slots = missKonStore.imageSlots
             let selectedIndex = missKonStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? -1
+            let haveImageURL: Bool = {
+                guard let slot = missKonStore.selectedSlotID.flatMap({ id in slots.first { $0.id == id } }) else { return false }
+                return slot.knownURL != nil || missKonStore.detail.imageURL(for: slot) != nil
+            }()
             return .missKon(
                 .init(
                     searchText: missKonStore.searchText,
-                    layout: .grid,
+                    layout: missKonPreferences.layout,
                     isRefreshing: missKonStore.isRefreshingList,
                     canSelectPreviousImage: selectedIndex > 0,
                     canSelectNextImage: selectedIndex < slots.count - 1,
-                    canSaveImage: missKonStore.selectedSlotID != nil,
+                    canSaveImage: haveImageURL,
                     canResetZoom: missKonStore.selectedSlotID != nil,
                     canShare: missKonStore.currentItem != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
@@ -313,7 +323,10 @@ final class WorkspaceToolbarContext {
             guard let image = localLibraryStore.selectedImage else { return }
             localDetailInteraction.save(image: image)
         case .missKon:
-            break
+            guard let slot = missKonStore.selectedSlotID.flatMap({ id in missKonStore.imageSlots.first { $0.id == id } }),
+                  let url = slot.knownURL ?? missKonStore.detail.imageURL(for: slot) else { return }
+            let filename = "\(missKonStore.currentItem?.id ?? "misskon")-\(slot.displayIndex + 1).jpg"
+            missKonDetailInteraction.save(imageURL: url, filename: filename)
         }
     }
 
@@ -324,7 +337,7 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             localDetailInteraction.resetZoom()
         case .missKon:
-            break
+            missKonDetailInteraction.resetZoom()
         }
     }
 

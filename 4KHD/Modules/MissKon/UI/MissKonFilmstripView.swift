@@ -3,9 +3,9 @@ import Nuke
 
 @MainActor
 final class MissKonFilmstripView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
-    var onSelectSlot: ((Int) -> Void)?
-    var onNeedsMore: (() -> Void)?
+    var onSelect: ((Int) -> Void)?
 
+    private let materialView = NSVisualEffectView()
     private let scrollView = NSScrollView()
     private let collectionView = NSCollectionView()
     private let layout = NSCollectionViewFlowLayout()
@@ -20,63 +20,66 @@ final class MissKonFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
 
     required init?(coder: NSCoder) { nil }
 
-    func update(slots: [MissKonImageSlot], selectedSlotID: MissKonImageSlot.ID?) {
-        self.slots = slots
-        self.selectedSlotID = selectedSlotID
-        collectionView.reloadData()
-        syncSelection()
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
     }
 
-    func selectSlot(at displayIndex: Int) {
-        guard slots.indices.contains(displayIndex) else { return }
-        selectedSlotID = slots[displayIndex].id
-        let indexPath = IndexPath(item: displayIndex, section: 0)
-        isApplyingSelection = true
-        collectionView.selectionIndexPaths = [indexPath]
-        isApplyingSelection = false
-        collectionView.scrollToItems(at: [indexPath], scrollPosition: .centeredHorizontally)
+    func update(slots: [MissKonImageSlot], selectedSlotID: MissKonImageSlot.ID?) {
+        let slotIDsChanged = self.slots.map(\.id) != slots.map(\.id)
+        let countChanged = slots.count != self.slots.count
+        let previousSelectedID = self.selectedSlotID
+        self.slots = slots
+        self.selectedSlotID = selectedSlotID
+        if countChanged {
+            collectionView.reloadData()
+        } else if slotIDsChanged {
+            collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems())
+        } else if previousSelectedID != selectedSlotID {
+            refreshVisibleSelection()
+        }
+        let selectionChanged = previousSelectedID != selectedSlotID
+        syncSelection()
+        if selectionChanged {
+            scrollToSelectedItem()
+        }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { slots.count }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        slots.count
+    }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: MissKonFilmstripItemView.reuseID, for: indexPath) as? MissKonFilmstripItemView ?? MissKonFilmstripItemView()
         if slots.indices.contains(indexPath.item) {
-            let slot = slots[indexPath.item]
-            item.configure(slot: slot, isSelected: slot.id == selectedSlotID)
+            item.configure(slot: slots[indexPath.item], isSelected: slots[indexPath.item].id == selectedSlotID)
         }
         return item
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection, let indexPath = indexPaths.first, slots.indices.contains(indexPath.item) else { return }
-        onSelectSlot?(indexPath.item)
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
-        guard indexPath.item >= max(slots.count - 5, 0) else { return }
-        onNeedsMore?()
+        selectedSlotID = slots[indexPath.item].id
+        refreshVisibleSelection()
+        onSelect?(indexPath.item)
     }
 
     private func setupView() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.9).cgColor
-
-        layout.scrollDirection = .horizontal
-        layout.minimumInteritemSpacing = 8
-        layout.minimumLineSpacing = 8
-        layout.itemSize = NSSize(width: 56, height: 84)
-        layout.sectionInset = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        wantsLayer = false
+        updateAppearance()
 
         scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = true
-        scrollView.autohidesScrollers = true
+        scrollView.hasVerticalScroller = false
         scrollView.documentView = collectionView
-        scrollView.contentView.drawsBackground = false
+
+        layout.scrollDirection = .horizontal
+        layout.itemSize = NSSize(width: 72, height: 96)
+        layout.minimumInteritemSpacing = 8
+        layout.minimumLineSpacing = 8
+        layout.sectionInset = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
 
         collectionView.collectionViewLayout = layout
         collectionView.backgroundColors = [.clear]
@@ -86,9 +89,15 @@ final class MissKonFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         collectionView.delegate = self
         collectionView.register(MissKonFilmstripItemView.self, forItemWithIdentifier: MissKonFilmstripItemView.reuseID)
 
+        addSubview(materialView)
         addSubview(scrollView)
+        materialView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            materialView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            materialView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            materialView.topAnchor.constraint(equalTo: topAnchor),
+            materialView.bottomAnchor.constraint(equalTo: bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
@@ -96,14 +105,42 @@ final class MissKonFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         ])
     }
 
+    private func updateAppearance() {
+        materialView.material = .hudWindow
+        materialView.blendingMode = .withinWindow
+        materialView.state = .active
+        refreshVisibleSelection()
+    }
+
     private func syncSelection() {
         guard let selectedSlotID,
               let index = slots.firstIndex(where: { $0.id == selectedSlotID }) else {
-            isApplyingSelection = true; collectionView.selectionIndexPaths = []; isApplyingSelection = false; return
+            isApplyingSelection = true
+            collectionView.selectionIndexPaths = []
+            isApplyingSelection = false
+            return
         }
         isApplyingSelection = true
-        collectionView.selectionIndexPaths = [IndexPath(item: index, section: 0)]
+        collectionView.selectItems(at: [IndexPath(item: index, section: 0)], scrollPosition: [])
         isApplyingSelection = false
+    }
+
+    private func scrollToSelectedItem() {
+        guard let selectedSlotID,
+              let index = slots.firstIndex(where: { $0.id == selectedSlotID }) else { return }
+        let indexPath = IndexPath(item: index, section: 0)
+        let visibleRect = collectionView.visibleRect
+        guard let attrs = collectionView.layoutAttributesForItem(at: indexPath),
+              !visibleRect.contains(attrs.frame) else { return }
+        collectionView.scrollToItems(at: [indexPath], scrollPosition: .left)
+    }
+
+    private func refreshVisibleSelection() {
+        for indexPath in collectionView.indexPathsForVisibleItems() {
+            guard let item = collectionView.item(at: indexPath) as? MissKonFilmstripItemView,
+                  slots.indices.contains(indexPath.item) else { continue }
+            item.applySelection(slots[indexPath.item].id == selectedSlotID)
+        }
     }
 }
 
@@ -111,73 +148,65 @@ final class MissKonFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
 final class MissKonFilmstripItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("MissKonFilmstripItemView")
 
-    private let thumbnailView = NSImageView()
+    private let thumbnailView = MissKonRemoteImageView()
+    private let indexChrome = DetailOverlayChromeView(cornerRadius: 7)
     private let indexLabel = NSTextField(labelWithString: "")
     private var imageTask: ImageTask?
 
     override func loadView() {
         view = NSView()
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 7
-        view.layer?.masksToBounds = true
-
-        thumbnailView.imageScaling = .scaleProportionallyUpOrDown
-        thumbnailView.wantsLayer = true
-        view.addSubview(thumbnailView)
-        thumbnailView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            thumbnailView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            thumbnailView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            thumbnailView.topAnchor.constraint(equalTo: view.topAnchor),
-            thumbnailView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-
-        indexLabel.font = .systemFont(ofSize: 10)
-        indexLabel.textColor = .white
-        indexLabel.alignment = .center
-        let chrome = NSView()
-        chrome.wantsLayer = true
-        chrome.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
-        chrome.addSubview(indexLabel)
-        indexLabel.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            indexLabel.centerXAnchor.constraint(equalTo: chrome.centerXAnchor),
-            indexLabel.centerYAnchor.constraint(equalTo: chrome.centerYAnchor)
-        ])
-        view.addSubview(chrome)
-        chrome.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            chrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            chrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            chrome.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            chrome.heightAnchor.constraint(equalToConstant: 16)
-        ])
+        setupView()
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         imageTask?.cancel()
         imageTask = nil
-        thumbnailView.image = nil
     }
 
     func configure(slot: MissKonImageSlot, isSelected: Bool) {
+        thumbnailView.setImage(url: slot.knownURL, maxPixelSize: 220)
         indexLabel.stringValue = "\(slot.displayIndex + 1)"
-        view.layer?.borderWidth = isSelected ? 2 : 0
-        view.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        applySelection(isSelected)
+    }
 
-        guard let url = slot.knownURL else {
-            thumbnailView.image = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
-            return
-        }
-        let request = RemoteImagePipeline.shared.request(
-            for: url, priority: .low, maxPixelSize: 160,
-            configureURLRequest: MissKonRequestFactory.configureImageRequest
-        )
-        imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
-            Task { @MainActor [weak self] in
-                self?.thumbnailView.image = image
-            }
-        }
+    func applySelection(_ isSelected: Bool) {
+        view.layer?.borderColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
+        view.layer?.borderWidth = isSelected ? 2 : 0
+    }
+
+    private func setupView() {
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 6
+        view.layer?.masksToBounds = true
+
+        thumbnailView.mode = .aspectFill
+        thumbnailView.cornerRadius = 6
+
+        indexLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+        indexLabel.textColor = .labelColor
+        indexLabel.alignment = .center
+        indexLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        indexChrome.addSubview(indexLabel)
+
+        view.addSubview(thumbnailView)
+        view.addSubview(indexChrome)
+        thumbnailView.translatesAutoresizingMaskIntoConstraints = false
+        indexChrome.translatesAutoresizingMaskIntoConstraints = false
+        indexLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            thumbnailView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            thumbnailView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            thumbnailView.topAnchor.constraint(equalTo: view.topAnchor),
+            thumbnailView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            indexChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            indexChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
+            indexChrome.heightAnchor.constraint(equalToConstant: 18),
+            indexChrome.widthAnchor.constraint(greaterThanOrEqualToConstant: 28),
+            indexChrome.widthAnchor.constraint(greaterThanOrEqualTo: indexLabel.widthAnchor, constant: 12),
+            indexLabel.leadingAnchor.constraint(equalTo: indexChrome.leadingAnchor, constant: 6),
+            indexLabel.trailingAnchor.constraint(equalTo: indexChrome.trailingAnchor, constant: -6),
+            indexLabel.centerYAnchor.constraint(equalTo: indexChrome.centerYAnchor)
+        ])
     }
 }
