@@ -35,11 +35,12 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         fileExists: Bool,
         isSelected: Bool,
         cachedThumbnail: NSImage?,
+        searchQuery: String?,
         thumbnailLoader: @escaping (@escaping (LocalImageThumbnailLoadResult) -> Void) -> Void
     ) {
         representedID = image.id
         cardView.prepareForImmediateDisplay()
-        cardView.setText(title: image.title, metadata: metadataText(for: image, metadata: metadata))
+        cardView.setText(title: image.title, metadata: metadataText(for: image, metadata: metadata), highlightQuery: searchQuery)
         cardView.applySelectionState(isSelected)
         cardView.setMissingVisible(!fileExists)
         cardView.setPlaceholder(fileExists ? "加载中..." : "原文件不存在", isVisible: true)

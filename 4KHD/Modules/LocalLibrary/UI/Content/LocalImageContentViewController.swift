@@ -150,10 +150,12 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
                 pendingScrollIndex = visibleRows.location
             }
         }
+        let searchQuery = preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         switch preferences.layout {
         case .grid:
             let gridLayoutPreferences = currentGridLayoutPreferences()
             setActiveView(gridView)
+            gridView.searchQuery = searchQuery.isEmpty ? nil : searchQuery
             gridView.update(
                 items: filteredEntries,
                 metadataByImageID: metadataByImageID,
@@ -362,7 +364,10 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     private func makeFilteredEntries() -> [Entry] {
         let query = preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let entries = Array(localLibrary.selectedImages.enumerated()).map { ($0.offset, $0.element) }
-        let filtered = query.isEmpty ? entries : entries.filter { $0.1.title.localizedStandardContains(query) }
+        let filtered = query.isEmpty ? entries : entries.filter {
+            $0.1.title.localizedStandardContains(query)
+                || $0.1.url.deletingLastPathComponent().lastPathComponent.localizedStandardContains(query)
+        }
         return filtered.sorted(by: { compare($0.1, $1.1) == .orderedAscending })
     }
 
@@ -448,7 +453,8 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             owner: self
         ) as? LocalImageListCellView ?? LocalImageListCellView()
         let image = filteredEntries[row].image
-        cell.configure(image: image, metadata: metadataByImageID[image.id])
+        let query = preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        cell.configure(image: image, metadata: metadataByImageID[image.id], searchQuery: query.isEmpty ? nil : query)
         return cell
     }
 

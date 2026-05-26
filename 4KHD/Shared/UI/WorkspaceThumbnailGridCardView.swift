@@ -166,8 +166,12 @@ final class WorkspaceThumbnailGridCardView: NSView {
         needsLayout = true
     }
 
-    func setText(title: String, metadata: String) {
-        titleLabel.stringValue = title
+    func setText(title: String, metadata: String, highlightQuery: String? = nil) {
+        if let query = highlightQuery, !query.isEmpty {
+            titleLabel.attributedStringValue = highlightedAttributedString(title, query: query)
+        } else {
+            titleLabel.stringValue = title
+        }
         metadataLabel.stringValue = metadata
         metadataLabel.isHidden = metadata.isEmpty
         needsLayout = true
@@ -443,4 +447,13 @@ private final class WorkspaceAspectFillImageView: NSView {
         let y = floor((bounds.height - size.height) / 2)
         return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
+}
+
+func highlightedAttributedString(_ text: String, query: String) -> NSAttributedString {
+    let attributed = NSMutableAttributedString(string: text)
+    let range = (text as NSString).range(of: query, options: [.caseInsensitive, .diacriticInsensitive])
+    if range.location != NSNotFound {
+        attributed.addAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.3), range: range)
+    }
+    return attributed
 }

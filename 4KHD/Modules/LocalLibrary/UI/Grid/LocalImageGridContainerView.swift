@@ -15,6 +15,7 @@ final class LocalImageGridContainerView: NSView {
     var onOpenDetail: (() -> Void)?
     var onQuickLook: ((LocalImageItem) -> Void)?
     var onShowInfo: ((LocalImageItem) -> Void)?
+    var searchQuery: String?
 
     private lazy var dataSource = LocalImageGridDiffableDataSource(collectionView: collectionView) {
         [weak self] collectionView, indexPath, imageID -> NSCollectionViewItem? in
@@ -235,7 +236,8 @@ final class LocalImageGridContainerView: NSView {
             metadata: entry.metadata,
             fileExists: entry.metadata?.fileExists ?? true,
             isSelected: entry.image.id == selectedImageID,
-            cachedThumbnail: LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512)
+            cachedThumbnail: LocalImageCache.shared.cachedImage(for: entry.image.url, maxPixelSize: 512),
+            searchQuery: searchQuery
         ) { [weak self] completion in
             guard let self else {
                 completion(.unavailable)

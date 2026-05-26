@@ -184,8 +184,12 @@ final class LocalImageListCellView: NSTableCellView {
         thumbnailView.image = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
     }
 
-    func configure(image: LocalImageItem, metadata: LocalImageMetadata?) {
-        titleLabel.stringValue = image.title
+    func configure(image: LocalImageItem, metadata: LocalImageMetadata?, searchQuery: String? = nil) {
+        if let query = searchQuery, !query.isEmpty {
+            titleLabel.attributedStringValue = highlightedAttributedString(image.title, query: query)
+        } else {
+            titleLabel.stringValue = image.title
+        }
         resolutionLabel.stringValue = formattedResolution(metadata) ?? ""
         metadataLabel.stringValue = formattedSecondaryMetadata(metadata) ?? image.url.deletingLastPathComponent().path
         if let cached = LocalImageCache.shared.cachedImage(for: image.url, maxPixelSize: 160) {
