@@ -3,6 +3,7 @@ import Foundation
 enum MissKonSection: String, CaseIterable, Identifiable {
     case latest
     case top30
+    case cosplay
     case aiGenerated
     case privatePhotoshoot
     case xiuren
@@ -15,6 +16,7 @@ enum MissKonSection: String, CaseIterable, Identifiable {
         switch self {
         case .latest: "最新"
         case .top30: "热门"
+        case .cosplay: "Cosplay"
         case .aiGenerated: "AI 生成"
         case .privatePhotoshoot: "私房摄影"
         case .xiuren: "秀人"
@@ -27,6 +29,7 @@ enum MissKonSection: String, CaseIterable, Identifiable {
         switch self {
         case .latest: "sparkles"
         case .top30: "flame"
+        case .cosplay: "theatermasks"
         case .aiGenerated: "cpu"
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
@@ -39,6 +42,7 @@ enum MissKonSection: String, CaseIterable, Identifiable {
         switch self {
         case .latest: URL(string: "https://misskon.com/")!
         case .top30: URL(string: "https://misskon.com/top30/")!
+        case .cosplay: URL(string: "https://misskon.com/tag/cosplay/")!
         case .aiGenerated: URL(string: "https://misskon.com/tag/ai-enhanced/")!
         case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")!
         case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")!

@@ -65,6 +65,7 @@ final class MissKonFooterRowView: NSTableCellView {
 
     private let progress = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
+    var onRetry: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -78,13 +79,16 @@ final class MissKonFooterRowView: NSTableCellView {
         progress.isHidden = !isRefreshing || errorMessage != nil
         if let errorMessage {
             progress.stopAnimation(nil)
-            label.stringValue = errorMessage
+            label.stringValue = "\(errorMessage) — 点击重试"
+            label.textColor = .systemRed
         } else if isRefreshing {
             progress.startAnimation(nil)
-            label.stringValue = "加载下一页"
+            label.stringValue = "加载中..."
+            label.textColor = .tertiaryLabelColor
         } else {
             progress.stopAnimation(nil)
-            label.stringValue = canLoadMore ? "继续加载" : (hasItems ? "已到末尾" : "")
+            label.stringValue = canLoadMore ? "加载更多" : (hasItems ? "已到末尾" : "无内容")
+            label.textColor = .tertiaryLabelColor
         }
     }
 
@@ -107,6 +111,68 @@ final class MissKonFooterRowView: NSTableCellView {
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+
+        let click = NSClickGestureRecognizer(target: self, action: #selector(didClick))
+        addGestureRecognizer(click)
+    }
+
+    @objc private func didClick() {
+        onRetry?()
+    }
+}
+
+@MainActor
+final class MissKonGridFooterItem: NSCollectionViewItem {
+    static let reuseID = NSUserInterfaceItemIdentifier("MissKonGridFooterItem")
+
+    private let progress = NSProgressIndicator()
+    private let label = NSTextField(labelWithString: "")
+    var onRetry: (() -> Void)?
+
+    override func loadView() {
+        view = NSView()
+        progress.style = .spinning
+        progress.controlSize = .small
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        label.textColor = .tertiaryLabelColor
+
+        let stack = NSStackView(views: [progress, label])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        view.addSubview(stack)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            progress.widthAnchor.constraint(equalToConstant: 16),
+            progress.heightAnchor.constraint(equalToConstant: 16),
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+
+        let click = NSClickGestureRecognizer(target: self, action: #selector(didClick))
+        view.addGestureRecognizer(click)
+    }
+
+    func configure(isRefreshing: Bool, errorMessage: String?, canLoadMore: Bool, hasItems: Bool) {
+        progress.isHidden = !isRefreshing || errorMessage != nil
+        if let errorMessage {
+            progress.stopAnimation(nil)
+            label.stringValue = "\(errorMessage) — 点击重试"
+            label.textColor = .systemRed
+        } else if isRefreshing {
+            progress.startAnimation(nil)
+            label.stringValue = "加载中..."
+            label.textColor = .tertiaryLabelColor
+        } else {
+            progress.stopAnimation(nil)
+            label.stringValue = canLoadMore ? "加载更多" : (hasItems ? "已到末尾" : "无内容")
+            label.textColor = .tertiaryLabelColor
+        }
+    }
+
+    @objc private func didClick() {
+        onRetry?()
     }
 }
 
@@ -185,50 +251,6 @@ final class MissKonGridItemView: NSCollectionViewItem {
                     self.cardView.setPlaceholder("缩略图不可用", isVisible: true)
                 }
             }
-        }
-    }
-}
-
-@MainActor
-final class MissKonGridFooterItem: NSCollectionViewItem {
-    static let reuseID = NSUserInterfaceItemIdentifier("MissKonGridFooterItem")
-
-    private let progress = NSProgressIndicator()
-    private let label = NSTextField(labelWithString: "")
-
-    override func loadView() {
-        view = NSView()
-        progress.style = .spinning
-        progress.controlSize = .small
-        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-        label.textColor = .tertiaryLabelColor
-
-        let stack = NSStackView(views: [progress, label])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 8
-        view.addSubview(stack)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        progress.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            progress.widthAnchor.constraint(equalToConstant: 16),
-            progress.heightAnchor.constraint(equalToConstant: 16),
-            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
-    }
-
-    func configure(isRefreshing: Bool, errorMessage: String?, canLoadMore: Bool, hasItems: Bool) {
-        progress.isHidden = !isRefreshing || errorMessage != nil
-        if let errorMessage {
-            progress.stopAnimation(nil)
-            label.stringValue = errorMessage
-        } else if isRefreshing {
-            progress.startAnimation(nil)
-            label.stringValue = "加载下一页"
-        } else {
-            progress.stopAnimation(nil)
-            label.stringValue = canLoadMore ? "继续加载" : (hasItems ? "已到末尾" : "")
         }
     }
 }

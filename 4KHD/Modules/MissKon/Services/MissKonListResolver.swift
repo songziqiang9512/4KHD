@@ -75,11 +75,8 @@ enum MissKonListResolver {
     }
 
     private static func nextPageURL(in html: String, baseURL: URL) -> URL? {
-        // If the page has no pagination elements at all, there's no next page.
-        guard let currentText = firstMatch(paginationCurrentRegex, in: html),
-              let currentPage = Int(currentText) else {
-            return nil
-        }
+        let currentText = firstMatch(paginationCurrentRegex, in: html)
+        let currentPage = currentText.flatMap(Int.init) ?? 1
 
         // Try explicit next link first
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
@@ -89,7 +86,6 @@ enum MissKonListResolver {
             return URL(string: String(html[hrefRange]), relativeTo: baseURL)?.absoluteURL
         }
 
-        // Filter to the next page
         for url in nextLinks {
             let urlString = url.absoluteString
             if urlString.contains("/page/\(currentPage + 1)") || urlString.hasSuffix("/\(currentPage + 1)") {
@@ -97,7 +93,12 @@ enum MissKonListResolver {
             }
         }
 
-        // Fallback: construct next page URL
+        // Some page templates (top30 etc.) don't render pagination HTML but still
+        // support WordPress pagination via /page/N/ URLs. Construct next page URL
+        // when the current page has enough items to suggest more pages exist.
+        let articleCount = articleHTML(in: html).count
+        guard articleCount >= 12 else { return nil }
+
         if baseURL.absoluteString.contains("/page/") {
             return URL(string: baseURL.absoluteString.replacingOccurrences(
                 of: "/page/\(currentPage)",

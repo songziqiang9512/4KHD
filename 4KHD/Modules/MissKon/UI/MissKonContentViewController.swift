@@ -77,6 +77,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         gridView.onOpenDetail = { [weak self] in self?.detailPane.setPresented(true) }
         gridView.onNeedsMore = { [weak self] in self?.library.loadMoreListIfNeeded() }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
+        gridView.onRetry = { [weak self] in self?.library.refreshFromNetwork() }
         gridView.contextMenuProvider = { [weak self] item in self?.makeContextMenu(for: item) }
     }
 
@@ -166,6 +167,14 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             library.loadMoreListIfNeeded()
             let footer = tableView.makeView(withIdentifier: MissKonFooterRowView.reuseID, owner: self) as? MissKonFooterRowView ?? MissKonFooterRowView()
             footer.configure(isRefreshing: library.isRefreshingList, errorMessage: library.feedErrorMessage, canLoadMore: library.canLoadMoreList, hasItems: !library.visibleItems.isEmpty)
+            footer.onRetry = { [weak self] in
+                guard let self else { return }
+                if self.library.feedErrorMessage != nil {
+                    self.library.refreshFromNetwork()
+                } else {
+                    self.library.loadMoreListIfNeeded()
+                }
+            }
             return footer
         }
         // Trigger load more when approaching the end

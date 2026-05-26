@@ -7,6 +7,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     var onOpenDetail: (() -> Void)?
     var onNeedsMore: (() -> Void)?
     var onEscape: (() -> Bool)?
+    var onRetry: (() -> Void)?
     var contextMenuProvider: ((MissKonItem) -> NSMenu?)?
 
     private let scrollView = NSScrollView()
@@ -92,6 +93,13 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         if indexPath.item >= items.count {
             let footer = collectionView.makeItem(withIdentifier: MissKonGridFooterItem.reuseID, for: indexPath) as? MissKonGridFooterItem ?? MissKonGridFooterItem()
             footer.configure(isRefreshing: isRefreshing, errorMessage: errorMessage, canLoadMore: canLoadMore, hasItems: !items.isEmpty)
+            footer.onRetry = { [weak self] in
+                if self?.errorMessage != nil {
+                    self?.onRetry?()
+                } else {
+                    self?.onNeedsMore?()
+                }
+            }
             return footer
         }
         let item = collectionView.makeItem(withIdentifier: MissKonGridItemView.reuseID, for: indexPath) as? MissKonGridItemView ?? MissKonGridItemView()
