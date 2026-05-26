@@ -143,6 +143,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
                     preferredCardMinimumWidth: 136,
                     showsFooter: shouldShowFooter,
                     isRefreshing: library.isRefreshingList,
+                    errorMessage: library.feedErrorMessage,
                     canLoadMore: library.canLoadMoreList,
                     isFavorite: { [weak library] item in library?.isFavorite(item) ?? false },
                     isCached: { [weak library] item in library?.isCached(item) ?? false }
@@ -153,6 +154,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
                     isFavorite: { [weak library] item in library?.isFavorite(item) ?? false },
                     isCached: { [weak library] item in library?.isCached(item) ?? false },
                     isRefreshing: library.isRefreshingList,
+                    errorMessage: library.feedErrorMessage,
                     canLoadMore: library.canLoadMoreList,
                     showsFooter: shouldShowFooter
                 )
@@ -174,6 +176,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             _ = library.allItems
             _ = library.canLoadMoreList
             _ = library.isRefreshingList
+            _ = library.feedErrorMessage
             _ = library.activeSearchQuery
             _ = library.favorites.favorites
             _ = preferences.layout
@@ -194,7 +197,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     private var shouldShowFooter: Bool {
-        library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty
+        library.feedErrorMessage != nil || library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty
     }
 
     var shouldGroupFavorites: Bool {
@@ -365,7 +368,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             case .footer:
                 signature[row] = GalleryVisibleListRowSignature(
                     row: rows[row],
-                    title: "\(library.isRefreshingList)",
+                    title: library.feedErrorMessage ?? "\(library.isRefreshingList)",
                     subtitle: "\(library.canLoadMoreList)",
                     isFavorite: false,
                     isCached: false
@@ -561,7 +564,12 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
         case .footer:
             let view = tableView.makeView(withIdentifier: GalleryFooterRowView.reuseID, owner: self)
                 as? GalleryFooterRowView ?? GalleryFooterRowView()
-            view.configure(isRefreshing: library.isRefreshingList, canLoadMore: library.canLoadMoreList, hasItems: !library.visibleItems.isEmpty)
+            view.configure(
+                isRefreshing: library.isRefreshingList,
+                errorMessage: library.feedErrorMessage,
+                canLoadMore: library.canLoadMoreList,
+                hasItems: !library.visibleItems.isEmpty
+            )
             return view
         }
     }

@@ -51,6 +51,7 @@ final class FourKHDGalleryStore {
     var activeSearchQuery: String? { feed.activeSearchQuery }
     var visibleCount: Int { feed.visibleCount }
     var isRefreshingList: Bool { feed.isRefreshingList }
+    var feedErrorMessage: String? { feed.errorMessage }
     var allItems: [GalleryItem] { feed.allItems }
     var visibleItems: [GalleryItem] { feed.visibleItems }
     var canLoadMoreList: Bool { feed.canLoadMoreList }
@@ -74,6 +75,7 @@ final class FourKHDGalleryStore {
 
     var loadedImageSlots: [ImageSlot] { detail.loadedImageSlots }
     var prefetchPageURL: URL? { detail.prefetchPageURL }
+    var detailErrorMessage: String? { detail.errorMessage }
     var selectedSlot: ImageSlot? { detail.selectedSlot }
     var upcomingKnownImageURLs: [URL] { detail.upcomingKnownImageURLs }
 

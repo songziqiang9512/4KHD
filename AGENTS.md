@@ -144,3 +144,12 @@
 
 - 仅在选中项超出可见区域时才滚动（不再频繁居中）
 - 同数量时用 `reloadItems` 替代 `reloadData` 避免销毁交互中的 cell
+
+### 漏洞复查修复（2026-05-26）
+
+- 侧边栏节点结构不变但标题/数量变化时，直接刷新可见 cell，避免本地图片数量显示陈旧
+- Gallery 大图切换时正确执行 `preservesCurrentImageUntilLoaded`，未解析 slot 不再错误保留上一张图
+- Gallery 列表/网格 footer 和详情状态条接入 `errorMessage`，网络、搜索、详情解析失败可见
+- Gallery/Local 胶卷条统一 112pt 高度，并修复显示/隐藏 0.2s 动画的 hidden 时序
+- `WorkspaceKeyboardHandler` 的 Escape/Tab/Enter 接入工作区行为：退出沉浸/隐藏详情、切换列焦点、打开当前详情
+- 验证：`xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`

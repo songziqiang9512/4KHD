@@ -16,6 +16,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var previousSelectedItemID: GalleryItem.ID?
     private var showsFooter = false
     private var isRefreshing = false
+    private var errorMessage: String?
     private var canLoadMore = false
     private var minimumColumnCount: Int?
     private var maximumColumnCount: Int?
@@ -66,13 +67,14 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         preferredCardMinimumWidth: CGFloat,
         showsFooter: Bool,
         isRefreshing: Bool,
+        errorMessage: String?,
         canLoadMore: Bool,
         isFavorite: @escaping (GalleryItem) -> Bool,
         isCached: @escaping (GalleryItem) -> Bool
     ) {
         let previousSelectedItemID = self.selectedItemID
         let previousBadgeSignature = visibleBadgeSignature()
-        let previousFooterState = (self.isRefreshing, self.canLoadMore)
+        let previousFooterState = (self.isRefreshing, self.errorMessage, self.canLoadMore)
         let previousItemIDs = lastAppliedItemIDs
         let previousShowsFooter = lastShowsFooter
         let nextItemIDs = items.map(\.id)
@@ -87,6 +89,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.preferredCardMinimumWidth = preferredCardMinimumWidth
         self.showsFooter = showsFooter
         self.isRefreshing = isRefreshing
+        self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
         self.isFavorite = isFavorite
         self.isCached = isCached
@@ -104,7 +107,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             )
         } else {
             let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
-            let footerChanged = previousFooterState != (isRefreshing, canLoadMore)
+            let footerChanged = previousFooterState != (isRefreshing, errorMessage, canLoadMore)
             if footerChanged {
                 reloadFooterItem()
             } else if badgeChanged {
@@ -123,11 +126,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         isFavorite: @escaping (GalleryItem) -> Bool,
         isCached: @escaping (GalleryItem) -> Bool,
         isRefreshing: Bool,
+        errorMessage: String?,
         canLoadMore: Bool,
         showsFooter: Bool
     ) {
         let previousBadgeSignature = visibleBadgeSignature()
-        let previousFooterState = (self.isRefreshing, self.canLoadMore)
+        let previousFooterState = (self.isRefreshing, self.errorMessage, self.canLoadMore)
         let previousSelectedItemID = self.selectedItemID
 
         self.selectedItemID = selectedItemID
@@ -135,11 +139,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.isFavorite = isFavorite
         self.isCached = isCached
         self.isRefreshing = isRefreshing
+        self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
         self.showsFooter = showsFooter
 
         let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
-        let footerChanged = previousFooterState != (isRefreshing, canLoadMore)
+        let footerChanged = previousFooterState != (isRefreshing, errorMessage, canLoadMore)
         let selectionChanged = previousSelectedItemID != selectedItemID
 
         if footerChanged {
@@ -169,7 +174,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
                 withIdentifier: GalleryGridFooterItem.reuseID,
                 for: indexPath
             ) as? GalleryGridFooterItem ?? GalleryGridFooterItem()
-            item.configure(isRefreshing: isRefreshing, canLoadMore: canLoadMore, hasItems: !items.isEmpty)
+            item.configure(
+                isRefreshing: isRefreshing,
+                errorMessage: errorMessage,
+                canLoadMore: canLoadMore,
+                hasItems: !items.isEmpty
+            )
             return item
         }
 
@@ -686,9 +696,12 @@ final class GalleryGridFooterItem: NSCollectionViewItem {
         setupView()
     }
 
-    func configure(isRefreshing: Bool, canLoadMore: Bool, hasItems: Bool) {
-        progress.isHidden = !isRefreshing
-        if isRefreshing {
+    func configure(isRefreshing: Bool, errorMessage: String?, canLoadMore: Bool, hasItems: Bool) {
+        progress.isHidden = !isRefreshing || errorMessage != nil
+        if let errorMessage {
+            progress.stopAnimation(nil)
+            label.stringValue = errorMessage
+        } else if isRefreshing {
             progress.startAnimation(nil)
             label.stringValue = "加载下一页"
         } else {

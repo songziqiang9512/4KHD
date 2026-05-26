@@ -383,8 +383,52 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             },
             focusDetail: { [weak self] in
                 self?.focusDetailColumn() ?? false
+            },
+            onEscape: { [weak self] in
+                self?.handleEscapeKey() ?? false
+            },
+            onTab: { [weak self] in
+                self?.focusNextColumn() ?? false
+            },
+            onEnter: { [weak self] in
+                self?.openCurrentSelectionInDetail() ?? false
             }
         )
+    }
+
+    private func handleEscapeKey() -> Bool {
+        if immersive.isImmersive {
+            immersive.set(false)
+            return true
+        }
+        if appContext.detailPaneController.isPresented {
+            appContext.detailPaneController.setPresented(false)
+            return true
+        }
+        return false
+    }
+
+    private func focusNextColumn() -> Bool {
+        guard let firstResponder = view.window?.firstResponder as? NSView else {
+            return focusContentColumn()
+        }
+        if firstResponder.isDescendant(of: sidebarController.view) {
+            return focusContentColumn()
+        }
+        if firstResponder.isDescendant(of: contentController.view) {
+            return focusDetailColumn() || focusSidebarColumn() || focusContentColumn()
+        }
+        if firstResponder.isDescendant(of: detailController.view) {
+            return focusSidebarColumn() || focusContentColumn()
+        }
+        return focusContentColumn()
+    }
+
+    private func openCurrentSelectionInDetail() -> Bool {
+        guard currentReference != nil else { return false }
+        appContext.detailPaneController.setPresented(true)
+        _ = focusDetailColumn()
+        return true
     }
 
     private func setContentLayout(isList: Bool) {

@@ -23,7 +23,9 @@ final class GalleryZoomableImageView: WorkspaceZoomableImageView {
         imageTask?.cancel()
         guard loadedURL != url else { return }
         loadedURL = url
-        if imageView.image == nil {
+        let shouldKeepCurrent = preservesCurrentImageUntilLoaded && imageView.image != nil
+        if !shouldKeepCurrent {
+            imageView.image = nil
             showPlaceholder(title: "解析中", showsActions: false)
         }
         guard let url else { return }
@@ -37,7 +39,7 @@ final class GalleryZoomableImageView: WorkspaceZoomableImageView {
             Task { @MainActor [weak self] in
                 guard let self, self.loadedURL == url else { return }
                 guard let image else {
-                    if self.imageView.image == nil {
+                    if !shouldKeepCurrent || self.imageView.image == nil {
                         self.showPlaceholder(title: "图片加载失败", showsActions: false)
                     }
                     return

@@ -167,9 +167,12 @@ final class GalleryFooterRowView: NSTableCellView {
         nil
     }
 
-    func configure(isRefreshing: Bool, canLoadMore: Bool, hasItems: Bool) {
-        progress.isHidden = !isRefreshing
-        if isRefreshing {
+    func configure(isRefreshing: Bool, errorMessage: String?, canLoadMore: Bool, hasItems: Bool) {
+        progress.isHidden = !isRefreshing || errorMessage != nil
+        if let errorMessage {
+            progress.stopAnimation(nil)
+            label.stringValue = errorMessage
+        } else if isRefreshing {
             progress.startAnimation(nil)
             label.stringValue = "加载下一页"
         } else {

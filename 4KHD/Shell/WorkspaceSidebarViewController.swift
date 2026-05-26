@@ -124,12 +124,33 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
 
     func reload() {
         let oldIdentifiers = dataSource.allStateIdentifiers()
+        let oldDisplaySignatures = dataSource.allDisplaySignatures()
         dataSource.reload(localRoots: appContext.localLibraryStore.roots)
         let newIdentifiers = dataSource.allStateIdentifiers()
-        guard oldIdentifiers != newIdentifiers else { return }
+        let newDisplaySignatures = dataSource.allDisplaySignatures()
+        guard oldIdentifiers != newIdentifiers else {
+            reloadVisibleRowsIfNeeded(oldDisplaySignatures: oldDisplaySignatures, newDisplaySignatures: newDisplaySignatures)
+            return
+        }
         outlineView.reloadData()
         applyExpandedNodeIDs()
         selectCurrentRoute()
+    }
+
+    private func reloadVisibleRowsIfNeeded(oldDisplaySignatures: [String], newDisplaySignatures: [String]) {
+        guard oldDisplaySignatures != newDisplaySignatures else { return }
+        let visibleRows = outlineView.rows(in: outlineView.visibleRect)
+        guard visibleRows.length > 0 else { return }
+        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) where row >= 0 && row < outlineView.numberOfRows {
+            guard let oldNode = outlineView.item(atRow: row) as? WorkspaceSidebarNode,
+                  let node = dataSource.node(withStateIdentifier: oldNode.stateIdentifier),
+                  let view = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) else { continue }
+            if isGroupNode(node) {
+                (view as? NSTableCellView)?.textField?.stringValue = node.title
+            } else if let cell = view as? WorkspaceSidebarCellView {
+                cell.configure(title: node.title, image: sidebarImage(for: node), count: node.count)
+            }
+        }
     }
 
     func focus() {

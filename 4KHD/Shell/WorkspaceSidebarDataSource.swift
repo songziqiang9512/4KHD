@@ -20,6 +20,14 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         return result
     }
 
+    func allDisplaySignatures() -> [String] {
+        var result: [String] = []
+        for node in nodes {
+            appendDisplaySignatures(from: node, into: &result)
+        }
+        return result
+    }
+
     func reload(localRoots: [LocalLibraryRoot]) {
         childrenByNode = [:]
         lastLiveLocalRootDestination = nil
@@ -54,6 +62,10 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
             }
         }
         return nil
+    }
+
+    func node(withStateIdentifier stateIdentifier: String) -> WorkspaceSidebarNode? {
+        pathToNode { $0.stateIdentifier == stateIdentifier }?.last
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
@@ -165,6 +177,13 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         result.append(node.stateIdentifier)
         for child in children(of: node) {
             appendStateIdentifiers(from: child, into: &result)
+        }
+    }
+
+    private func appendDisplaySignatures(from node: WorkspaceSidebarNode, into result: inout [String]) {
+        result.append("\(node.stateIdentifier)|\(node.title)|\(node.count.map(String.init) ?? "")")
+        for child in children(of: node) {
+            appendDisplaySignatures(from: child, into: &result)
         }
     }
 

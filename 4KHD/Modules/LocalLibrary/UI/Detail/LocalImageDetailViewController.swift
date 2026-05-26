@@ -129,7 +129,7 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         }
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let filmstripHeight = filmstripView.heightAnchor.constraint(equalToConstant: 116)
+        let filmstripHeight = filmstripView.heightAnchor.constraint(equalToConstant: 112)
         let imageTopSafeAreaConstraint = zoomableImageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         let imageTopFullBleedConstraint = zoomableImageView.topAnchor.constraint(equalTo: view.topAnchor)
         filmstripHeightConstraint = filmstripHeight
@@ -239,9 +239,24 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     }
 
     private func updateFilmstripLayout(shouldShow: Bool) {
-        filmstripView.isHidden = !shouldShow
-        filmstripHeightConstraint?.constant = shouldShow ? 116 : 0
-        updateImageTopConstraint(showsFilmstrip: shouldShow)
+        let needsAnimation = filmstripView.isHidden == shouldShow
+        if needsAnimation {
+            if shouldShow {
+                filmstripView.isHidden = false
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                filmstripHeightConstraint?.animator().constant = shouldShow ? 112 : 0
+                updateImageTopConstraint(showsFilmstrip: shouldShow)
+            } completionHandler: { [weak self] in
+                self?.filmstripView.isHidden = !shouldShow
+            }
+        } else {
+            filmstripHeightConstraint?.constant = shouldShow ? 112 : 0
+            updateImageTopConstraint(showsFilmstrip: shouldShow)
+            filmstripView.isHidden = !shouldShow
+        }
     }
 
     private func updateImageTopConstraint(showsFilmstrip: Bool) {

@@ -196,6 +196,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = library.selectedImageIndex
             _ = library.loadedImageSlots
             _ = library.prefetchPageURL
+            _ = library.detailErrorMessage
             _ = library.isFavorite(library.selectedItem ?? placeholderItem)
             _ = immersive.isImmersive
             _ = detailPane.isPresented
@@ -294,17 +295,22 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     private func updateFilmstripLayout(showsFilmstrip: Bool) {
         let needsAnimation = filmstripView.isHidden == showsFilmstrip
         if needsAnimation {
+            if showsFilmstrip {
+                filmstripView.isHidden = false
+            }
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.2
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 filmstripHeightConstraint?.animator().constant = showsFilmstrip ? 112 : 0
                 updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
+            } completionHandler: { [weak self] in
+                self?.filmstripView.isHidden = !showsFilmstrip
             }
         } else {
             filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0
             updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
+            filmstripView.isHidden = !showsFilmstrip
         }
-        filmstripView.isHidden = !showsFilmstrip
     }
 
     private func updateImageTopConstraint(showsFilmstrip: Bool) {
@@ -317,6 +323,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
 
     private var detailStatusText: String {
         if detailFailed { return "解析失败" }
+        if let errorMessage = library.detailErrorMessage { return errorMessage }
         switch detailInteraction.saveMessage {
         case "保存中", "已保存", "保存失败":
             return detailInteraction.saveMessage
