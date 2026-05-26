@@ -22,7 +22,8 @@ enum MissKonFavoritesBridge {
     private nonisolated static func toMissKonItem(_ record: FavoriteRecord) -> MissKonItem? {
         guard let section = MissKonSection(rawValue: record.sourceID),
               section != .favorites,
-              let detailURL = URL(string: record.detailURL) else {
+              let detailURL = URL(string: record.detailURL),
+              detailURL.host?.contains("misskon.com") == true else {
             return nil
         }
 

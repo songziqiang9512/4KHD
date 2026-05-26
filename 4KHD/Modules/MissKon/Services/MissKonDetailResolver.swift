@@ -43,70 +43,58 @@ enum MissKonDetailResolver {
     /// We need to extract from between the two page-link divs (or after the first
     /// if only one exists, or from the entire entry if none exist).
     private static func extractImageURLs(from html: String) -> [URL] {
-        let lower = html.lowercased()
+        // Use NSString for case-insensitive range searches to avoid String.Index
+        // cross-contamination between lowercased and original strings.
+        let nsHTML = html as NSString
 
-        // Find entry div start
-        guard let entryStart = lower.range(of: "<div class=\"entry\">")?.upperBound
-                ?? lower.range(of: "<div class=\"entry ")?.upperBound else {
-            return []
-        }
-        let afterEntryStart = html.index(entryStart, offsetBy: 0)
-        let entryTail = String(html[afterEntryStart...])
+        // Find entry div start (case-insensitive)
+        let entryStartRange = nsHTML.range(of: "<div class=\"entry\">", options: .caseInsensitive)
+        let entryAltRange = nsHTML.range(of: "<div class=\"entry \"", options: .caseInsensitive)
+        let entryRange = entryStartRange.location != NSNotFound ? entryStartRange : entryAltRange
+        guard entryRange.location != NSNotFound else { return [] }
+        let entryStart = entryRange.upperBound
+        let entryTail = nsHTML.substring(from: entryStart)
+        let nsEntryTail = entryTail as NSString
 
-        // Find all page-link divs within the entry area
+        // Find all page-link divs within the entry area (case-insensitive)
         let pageLinkPattern = regex(#"<div\s+class=["']page-link["']"#)
         let pageLinkMatches = pageLinkPattern.matches(
-            in: entryTail.lowercased(),
-            range: NSRange(entryTail.startIndex..<entryTail.endIndex, in: entryTail)
+            in: entryTail,
+            range: NSRange(location: 0, length: nsEntryTail.length)
         )
 
         // Find entry end marker
         let entryEndMarker = "</div><!-- .entry"
-        let entryEndRange = entryTail.lowercased().range(of: entryEndMarker)
+        let entryEndLoc = nsEntryTail.range(of: entryEndMarker, options: .caseInsensitive).location
 
-        // Determine the content range for image extraction
-        let contentStart: String.Index
-        let contentEnd: String.Index
+        // Determine the content range for image extraction (NSRange-based)
+        let contentStart: Int
+        let contentEnd: Int
 
-        if pageLinkMatches.count >= 2,
-           let topRange = Range(pageLinkMatches[0].range, in: entryTail),
-           let bottomRange = Range(pageLinkMatches[1].range, in: entryTail) {
+        if pageLinkMatches.count >= 2 {
             // Standard case: images between top and bottom page-link divs
-            let topEnd = topRange.upperBound
-            let afterTop = entryTail[topEnd...]
-            if let divClose = afterTop.range(of: "</div>") {
-                contentStart = afterTop.index(divClose.upperBound, offsetBy: 0)
-            } else {
-                contentStart = topEnd
-            }
-            contentEnd = bottomRange.lowerBound
-        } else if pageLinkMatches.count == 1,
-                  let plRange = Range(pageLinkMatches[0].range, in: entryTail) {
+            let topRange = pageLinkMatches[0].range
+            let bottomRange = pageLinkMatches[1].range
+            // Find the closing </div> after the top page-link div
+            let afterTop = nsEntryTail.substring(from: topRange.upperBound)
+            let divClose = (afterTop as NSString).range(of: "</div>")
+            contentStart = topRange.upperBound + (divClose.location != NSNotFound ? divClose.upperBound : 0)
+            contentEnd = bottomRange.location
+        } else if pageLinkMatches.count == 1 {
             // Only one page-link: extract content after it
-            let plEnd = plRange.upperBound
-            let afterPL = entryTail[plEnd...]
-            if let divClose = afterPL.range(of: "</div>") {
-                contentStart = afterPL.index(divClose.upperBound, offsetBy: 0)
-            } else {
-                contentStart = plEnd
-            }
-            if let endRange = entryEndRange {
-                contentEnd = endRange.lowerBound
-            } else {
-                contentEnd = entryTail.endIndex
-            }
+            let plRange = pageLinkMatches[0].range
+            let afterPL = nsEntryTail.substring(from: plRange.upperBound)
+            let divClose = (afterPL as NSString).range(of: "</div>")
+            contentStart = plRange.upperBound + (divClose.location != NSNotFound ? divClose.upperBound : 0)
+            contentEnd = entryEndLoc != NSNotFound ? entryEndLoc : nsEntryTail.length
         } else {
             // No page-link: extract from entry start to entry end
-            contentStart = entryTail.startIndex
-            if let endRange = entryEndRange {
-                contentEnd = endRange.lowerBound
-            } else {
-                contentEnd = entryTail.endIndex
-            }
+            contentStart = 0
+            contentEnd = entryEndLoc != NSNotFound ? entryEndLoc : nsEntryTail.length
         }
 
         guard contentStart < contentEnd else { return [] }
-        let content = String(entryTail[contentStart..<contentEnd])
+        let content = nsEntryTail.substring(with: NSRange(location: contentStart, length: contentEnd - contentStart))
 
         // Extract image URLs — misskon uses data-src for lazy loading, with src fallback
         let dataSrcPattern = #"<img[^>]+data-src=["']([^"']+)["']"#
@@ -147,13 +135,19 @@ enum MissKonDetailResolver {
         let maxPage = pageNumbers.max() ?? currentPage
         guard maxPage > 1 else { return [baseURL] }
 
-        let baseString = baseURL.absoluteString.hasSuffix("/")
-            ? baseURL.absoluteString
-            : baseURL.absoluteString + "/"
+        // Strip any existing page number suffix to get the canonical page-1 URL.
+        // E.g., "https://misskon.com/post/2/" → "https://misskon.com/post/"
+        let absString = baseURL.absoluteString
+        let canonicalBase: String
+        if currentPage > 1, let slashRange = absString.range(of: "/\(currentPage)/", options: .backwards) {
+            canonicalBase = String(absString[..<slashRange.lowerBound]) + "/"
+        } else {
+            canonicalBase = absString.hasSuffix("/") ? absString : absString + "/"
+        }
 
         return (1...maxPage).compactMap { pageNum in
-            if pageNum == 1 { return baseURL }
-            return URL(string: "\(baseString)\(pageNum)/")
+            if pageNum == 1 { return URL(string: canonicalBase) }
+            return URL(string: "\(canonicalBase)\(pageNum)/")
         }
     }
 

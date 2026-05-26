@@ -22,7 +22,8 @@ enum GalleryFavoritesBridge {
     private nonisolated static func toGalleryItem(_ record: FavoriteRecord) -> GalleryItem? {
         guard let section = GallerySection(rawValue: record.sourceID),
               section != .favorites,
-              let detailURL = URL(string: record.detailURL) else {
+              let detailURL = URL(string: record.detailURL),
+              detailURL.host?.contains("4khd.com") == true else {
             return nil
         }
 
