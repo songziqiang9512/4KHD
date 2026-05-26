@@ -274,6 +274,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         collectionView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacent(delta: delta) ?? false
         }
+        collectionView.keyboardContext = WorkspaceKeyboardContext(stepSelection: collectionView.arrowKeyHandler)
         collectionView.contextMenuProvider = { [weak self] indexPath in
             self?.makeContextMenu(for: indexPath)
         }
@@ -479,48 +480,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     }
 }
 
-final class GalleryGridCollectionView: NSCollectionView {
+final class GalleryGridCollectionView: WorkspaceCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
-    var contextMenuProvider: ((IndexPath?) -> NSMenu?)?
     var doubleClickHandler: ((IndexPath) -> Void)?
-    private var hoverTrackingArea: NSTrackingArea?
-    private var lastHoveredIndexPath: IndexPath?
-
-    override var acceptsFirstResponder: Bool { true }
 
     override func accessibilityLabel() -> String? {
         "4KHD Gallery Grid"
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let hoverTrackingArea {
-            removeTrackingArea(hoverTrackingArea)
-        }
-        let tracking = NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(tracking)
-        hoverTrackingArea = tracking
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let hoveredIndexPath = indexPathForItem(at: point)
-        if hoveredIndexPath != lastHoveredIndexPath {
-            lastHoveredIndexPath = hoveredIndexPath
-            syncVisibleHoverState(windowLocation: event.locationInWindow)
-        }
-        super.mouseMoved(with: event)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        lastHoveredIndexPath = nil
-        clearVisibleHoverState()
-        super.mouseExited(with: event)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -532,49 +497,25 @@ final class GalleryGridCollectionView: NSCollectionView {
         }
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        window?.makeFirstResponder(self)
-        let point = convert(event.locationInWindow, from: nil)
-        return contextMenuProvider?(indexPathForItem(at: point))
-    }
-
-    override func keyDown(with event: NSEvent) {
-        let handled = WorkspaceKeyboardHandler.keyDown(
-            event,
-            context: WorkspaceKeyboardContext(stepSelection: arrowKeyHandler)
-        )
-        if handled {
-            return
-        }
-        super.keyDown(with: event)
-    }
-
-    override func viewWillStartLiveResize() {
-        workspaceWillStartLiveResize()
-        super.viewWillStartLiveResize()
-    }
-
     override func viewDidEndLiveResize() {
         workspaceDidEndLiveResize()
-        clearVisibleHoverState()
+        clearHoverOnVisibleItems()
         super.viewDidEndLiveResize()
     }
 
-    func clearVisibleHoverState() {
+    override func clearHoverOnVisibleItems() {
         lastHoveredIndexPath = nil
         for item in visibleItems() {
             (item as? GalleryGridItemView)?.clearHoverState()
         }
     }
 
-    private func syncVisibleHoverState(windowLocation: NSPoint?) {
+    override func syncHoverOnVisibleItems(windowLocation: NSPoint?) {
         for item in visibleItems() {
             (item as? GalleryGridItemView)?.syncHoverState(windowLocation: windowLocation)
         }
     }
 }
-
-extension GalleryGridCollectionView: WorkspaceLiveResizeScrollerHiding {}
 
 @MainActor
 final class GalleryGridItemView: NSCollectionViewItem {

@@ -116,6 +116,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         tableView.quickLookHandler = { [weak self] in
             self?.quickLookSelected() ?? false
         }
+        tableView.keyboardContext = WorkspaceKeyboardContext(quickLook: tableView.quickLookHandler)
         tableView.target = self
         tableView.doubleAction = #selector(openSelectedTableImageInDetail)
     }
@@ -242,6 +243,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             _ = preferences.layout
             _ = preferences.sortField
             _ = preferences.sortDirection
+            _ = detailPane.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }

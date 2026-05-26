@@ -60,6 +60,10 @@ final class LocalImageGridContainerView: NSView {
         collectionView.spaceKeyHandler = { [weak self] in
             self?.quickLookSelected() ?? false
         }
+        collectionView.keyboardContext = WorkspaceKeyboardContext(
+            stepSelection: collectionView.arrowKeyHandler,
+            quickLook: collectionView.spaceKeyHandler
+        )
         collectionView.doubleClickHandler = { [weak self] indexPath in
             self?.openDetail(at: indexPath)
         }

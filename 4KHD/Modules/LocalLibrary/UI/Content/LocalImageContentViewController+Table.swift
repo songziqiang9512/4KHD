@@ -146,43 +146,13 @@ extension LocalImageContentViewController {
     }
 }
 
-final class LocalImageListTableView: NSTableView {
-    var contextMenuProvider: ((Int) -> NSMenu?)?
+final class LocalImageListTableView: WorkspaceTableView {
     var quickLookHandler: (() -> Bool)?
 
     override func accessibilityLabel() -> String? {
         "Local Image List"
     }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        window?.makeFirstResponder(self)
-        let row = row(at: convert(event.locationInWindow, from: nil))
-        return contextMenuProvider?(row)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        let handled = WorkspaceKeyboardHandler.keyDown(
-            event,
-            context: WorkspaceKeyboardContext(quickLook: quickLookHandler)
-        )
-        if handled {
-            return
-        }
-        super.keyDown(with: event)
-    }
-
-    override func viewWillStartLiveResize() {
-        workspaceWillStartLiveResize()
-        super.viewWillStartLiveResize()
-    }
-
-    override func viewDidEndLiveResize() {
-        workspaceDidEndLiveResize()
-        super.viewDidEndLiveResize()
-    }
 }
-
-extension LocalImageListTableView: WorkspaceLiveResizeScrollerHiding {}
 
 final class LocalImageListCellView: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("LocalImageListCellView")

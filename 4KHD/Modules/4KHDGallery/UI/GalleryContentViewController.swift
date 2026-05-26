@@ -94,6 +94,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacentFromTable(delta: delta) ?? false
         }
+        tableView.keyboardContext = WorkspaceKeyboardContext(stepSelection: tableView.arrowKeyHandler)
         tableView.target = self
         tableView.doubleAction = #selector(openSelectedTableItemInDetail)
     }
@@ -582,43 +583,10 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
     }
 }
 
-final class GalleryContentTableView: NSTableView {
-    var contextMenuProvider: ((Int) -> NSMenu?)?
+final class GalleryContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
-
-    override var acceptsFirstResponder: Bool { true }
 
     override func accessibilityLabel() -> String? {
         "4KHD Gallery List"
     }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        window?.makeFirstResponder(self)
-        let point = convert(event.locationInWindow, from: nil)
-        let row = row(at: point)
-        return contextMenuProvider?(row)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        let handled = WorkspaceKeyboardHandler.keyDown(
-            event,
-            context: WorkspaceKeyboardContext(stepSelection: arrowKeyHandler)
-        )
-        if handled {
-            return
-        }
-        super.keyDown(with: event)
-    }
-
-    override func viewWillStartLiveResize() {
-        workspaceWillStartLiveResize()
-        super.viewWillStartLiveResize()
-    }
-
-    override func viewDidEndLiveResize() {
-        workspaceDidEndLiveResize()
-        super.viewDidEndLiveResize()
-    }
 }
-
-extension GalleryContentTableView: WorkspaceLiveResizeScrollerHiding {}
