@@ -24,6 +24,8 @@ enum WorkspaceToolbarSnapshot {
         let searchText: String
         let layout: MissKonContentLayout
         let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
         let canIncreaseGridColumns: Bool
         let canDecreaseGridColumns: Bool
         let canSelectPreviousImage: Bool
@@ -190,11 +192,14 @@ final class WorkspaceToolbarContext {
                 guard let slot = missKonStore.selectedSlotID.flatMap({ id in slots.first { $0.id == id } }) else { return false }
                 return slot.knownURL != nil || missKonStore.detail.imageURL(for: slot) != nil
             }()
+            let currentItem = missKonStore.currentItem
             return .missKon(
                 .init(
                     searchText: missKonStore.searchText,
                     layout: missKonPreferences.layout,
                     isRefreshing: missKonStore.isRefreshingList,
+                    canFavorite: currentItem != nil,
+                    isFavorite: currentItem.map { missKonStore.isFavorite($0) } ?? false,
                     canIncreaseGridColumns: missKonPreferences.layout == .grid
                         && !detailPaneController.isPresented
                         && missKonPreferences.canIncreaseGridColumns,
@@ -205,7 +210,7 @@ final class WorkspaceToolbarContext {
                     canSelectNextImage: selectedIndex < slots.count - 1,
                     canSaveImage: haveImageURL,
                     canResetZoom: missKonStore.selectedSlotID != nil,
-                    canShare: missKonStore.currentItem != nil,
+                    canShare: currentItem != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
@@ -305,9 +310,16 @@ final class WorkspaceToolbarContext {
     }
 
     func toggleFavorite(for moduleID: WorkspaceModuleID) {
-        guard case .fourKHDGallery = moduleID,
-              let item = galleryStore.selectedItem else { return }
-        galleryStore.toggleFavorite(for: item)
+        switch moduleID {
+        case .fourKHDGallery:
+            guard let item = galleryStore.selectedItem else { return }
+            galleryStore.toggleFavorite(for: item)
+        case .missKon:
+            guard let item = missKonStore.currentItem else { return }
+            missKonStore.toggleFavorite(for: item)
+        case .localLibrary:
+            return
+        }
     }
 
     func stepImage(_ delta: Int, for moduleID: WorkspaceModuleID) {

@@ -3,12 +3,13 @@ import AppKit
 enum WorkspaceAppAssembly {
     @MainActor
     static func makeAppContext() -> WorkspaceAppContext {
-        let fourKHDGalleryStore = FourKHDGalleryStore()
+        let favoritesStore = FavoritesStore()
+        let fourKHDGalleryStore = FourKHDGalleryStore(favorites: favoritesStore)
         let galleryPreferences = GalleryContentPreferences()
         let galleryDetailInteraction = GalleryDetailInteractionController()
-        let missKonFeedStore = MissKonFeedStore()
+        let missKonFeedStore = MissKonFeedStore(favoritesStore: favoritesStore)
         let missKonDetailStore = MissKonDetailStore()
-        let missKonStore = MissKonGalleryStore(feed: missKonFeedStore, detail: missKonDetailStore)
+        let missKonStore = MissKonGalleryStore(feed: missKonFeedStore, detail: missKonDetailStore, favorites: favoritesStore)
         let missKonPreferences = MissKonContentPreferences()
         let missKonDetailInteraction = MissKonDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()

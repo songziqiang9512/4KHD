@@ -1,6 +1,6 @@
 import Foundation
 
-enum MissKonSection: String, CaseIterable, Identifiable {
+enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     case latest
     case top30
     case cosplay
@@ -54,7 +54,7 @@ enum MissKonSection: String, CaseIterable, Identifiable {
     var isNetworkBacked: Bool { siteURL != nil }
 }
 
-struct MissKonItem: Identifiable {
+struct MissKonItem: Identifiable, Codable {
     let id: String
     let section: MissKonSection
     let title: String

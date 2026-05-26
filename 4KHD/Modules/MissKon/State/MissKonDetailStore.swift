@@ -27,8 +27,8 @@ final class MissKonDetailStore {
         return resolvedPages[slot.pageURL]?.imageURLs.element(at: slot.pageImageIndex)
     }
 
-    func resolve(item: MissKonItem) {
-        guard item.id != currentItem?.id else { return }
+    func resolve(item: MissKonItem, force: Bool = false) {
+        guard force || item.id != currentItem?.id else { return }
         cancelResolveTask()
         resolvedPages = [:]
         failedPageURLs = []
@@ -122,6 +122,11 @@ final class MissKonDetailStore {
                 selectedSlotID = allSlots.first?.id
             }
         }
+    }
+
+    func retry() {
+        guard let item = currentItem else { return }
+        resolve(item: item, force: true)
     }
 
     func selectSlot(id: MissKonImageSlot.ID) {

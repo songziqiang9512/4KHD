@@ -17,9 +17,13 @@ final class MissKonListRowView: NSTableCellView {
 
     required init?(coder: NSCoder) { nil }
 
-    func configure(item: MissKonItem) {
+    func configure(item: MissKonItem, searchQuery: String? = nil) {
         coverView.setImage(url: item.coverURL, maxPixelSize: 180)
-        titleLabel.stringValue = item.title
+        if let query = searchQuery, !query.isEmpty {
+            titleLabel.attributedStringValue = highlightedAttributedString(item.title, query: query)
+        } else {
+            titleLabel.stringValue = item.title
+        }
         subtitleLabel.stringValue = "\(item.imageCount) 张图片"
     }
 
@@ -206,9 +210,9 @@ final class MissKonGridItemView: NSCollectionViewItem {
         cardView.resetForReuse()
     }
 
-    func configure(item: MissKonItem, isSelected: Bool, onAspectRatio: @escaping (CGFloat) -> Void) {
+    func configure(item: MissKonItem, isSelected: Bool, searchQuery: String? = nil, onAspectRatio: @escaping (CGFloat) -> Void) {
         representedID = item.id
-        cardView.setText(title: item.title, metadata: "\(item.imageCount) 张图片")
+        cardView.setText(title: item.title, metadata: "\(item.imageCount) 张图片", highlightQuery: searchQuery)
         cardView.applySelectionState(isSelected)
         loadCover(for: item, onAspectRatio: onAspectRatio)
     }

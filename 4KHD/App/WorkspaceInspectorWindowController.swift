@@ -131,8 +131,14 @@ private final class WorkspaceInspectorViewController: NSViewController {
             }
             apply(item: item)
         case .missKon:
-            applyEmptyState(module: "MissKon")
-            return
+            metadataTask?.cancel()
+            observedImageID = nil
+            currentMetadata = nil
+            guard let item = appContext.missKonStore.currentItem else {
+                applyEmptyState(module: "MissKon")
+                return
+            }
+            applyMissKon(item: item)
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 observedImageID = nil
@@ -277,6 +283,25 @@ private final class WorkspaceInspectorViewController: NSViewController {
         pathValue.stringValue = item.detailURL.absoluteString
     }
 
+    private func applyMissKon(item: MissKonItem) {
+        titleLabel.stringValue = item.title
+        moduleLabel.stringValue = "MissKon"
+        primaryLabel.stringValue = "Tags"
+        resolutionValue.stringValue = item.tags.isEmpty ? "-" : item.tags.joined(separator: ", ")
+        secondaryLabel.stringValue = "Images"
+        fileSizeValue.stringValue = "\(item.imageCount)"
+        formatLabel.stringValue = "Pages"
+        formatValue.stringValue = "\(item.pageCount)"
+        tertiaryLabel.stringValue = "Section"
+        modifiedValue.stringValue = item.section.title
+        quaternaryLabel.stringValue = "Favorite"
+        availabilityIconView.isHidden = true
+        availabilityTextField.stringValue = appContext.missKonStore.isFavorite(item) ? "Yes" : "No"
+        availabilityTextField.textColor = .secondaryLabelColor
+        pathLabel.stringValue = "URL"
+        pathValue.stringValue = item.detailURL.absoluteString
+    }
+
     private func resetAvailability() {
         availabilityIconView.image = nil
         availabilityIconView.isHidden = true
@@ -311,6 +336,10 @@ private final class WorkspaceInspectorViewController: NSViewController {
             _ = appContext.galleryStore.selectedItem?.title
             _ = appContext.galleryStore.section
             _ = appContext.galleryStore.favorites.favorites
+            _ = appContext.missKonStore.selectedItemID
+            _ = appContext.missKonStore.currentItem?.title
+            _ = appContext.missKonStore.section
+            _ = appContext.missKonStore.favorites.favorites
             _ = appContext.localLibraryStore.roots
             _ = appContext.localLibraryStore.selectedFolderID
             _ = appContext.localLibraryStore.selectedImageIndex

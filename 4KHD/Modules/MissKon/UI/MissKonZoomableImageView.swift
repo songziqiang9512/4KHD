@@ -7,6 +7,8 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
 
     private let placeholderContainer = NSView()
     private let placeholderLabel = NSTextField(labelWithString: "解析中")
+    private let retryButton = NSButton(title: "重试", target: nil, action: nil)
+    private var retryAction: (() -> Void)?
     private var imageTask: ImageTask?
     private var loadedURL: URL?
 
@@ -23,6 +25,7 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
         if !shouldKeepCurrent {
             imageView.image = nil
             placeholderLabel.stringValue = "加载中"
+            retryButton.isHidden = true
             placeholderContainer.isHidden = false
         }
         guard let url else { return }
@@ -39,6 +42,7 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
                 guard let image else {
                     if !shouldKeepCurrent || self.imageView.image == nil {
                         self.placeholderLabel.stringValue = "图片加载失败"
+                        self.retryButton.isHidden = true
                         self.placeholderContainer.isHidden = false
                     }
                     return
@@ -51,22 +55,48 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
         }
     }
 
+    func showFailure(retry: @escaping () -> Void) {
+        retryAction = retry
+        imageTask?.cancel()
+        imageView.image = nil
+        placeholderLabel.stringValue = "解析失败"
+        retryButton.isHidden = false
+        placeholderContainer.isHidden = false
+    }
+
+    @objc private func retry() {
+        placeholderLabel.stringValue = "重试中"
+        retryButton.isHidden = true
+        retryAction?()
+    }
+
     private func setupPlaceholder() {
         placeholderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         placeholderLabel.textColor = .secondaryLabelColor
         placeholderLabel.alignment = .center
 
-        placeholderContainer.addSubview(placeholderLabel)
+        retryButton.bezelStyle = .rounded
+        retryButton.font = .systemFont(ofSize: 14)
+        retryButton.target = self
+        retryButton.action = #selector(retry)
+        retryButton.isHidden = true
+
+        let stack = NSStackView(views: [placeholderLabel, retryButton])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        placeholderContainer.addSubview(stack)
         addSubview(placeholderContainer)
         placeholderContainer.translatesAutoresizingMaskIntoConstraints = false
-        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             placeholderContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             placeholderContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             placeholderContainer.topAnchor.constraint(equalTo: topAnchor),
             placeholderContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
-            placeholderLabel.centerXAnchor.constraint(equalTo: placeholderContainer.centerXAnchor),
-            placeholderLabel.centerYAnchor.constraint(equalTo: placeholderContainer.centerYAnchor)
+            stack.centerXAnchor.constraint(equalTo: placeholderContainer.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: placeholderContainer.centerYAnchor)
         ])
         placeholderLabel.stringValue = "解析中"
     }

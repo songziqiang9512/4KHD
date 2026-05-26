@@ -16,6 +16,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var items: [MissKonItem] = []
     private var selectedItemID: MissKonItem.ID?
     private var previousSelectedItemID: MissKonItem.ID?
+    private var searchQuery: String?
     private var showsFooter = false
     private var isRefreshing = false
     private var errorMessage: String?
@@ -54,6 +55,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     func update(
         items: [MissKonItem],
         selectedItemID: MissKonItem.ID?,
+        searchQuery: String?,
         minimumColumnCount: Int?,
         maximumColumnCount: Int?,
         preferredCardMinimumWidth: CGFloat,
@@ -67,6 +69,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.items = items
         self.previousSelectedItemID = self.selectedItemID
         self.selectedItemID = selectedItemID
+        self.searchQuery = searchQuery
         self.minimumColumnCount = minimumColumnCount
         self.maximumColumnCount = maximumColumnCount
         self.preferredCardMinimumWidth = preferredCardMinimumWidth
@@ -104,7 +107,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         }
         let item = collectionView.makeItem(withIdentifier: MissKonGridItemView.reuseID, for: indexPath) as? MissKonGridItemView ?? MissKonGridItemView()
         let galleryItem = items[indexPath.item]
-        item.configure(item: galleryItem, isSelected: galleryItem.id == selectedItemID) { [weak self] ratio in
+        item.configure(item: galleryItem, isSelected: galleryItem.id == selectedItemID, searchQuery: searchQuery) { [weak self] ratio in
             self?.updateAspectRatio(ratio, for: galleryItem.id)
         }
         return item

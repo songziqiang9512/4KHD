@@ -9,8 +9,7 @@ final class FourKHDGalleryStore {
     let detail: GalleryDetailStore
     let favorites: FavoritesStore
 
-    init() {
-        let favorites = FavoritesStore()
+    init(favorites: FavoritesStore) {
         let feed = GalleryFeedStore(favoritesStore: favorites)
         let detail = GalleryDetailStore()
         self.favorites = favorites

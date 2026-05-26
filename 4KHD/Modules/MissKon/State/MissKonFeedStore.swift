@@ -24,9 +24,59 @@ final class MissKonFeedStore {
     private var cachedItems: [MissKonSection: [MissKonItem]] = [:]
     private var cachedNextPageURLs: [MissKonSection: URL] = [:]
 
+    private let favoritesStore: FavoritesStore
+
+    private static var cacheDirectory: URL? {
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let dir = appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private static var cacheFileURL: URL? {
+        cacheDirectory?.appendingPathComponent("feed-cache.json")
+    }
+
+    init(favoritesStore: FavoritesStore) {
+        self.favoritesStore = favoritesStore
+        loadCache()
+    }
+
+    // MARK: - Cache Persistence
+
+    private func saveCache() {
+        guard let fileURL = Self.cacheFileURL else { return }
+        let snapshot = CacheSnapshot(
+            items: cachedItems.mapKeys { $0.rawValue },
+            nextPageURLs: cachedNextPageURLs.mapKeys { $0.rawValue }.mapValues { $0.absoluteString }
+        )
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        try? data.write(to: fileURL, options: .atomicWrite)
+    }
+
+    private func loadCache() {
+        guard let fileURL = Self.cacheFileURL,
+              let data = try? Data(contentsOf: fileURL),
+              let snapshot = try? JSONDecoder().decode(CacheSnapshot.self, from: data) else { return }
+        for (key, items) in snapshot.items {
+            guard let section = MissKonSection(rawValue: key) else { continue }
+            cachedItems[section] = items
+        }
+        for (key, urlString) in snapshot.nextPageURLs {
+            guard let section = MissKonSection(rawValue: key),
+                  let url = URL(string: urlString) else { continue }
+            cachedNextPageURLs[section] = url
+        }
+    }
+
+    private func saveCacheIfNeeded() {
+        saveCache()
+    }
+
     // MARK: - Network
 
     func refreshFromNetwork() {
+        guard section.isNetworkBacked else { return }
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -46,6 +96,7 @@ final class MissKonFeedStore {
                 self.cachedNextPageURLs[self.section] = page.nextPageURL
                 self.canLoadMoreList = page.nextPageURL != nil
                 self.feedErrorMessage = nil
+                self.saveCacheIfNeeded()
             } catch {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription
@@ -79,6 +130,7 @@ final class MissKonFeedStore {
                 self.cachedNextPageURLs[self.section] = page.nextPageURL
                 self.canLoadMoreList = page.nextPageURL != nil
                 self.feedErrorMessage = nil
+                self.saveCacheIfNeeded()
             } catch {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription
@@ -164,7 +216,19 @@ final class MissKonFeedStore {
         restoreSectionCache()
     }
 
-    private func restoreSectionCache() {
+    func restoreSectionCache() {
+        if section == .favorites {
+            let items = MissKonFavoritesBridge.missKonItems(from: favoritesStore.favorites)
+            allItems = items
+            visibleItems = items
+            nextPageURL = nil
+            canLoadMoreList = false
+            feedErrorMessage = nil
+            if selectedItemID == nil || !items.contains(where: { $0.id == selectedItemID }) {
+                selectedItemID = items.first?.id
+            }
+            return
+        }
         if let cached = cachedItems[self.section], !cached.isEmpty {
             allItems = cached
             visibleItems = cached
@@ -182,5 +246,22 @@ final class MissKonFeedStore {
             canLoadMoreList = false
             refreshFromNetwork()
         }
+    }
+}
+
+// MARK: - Cache Snapshot
+
+private struct CacheSnapshot: Codable {
+    let items: [String: [MissKonItem]]
+    let nextPageURLs: [String: String]
+}
+
+extension Dictionary {
+    func mapKeys<T: Hashable>(_ transform: (Key) -> T) -> [T: Value] {
+        var result: [T: Value] = [:]
+        for (key, value) in self {
+            result[transform(key)] = value
+        }
+        return result
     }
 }

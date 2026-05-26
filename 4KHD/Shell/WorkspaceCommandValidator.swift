@@ -145,10 +145,14 @@ final class WorkspaceCommandValidator {
     }
 
     private func canFavoriteCurrentItem(_ moduleID: WorkspaceModuleID) -> Bool {
-        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else {
+        switch appContext.toolbarContext.snapshot(for: moduleID) {
+        case .gallery(let snapshot):
+            return snapshot.canFavorite
+        case .missKon(let snapshot):
+            return snapshot.canFavorite
+        case .local:
             return false
         }
-        return snapshot.canFavorite
     }
 
     private func canStepImage(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {
@@ -179,13 +183,19 @@ final class WorkspaceCommandValidator {
         moduleID: WorkspaceModuleID
     ) {
         guard let menuItem = item as? NSMenuItem else { return }
-        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else {
+        let isFavorite: Bool
+        switch appContext.toolbarContext.snapshot(for: moduleID) {
+        case .gallery(let snapshot):
+            isFavorite = snapshot.isFavorite
+        case .missKon(let snapshot):
+            isFavorite = snapshot.isFavorite
+        case .local:
             menuItem.title = "Favorite"
             menuItem.state = .off
             return
         }
-        menuItem.title = snapshot.isFavorite ? "Unfavorite" : "Favorite"
-        menuItem.state = snapshot.isFavorite ? .on : .off
+        menuItem.title = isFavorite ? "Unfavorite" : "Favorite"
+        menuItem.state = isFavorite ? .on : .off
     }
 
     private func updateLayoutValidationItem(

@@ -44,9 +44,12 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     @available(*, unavailable) required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let root = NSView()
+        let root = WorkspaceDetailRootView()
         root.wantsLayer = true
         root.layer?.backgroundColor = NSColor.clear.cgColor
+        root.keyHandler = { [weak self] event in
+            self?.handleKeyDown(event) ?? false
+        }
         view = root
         setupView()
     }
@@ -202,7 +205,14 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
 
         let slots = library.imageSlots
         guard !slots.isEmpty else {
-            imageView.isHidden = true
+            if !library.isResolving, library.errorMessage != nil {
+                imageView.isHidden = false
+                imageView.showFailure { [weak self] in
+                    self?.library.detail.retry()
+                }
+            } else {
+                imageView.isHidden = true
+            }
             emptyLabel.isHidden = false
             previousButton.isHidden = true
             nextButton.isHidden = true

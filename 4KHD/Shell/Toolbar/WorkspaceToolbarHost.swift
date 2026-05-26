@@ -117,7 +117,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         if currentModuleID == .missKon {
             identifiers.append(ItemID.localGridColumns)
         }
-        if currentModuleID == .fourKHDGallery {
+        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon {
             identifiers.append(ItemID.favorite)
         }
         identifiers += [
@@ -510,6 +510,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = snapshot.searchText
             _ = snapshot.layout
             _ = snapshot.isRefreshing
+            _ = snapshot.canFavorite
+            _ = snapshot.isFavorite
             _ = snapshot.canIncreaseGridColumns
             _ = snapshot.canDecreaseGridColumns
             _ = snapshot.canSelectPreviousImage
@@ -601,14 +603,24 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func updateFavoriteItem() {
         guard let favoriteItem else { return }
-        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
+        let canFavorite: Bool
+        let isFavorite: Bool
+        switch snapshot {
+        case .gallery(let s):
+            canFavorite = s.canFavorite
+            isFavorite = s.isFavorite
+        case .missKon(let s):
+            canFavorite = s.canFavorite
+            isFavorite = s.isFavorite
+        case .local:
             favoriteItem.isEnabled = false
             favoriteItem.image = NSImage(systemSymbolName: "heart", accessibilityDescription: "收藏")
             favoriteItem.toolTip = "收藏"
             return
         }
-        favoriteItem.isEnabled = snapshot.canFavorite
-        if snapshot.isFavorite {
+        favoriteItem.isEnabled = canFavorite
+        if isFavorite {
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
             favoriteItem.image = NSImage(
                 systemSymbolName: "heart.fill", accessibilityDescription: "取消收藏"
@@ -618,7 +630,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
                 systemSymbolName: "heart", accessibilityDescription: "收藏"
             )
         }
-        favoriteItem.toolTip = snapshot.isFavorite ? "取消收藏" : "收藏"
+        favoriteItem.toolTip = isFavorite ? "取消收藏" : "收藏"
     }
 
     private func updateResetZoomItem() {
@@ -692,10 +704,14 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     private var canFavoriteCurrentModule: Bool {
-        guard case .gallery(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            return snapshot.canFavorite
+        case .missKon(let snapshot):
+            return snapshot.canFavorite
+        case .local:
             return false
         }
-        return snapshot.canFavorite
     }
 
     private var canResetCurrentZoom: Bool {
@@ -817,6 +833,17 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             openItem.target = self
             openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
             menu.addItem(openItem)
+
+            let saveItem = NSMenuItem(title: "保存图片...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+            saveItem.target = self
+            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
+            saveItem.isEnabled = canSaveCurrentImage
+            menu.addItem(saveItem)
+
+            let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
+            infoItem.target = self
+            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
+            menu.addItem(infoItem)
         case .localLibrary:
             let saveItem = NSMenuItem(title: "保存副本...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self

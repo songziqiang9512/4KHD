@@ -98,6 +98,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             gridView.update(
                 items: library.visibleItems,
                 selectedItemID: library.selectedItemID,
+                searchQuery: library.activeSearchQuery,
                 minimumColumnCount: Self.minimumGridColumnCount,
                 maximumColumnCount: preferences.gridColumnCount,
                 preferredCardMinimumWidth: 136,
@@ -185,7 +186,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             library.loadMoreListIfNeeded()
         }
         let cell = tableView.makeView(withIdentifier: MissKonListRowView.reuseID, owner: self) as? MissKonListRowView ?? MissKonListRowView()
-        cell.configure(item: library.visibleItems[row])
+        cell.configure(item: library.visibleItems[row], searchQuery: library.activeSearchQuery)
         return cell
     }
 

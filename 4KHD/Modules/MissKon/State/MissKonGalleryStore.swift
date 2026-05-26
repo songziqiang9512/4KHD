@@ -6,10 +6,12 @@ import Observation
 final class MissKonGalleryStore {
     let feed: MissKonFeedStore
     let detail: MissKonDetailStore
+    let favorites: FavoritesStore
 
-    init(feed: MissKonFeedStore, detail: MissKonDetailStore) {
+    init(feed: MissKonFeedStore, detail: MissKonDetailStore, favorites: FavoritesStore) {
         self.feed = feed
         self.detail = detail
+        self.favorites = favorites
     }
 
     var section: MissKonSection {
@@ -47,4 +49,17 @@ final class MissKonGalleryStore {
     func loadMoreListIfNeeded() { feed.loadMoreListIfNeeded() }
     func submitSearch(_ query: String) { feed.submitSearch(query) }
     func clearSearch() { feed.clearSearch() }
+
+    // MARK: - Favorites
+
+    func isFavorite(_ item: MissKonItem) -> Bool {
+        favorites.contains(detailURL: item.detailURL)
+    }
+
+    func toggleFavorite(for item: MissKonItem) {
+        favorites.toggle(MissKonFavoritesBridge.record(from: item))
+        if feed.section == .favorites {
+            feed.restoreSectionCache()
+        }
+    }
 }
