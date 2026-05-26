@@ -41,6 +41,16 @@ final class WallhavenFeedStore {
     private let preferences: WallhavenContentPreferences
     private let favoritesStore: FavoritesStore
 
+    /// Cache for resolved wallpaper details so favorites/collections don't re-fetch /w/{id} every time.
+    private var detailCache: [String: Wallpaper] = [:]
+
+    private static var detailCacheFileURL: URL? {
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let d = dir.appendingPathComponent("4KHD/Wallhaven", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d.appendingPathComponent("detail-cache.json")
+    }
+
     var isBrowsingUploader = false
     var uploaderUsername: String?
     private var uploaderPage = 1
@@ -63,6 +73,7 @@ final class WallhavenFeedStore {
         self.sorting = preferences.preferredSorting
         self.resolution = preferences.preferredResolution
         self.ratio = preferences.preferredRatio
+        loadDetailCache()
     }
 
     /// The effective purity for API requests, from AccountStore.
@@ -523,6 +534,16 @@ final class WallhavenFeedStore {
 
     func resolveDetail(for wallpaper: Wallpaper) {
         if resolvedWallpaper?.id == wallpaper.id { return } // Already resolved.
+
+        // Check cache first.
+        if let cached = detailCache[wallpaper.id] {
+            resolvedWallpaper = cached
+            if let idx = wallpapers.firstIndex(where: { $0.id == wallpaper.id }) {
+                wallpapers[idx] = cached
+            }
+            return
+        }
+
         if resolveTask != nil {
             resolveTask?.cancel()
             resolveTask = nil
@@ -539,6 +560,8 @@ final class WallhavenFeedStore {
                 if let idx = self.wallpapers.firstIndex(where: { $0.id == wallpaper.id }) {
                     self.wallpapers[idx] = full
                 }
+                self.detailCache[full.id] = full
+                self.saveDetailCache()
             } catch {
                 // Keep the list-item data; resolvedWallpaper stays as the original.
             }
@@ -552,6 +575,21 @@ final class WallhavenFeedStore {
         resolveTask = nil
         resolvedWallpaper = nil
         isResolvingDetail = false
+    }
+
+    // MARK: - Detail cache
+
+    private func loadDetailCache() {
+        guard let url = Self.detailCacheFileURL,
+              let data = try? Data(contentsOf: url),
+              let cached = try? JSONDecoder().decode([String: Wallpaper].self, from: data) else { return }
+        detailCache = cached
+    }
+
+    private func saveDetailCache() {
+        guard let url = Self.detailCacheFileURL,
+              let data = try? JSONEncoder().encode(detailCache) else { return }
+        try? data.write(to: url, options: .atomicWrite)
     }
 
     // MARK: - Private
