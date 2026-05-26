@@ -105,6 +105,11 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
                 return "\(folder.title) - 本地"
             }
             return "本地 - 4KHD"
+        case .missKon:
+            guard let section = MissKonSection(rawValue: route.itemID) else {
+                return "MissKon"
+            }
+            return "\(section.title) - MissKon"
         }
     }
 }

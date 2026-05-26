@@ -6,6 +6,11 @@ enum WorkspaceAppAssembly {
         let fourKHDGalleryStore = FourKHDGalleryStore()
         let galleryPreferences = GalleryContentPreferences()
         let galleryDetailInteraction = GalleryDetailInteractionController()
+        let missKonFeedStore = MissKonFeedStore()
+        let missKonDetailStore = MissKonDetailStore()
+        let missKonStore = MissKonGalleryStore(feed: missKonFeedStore, detail: missKonDetailStore)
+        let missKonPreferences = MissKonContentPreferences()
+        let missKonDetailInteraction = MissKonDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
         let localPreferences = LocalLibraryContentPreferences()
         let localDetailInteraction = LocalDetailInteractionController()
@@ -19,6 +24,9 @@ enum WorkspaceAppAssembly {
             fourKHDGalleryStore: fourKHDGalleryStore,
             galleryPreferences: galleryPreferences,
             galleryDetailInteraction: galleryDetailInteraction,
+            missKonStore: missKonStore,
+            missKonPreferences: missKonPreferences,
+            missKonDetailInteraction: missKonDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -29,6 +37,7 @@ enum WorkspaceAppAssembly {
             galleryStore: fourKHDGalleryStore,
             galleryPreferences: galleryPreferences,
             galleryDetailInteraction: galleryDetailInteraction,
+            missKonStore: missKonStore,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -47,6 +56,7 @@ enum WorkspaceAppAssembly {
             routeController: routeController,
             detailPaneController: detailPaneController,
             galleryStore: fourKHDGalleryStore,
+            missKonStore: missKonStore,
             localLibraryStore: localLibraryStore,
             toolbarContext: toolbarContext,
             importRootFolderAction: importRootFolderAction
@@ -58,6 +68,9 @@ enum WorkspaceAppAssembly {
         fourKHDGalleryStore: FourKHDGalleryStore,
         galleryPreferences: GalleryContentPreferences,
         galleryDetailInteraction: GalleryDetailInteractionController,
+        missKonStore: MissKonGalleryStore,
+        missKonPreferences: MissKonContentPreferences,
+        missKonDetailInteraction: MissKonDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -144,6 +157,44 @@ enum WorkspaceAppAssembly {
                     },
                     bootstrap: {
                         fourKHDGalleryStore.refreshFromNetwork()
+                    }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .missKon,
+                    displayName: "MissKon",
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .missKon, itemID: MissKonSection.latest.rawValue)
+                    },
+                    makeContentController: { context in
+                        MissKonContentViewController(
+                            library: missKonStore,
+                            preferences: missKonPreferences,
+                            detailPane: context.detailPaneController
+                        )
+                    },
+                    makeDetailController: { context in
+                        MissKonImageDetailViewController(
+                            library: missKonStore,
+                            immersive: context.immersive,
+                            detailPane: context.detailPaneController,
+                            detailInteraction: missKonDetailInteraction,
+                            filmstripVisibility: filmstripVisibility
+                        )
+                    },
+                    normalizeRoute: { route in
+                        guard let section = MissKonSection(rawValue: route.itemID) else {
+                            return WorkspaceRoute(moduleID: .missKon, itemID: MissKonSection.latest.rawValue)
+                        }
+                        return WorkspaceRoute(moduleID: .missKon, itemID: section.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let section = MissKonSection(rawValue: route.itemID) else { return }
+                        if missKonStore.section != section {
+                            missKonStore.section = section
+                        }
+                    },
+                    bootstrap: {
+                        missKonStore.refreshFromNetwork()
                     }
                 )
             ]

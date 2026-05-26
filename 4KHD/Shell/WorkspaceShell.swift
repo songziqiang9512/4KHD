@@ -437,6 +437,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             appContext.toolbarContext.setGalleryLayout(isList ? .list : .grid)
         case .localLibrary:
             appContext.toolbarContext.setLocalLayout(isList ? .list : .grid)
+        case .missKon:
+            break
         }
         refreshToolbarState()
     }

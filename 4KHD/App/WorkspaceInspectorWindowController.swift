@@ -130,6 +130,9 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             apply(item: item)
+        case .missKon:
+            applyEmptyState(module: "MissKon")
+            return
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 observedImageID = nil

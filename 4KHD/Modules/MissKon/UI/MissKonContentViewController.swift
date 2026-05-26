@@ -1,0 +1,233 @@
+import AppKit
+import Observation
+
+@MainActor
+final class MissKonContentViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, WorkspaceFocusable {
+    let library: MissKonGalleryStore
+    private let preferences: MissKonContentPreferences
+    private let detailPane: WorkspaceDetailPaneController
+    private let tableView = MissKonContentTableView()
+    private let tableScrollView = NSScrollView()
+    private let gridView = MissKonGridContainerView()
+    private var activeView: NSView?
+    private var isObserving = false
+    private var isApplyingSelection = false
+    private let reloadQueue = WorkspaceCoalescingQueue(name: "MissKonContent Reload", interval: 0.05, maxInterval: 0.12)
+
+    init(library: MissKonGalleryStore, preferences: MissKonContentPreferences, detailPane: WorkspaceDetailPaneController) {
+        self.library = library
+        self.preferences = preferences
+        self.detailPane = detailPane
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { nil }
+
+    override func loadView() {
+        view = NSView()
+        setupTable()
+        setupGrid()
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        reloadContent()
+        observeState()
+    }
+
+    func focus() {
+        switch preferences.layout {
+        case .list: tableView.window?.makeFirstResponderUnlessDescendantIsFirstResponder(tableView)
+        case .grid: gridView.focus()
+        }
+    }
+
+    private func setupTable() {
+        tableScrollView.drawsBackground = false
+        tableScrollView.borderType = .noBorder
+        tableScrollView.automaticallyAdjustsContentInsets = true
+        tableScrollView.hasVerticalScroller = true
+        tableScrollView.contentView.drawsBackground = false
+        tableScrollView.documentView = tableView
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("MissKonItem"))
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.rowHeight = 96
+        tableView.intercellSpacing = NSSize(width: 0, height: 3)
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.backgroundColor = .controlBackgroundColor
+        tableView.style = .plain
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+        tableView.contextMenuProvider = { [weak self] row in self?.makeContextMenu(forRow: row) }
+        tableView.arrowKeyHandler = { [weak self] delta in self?.selectAdjacentFromTable(delta: delta) ?? false }
+        tableView.target = self
+        tableView.doubleAction = #selector(openSelectedTableItemInDetail)
+    }
+
+    private func setupGrid() {
+        gridView.onSelect = { [weak self] item in self?.library.select(item) }
+        gridView.onOpenDetail = { [weak self] in self?.detailPane.setPresented(true) }
+        gridView.onNeedsMore = { [weak self] in self?.library.loadMoreListIfNeeded() }
+        gridView.contextMenuProvider = { [weak self] item in self?.makeContextMenu(for: item) }
+    }
+
+    private var shouldShowFooter: Bool {
+        library.feedErrorMessage != nil || library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty
+    }
+
+    private func reloadContent() {
+        switch preferences.layout {
+        case .list:
+            setActiveView(tableScrollView)
+            tableView.reloadData()
+            syncTableSelection()
+        case .grid:
+            setActiveView(gridView)
+            gridView.update(
+                items: library.visibleItems,
+                selectedItemID: library.selectedItemID,
+                minimumColumnCount: nil,
+                maximumColumnCount: nil,
+                preferredCardMinimumWidth: 136,
+                showsFooter: shouldShowFooter,
+                isRefreshing: library.isRefreshingList,
+                errorMessage: library.feedErrorMessage,
+                canLoadMore: library.canLoadMoreList
+            )
+        }
+    }
+
+    private func setActiveView(_ nextView: NSView) {
+        animateViewTransition(to: nextView, activeView: &activeView)
+    }
+
+    private func observeState() {
+        guard !isObserving else { return }
+        isObserving = true
+        withObservationTracking {
+            _ = library.section
+            _ = library.selectedItemID
+            _ = library.visibleItems
+            _ = library.allItems
+            _ = library.canLoadMoreList
+            _ = library.isRefreshingList
+            _ = library.feedErrorMessage
+            _ = library.activeSearchQuery
+            _ = preferences.layout
+            _ = detailPane.isPresented
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isObserving = false
+                self.reloadQueue.add(id: "reload") { [weak self] in self?.reloadContent() }
+                self.observeState()
+            }
+        }
+    }
+
+    private func syncTableSelection() {
+        guard let selectedID = library.selectedItemID,
+              let row = library.visibleItems.firstIndex(where: { $0.id == selectedID }) else {
+            tableView.deselectAll(nil); return
+        }
+        guard tableView.selectedRow != row else { return }
+        isApplyingSelection = true
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        tableView.scrollRowToVisible(row)
+        isApplyingSelection = false
+    }
+
+    private func selectAdjacentFromTable(delta: Int) -> Bool {
+        guard !library.visibleItems.isEmpty else { return false }
+        let current = library.selectedItemID.flatMap { id in library.visibleItems.firstIndex { $0.id == id } } ?? 0
+        let next = min(max(current + delta, 0), library.visibleItems.count - 1)
+        guard next != current, library.visibleItems.indices.contains(next) else { return true }
+        library.select(library.visibleItems[next])
+        return true
+    }
+
+    // MARK: - NSTableViewDataSource
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        library.visibleItems.count + (shouldShowFooter ? 1 : 0)
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if row >= library.visibleItems.count {
+            let footer = tableView.makeView(withIdentifier: MissKonFooterRowView.reuseID, owner: self) as? MissKonFooterRowView ?? MissKonFooterRowView()
+            footer.configure(isRefreshing: library.isRefreshingList, errorMessage: library.feedErrorMessage, canLoadMore: library.canLoadMoreList, hasItems: !library.visibleItems.isEmpty)
+            return footer
+        }
+        let cell = tableView.makeView(withIdentifier: MissKonListRowView.reuseID, owner: self) as? MissKonListRowView ?? MissKonListRowView()
+        cell.configure(item: library.visibleItems[row])
+        return cell
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        library.visibleItems.indices.contains(row)
+    }
+
+    @objc private func openSelectedTableItemInDetail() {
+        let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
+        guard library.visibleItems.indices.contains(row) else { return }
+        library.select(library.visibleItems[row])
+        detailPane.setPresented(true)
+    }
+
+    // MARK: - Context Menu
+
+    func makeContextMenu(forRow row: Int) -> NSMenu? {
+        guard library.visibleItems.indices.contains(row) else { return nil }
+        if tableView.selectedRow != row {
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            library.select(library.visibleItems[row])
+        }
+        return makeContextMenu(for: library.visibleItems[row])
+    }
+
+    func makeContextMenu(for item: MissKonItem) -> NSMenu? {
+        let menu = NSMenu(title: "MissKonItemMenu")
+        menu.autoenablesItems = false
+
+        let openItem = NSMenuItem(title: "在浏览器中打开", action: #selector(openInBrowser(_:)), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        menu.addItem(.separator())
+
+        let copyItem = NSMenuItem(title: "复制链接", action: #selector(copyDetailLink(_:)), keyEquivalent: "")
+        copyItem.target = self
+        menu.addItem(copyItem)
+
+        let shareItem = NSMenuItem(title: "分享...", action: #selector(shareItem(_:)), keyEquivalent: "")
+        shareItem.target = self
+        menu.addItem(shareItem)
+
+        return menu
+    }
+
+    @objc private func openInBrowser(_ sender: NSMenuItem) {
+        guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }) else { return }
+        NSWorkspace.shared.open(item.detailURL)
+    }
+
+    @objc private func copyDetailLink(_ sender: NSMenuItem) {
+        guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(item.detailURL.absoluteString, forType: .string)
+    }
+
+    @objc private func shareItem(_ sender: NSMenuItem) {
+        guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }),
+              let row = library.visibleItems.firstIndex(where: { $0.id == item.id }) else { return }
+        SharingPresenter.show(items: [item.detailURL as NSURL], relativeTo: tableView.rect(ofRow: row), of: tableView, preferredEdge: .maxX)
+    }
+}
+
+final class MissKonContentTableView: WorkspaceTableView {
+    var arrowKeyHandler: ((Int) -> Bool)?
+    override func accessibilityLabel() -> String? { "MissKon List" }
+}

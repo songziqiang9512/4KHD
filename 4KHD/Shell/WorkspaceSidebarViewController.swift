@@ -330,6 +330,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             systemName = "photo.on.rectangle.angled"
         case .localFolder:
             systemName = "folder"
+        case .missKon(let section):
+            systemName = section.sidebarSystemImage
         }
         let image = NSImage(systemSymbolName: systemName, accessibilityDescription: node.title)
         image?.isTemplate = true
@@ -355,6 +357,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
         case .localAllImages:
             selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
+        case .missKon(let section):
+            selectedRoute = WorkspaceRoute(moduleID: .missKon, itemID: section.rawValue)
         case .group:
             selectedRoute = nil
         }

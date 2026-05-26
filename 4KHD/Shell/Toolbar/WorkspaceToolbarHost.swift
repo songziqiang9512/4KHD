@@ -500,6 +500,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = localSnapshot.canResetZoom
             _ = localSnapshot.canShare
             _ = localSnapshot.isFilmstripPresented
+        case .missKon(let snapshot):
+            _ = snapshot.searchText
+            _ = snapshot.layout
+            _ = snapshot.isRefreshing
+            _ = snapshot.canSelectPreviousImage
+            _ = snapshot.canSelectNextImage
+            _ = snapshot.canSaveImage
+            _ = snapshot.canResetZoom
+            _ = snapshot.canShare
+            _ = snapshot.isFilmstripPresented
         }
     }
 
@@ -530,6 +540,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let localSnapshot):
             text = localSnapshot.searchText
             searchField.placeholderString = "搜索本地图片"
+        case .missKon(let snapshot):
+            text = snapshot.searchText
+            searchField.placeholderString = "搜索 MissKon"
         }
         if searchField.stringValue != text {
             searchField.stringValue = text
@@ -567,6 +580,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let localSnapshot):
             refreshItem.isEnabled = !localSnapshot.isRefreshing && localSnapshot.hasSelection
             refreshItem.toolTip = localSnapshot.hasSelection ? "刷新本地图片" : "先选择一个本地目录"
+        case .missKon(let snapshot):
+            refreshItem.isEnabled = !snapshot.isRefreshing
+            refreshItem.toolTip = snapshot.isRefreshing ? "正在刷新 MissKon" : "刷新 MissKon"
         }
     }
 
@@ -607,6 +623,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let snapshot):
             isPresented = snapshot.isFilmstripPresented
             filmstripItem.isEnabled = snapshot.hasSelection
+        case .missKon(let snapshot):
+            isPresented = snapshot.isFilmstripPresented
+            filmstripItem.isEnabled = snapshot.canSaveImage
         }
         filmstripItem.image = NSImage(
             systemSymbolName: isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle",
@@ -641,6 +660,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let localSnapshot):
             shareItem.isEnabled = localSnapshot.canShare
             shareItem.toolTip = localSnapshot.canShare ? "共享当前本地图片" : "先选择一张本地图片"
+        case .missKon(let snapshot):
+            shareItem.isEnabled = snapshot.canShare
+            shareItem.toolTip = snapshot.canShare ? "共享当前链接" : "先选择一个图集"
         }
     }
 
@@ -651,6 +673,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return !gallerySnapshot.isRefreshing
         case .local(let localSnapshot):
             return !localSnapshot.isRefreshing && localSnapshot.hasSelection
+        case .missKon(let snapshot):
+            return !snapshot.isRefreshing
         }
     }
 
@@ -667,6 +691,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return snapshot.canResetZoom
         case .local(let snapshot):
             return snapshot.canResetZoom
+        case .missKon(let snapshot):
+            return snapshot.canResetZoom
         }
     }
 
@@ -675,6 +701,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .gallery(let snapshot):
             return snapshot.canSaveImage
         case .local(let snapshot):
+            return snapshot.canSaveImage
+        case .missKon(let snapshot):
             return snapshot.canSaveImage
         }
     }
@@ -685,6 +713,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return snapshot.canResetZoom
         case .local(let snapshot):
             return snapshot.hasSelection
+        case .missKon(let snapshot):
+            return snapshot.canSaveImage
         }
     }
 
@@ -695,6 +725,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return gallerySnapshot.canShare
         case .local(let localSnapshot):
             return localSnapshot.canShare
+        case .missKon(let snapshot):
+            return snapshot.canShare
         }
     }
 
@@ -767,6 +799,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
+        case .missKon:
+            let openItem = NSMenuItem(title: "打开原网页", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
+            openItem.target = self
+            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
+            menu.addItem(openItem)
         case .localLibrary:
             let saveItem = NSMenuItem(title: "保存副本...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self

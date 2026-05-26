@@ -3,6 +3,7 @@ import Foundation
 enum WorkspaceModuleID: String, Hashable, Codable, Identifiable {
     case fourKHDGallery = "4khdGallery"
     case localLibrary
+    case missKon
 
     var id: String { rawValue }
 }

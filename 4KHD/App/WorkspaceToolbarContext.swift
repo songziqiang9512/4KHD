@@ -4,6 +4,7 @@ import Foundation
 enum WorkspaceToolbarSnapshot {
     case gallery(GallerySnapshot)
     case local(LocalSnapshot)
+    case missKon(MissKonSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -11,6 +12,18 @@ enum WorkspaceToolbarSnapshot {
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveImage: Bool
+        let canResetZoom: Bool
+        let canShare: Bool
+        let isFilmstripPresented: Bool
+    }
+
+    struct MissKonSnapshot {
+        let searchText: String
+        let layout: MissKonContentLayout
+        let isRefreshing: Bool
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
@@ -84,6 +97,7 @@ final class WorkspaceToolbarContext {
     private let galleryStore: FourKHDGalleryStore
     private let galleryPreferences: GalleryContentPreferences
     private let galleryDetailInteraction: GalleryDetailInteractionController
+    private let missKonStore: MissKonGalleryStore
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -95,6 +109,7 @@ final class WorkspaceToolbarContext {
         galleryStore: FourKHDGalleryStore,
         galleryPreferences: GalleryContentPreferences,
         galleryDetailInteraction: GalleryDetailInteractionController,
+        missKonStore: MissKonGalleryStore,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -105,6 +120,7 @@ final class WorkspaceToolbarContext {
         self.galleryStore = galleryStore
         self.galleryPreferences = galleryPreferences
         self.galleryDetailInteraction = galleryDetailInteraction
+        self.missKonStore = missKonStore
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -159,6 +175,22 @@ final class WorkspaceToolbarContext {
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
+        case .missKon:
+            let slots = missKonStore.imageSlots
+            let selectedIndex = missKonStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? -1
+            return .missKon(
+                .init(
+                    searchText: missKonStore.searchText,
+                    layout: .grid,
+                    isRefreshing: missKonStore.isRefreshingList,
+                    canSelectPreviousImage: selectedIndex > 0,
+                    canSelectNextImage: selectedIndex < slots.count - 1,
+                    canSaveImage: missKonStore.selectedSlotID != nil,
+                    canResetZoom: missKonStore.selectedSlotID != nil,
+                    canShare: missKonStore.currentItem != nil,
+                    isFilmstripPresented: filmstripVisibility.isPresented
+                )
+            )
         }
     }
 
@@ -172,6 +204,12 @@ final class WorkspaceToolbarContext {
             }
         case .localLibrary:
             localPreferences.searchText = text
+        case .missKon:
+            missKonStore.feed.searchText = text
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               missKonStore.activeSearchQuery != nil {
+                missKonStore.clearSearch()
+            }
         }
     }
 
@@ -181,6 +219,8 @@ final class WorkspaceToolbarContext {
             galleryStore.submitSearch()
         case .localLibrary:
             break
+        case .missKon:
+            missKonStore.submitSearch(missKonStore.searchText)
         }
     }
 
@@ -209,6 +249,8 @@ final class WorkspaceToolbarContext {
             galleryStore.refreshFromNetwork()
         case .localLibrary:
             localLibraryStore.refreshSelectedRoot()
+        case .missKon:
+            missKonStore.refreshFromNetwork()
         }
     }
 
@@ -222,6 +264,8 @@ final class WorkspaceToolbarContext {
             return galleryStore.selectedItem.map { [$0.detailURL] } ?? []
         case .localLibrary:
             return localLibraryStore.selectedImage.map { [$0.url as NSURL] } ?? []
+        case .missKon:
+            return missKonStore.currentItem.map { [$0.detailURL] } ?? []
         }
     }
 
@@ -231,6 +275,8 @@ final class WorkspaceToolbarContext {
             return galleryStore.selectedItem.map { .web($0.detailURL) }
         case .localLibrary:
             return localLibraryStore.selectedImage.map { .file($0.url) }
+        case .missKon:
+            return missKonStore.currentItem.map { .web($0.detailURL) }
         }
     }
 
@@ -246,6 +292,14 @@ final class WorkspaceToolbarContext {
             galleryStore.stepImage(delta)
         case .localLibrary:
             localLibraryStore.stepImage(delta)
+        case .missKon:
+            guard delta != 0 else { return }
+            let slots = missKonStore.imageSlots
+            guard !slots.isEmpty else { return }
+            let current = missKonStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
+            let next = min(max(current + delta, 0), slots.count - 1)
+            guard next != current else { return }
+            missKonStore.detail.selectSlot(at: next)
         }
     }
 
@@ -258,6 +312,8 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             guard let image = localLibraryStore.selectedImage else { return }
             localDetailInteraction.save(image: image)
+        case .missKon:
+            break
         }
     }
 
@@ -267,6 +323,8 @@ final class WorkspaceToolbarContext {
             galleryDetailInteraction.resetZoom()
         case .localLibrary:
             localDetailInteraction.resetZoom()
+        case .missKon:
+            break
         }
     }
 

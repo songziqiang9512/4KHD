@@ -95,6 +95,8 @@ final class WorkspaceCommandValidator {
             return !snapshot.isRefreshing
         case .local(let snapshot):
             return !snapshot.isRefreshing && snapshot.hasSelection
+        case .missKon(let snapshot):
+            return !snapshot.isRefreshing
         }
     }
 
@@ -103,6 +105,8 @@ final class WorkspaceCommandValidator {
         case .gallery(let snapshot):
             return snapshot.canShare
         case .local(let snapshot):
+            return snapshot.canShare
+        case .missKon(let snapshot):
             return snapshot.canShare
         }
     }
@@ -113,6 +117,8 @@ final class WorkspaceCommandValidator {
             return snapshot.canSaveImage
         case .local(let snapshot):
             return snapshot.canSaveImage
+        case .missKon(let snapshot):
+            return snapshot.canSaveImage
         }
     }
 
@@ -121,6 +127,8 @@ final class WorkspaceCommandValidator {
         case .gallery(let snapshot):
             return snapshot.canResetZoom
         case .local(let snapshot):
+            return snapshot.canResetZoom
+        case .missKon(let snapshot):
             return snapshot.canResetZoom
         }
     }
@@ -131,6 +139,8 @@ final class WorkspaceCommandValidator {
             return snapshot.canShare
         case .local(let snapshot):
             return snapshot.hasSelection
+        case .missKon(let snapshot):
+            return snapshot.canShare
         }
     }
 
@@ -146,6 +156,8 @@ final class WorkspaceCommandValidator {
         case .gallery(let snapshot):
             return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
         case .local(let snapshot):
+            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
+        case .missKon(let snapshot):
             return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
         }
     }
@@ -183,6 +195,8 @@ final class WorkspaceCommandValidator {
             selectedLayoutIsList = snapshot.layout == .list
         case .local(let snapshot):
             selectedLayoutIsList = snapshot.layout == .list
+        case .missKon:
+            selectedLayoutIsList = false
         }
         menuItem.state = selectedLayoutIsList == isList ? .on : .off
     }
