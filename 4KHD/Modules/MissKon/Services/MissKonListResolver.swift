@@ -142,7 +142,7 @@ enum MissKonListResolver {
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let pageCount = max(Int(ceil(Double(imageCount) / 10.0)), 1)
+        let pageCount = max(Int(ceil(Double(imageCount) / 12.0)), 1)
         let pageURLs = (1...pageCount).map { pageNumber -> URL in
             if pageNumber == 1 { return detailURL }
             return URL(string: "\(detailURL.absoluteString)\(pageNumber)/") ?? detailURL

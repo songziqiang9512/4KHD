@@ -29,47 +29,107 @@ enum MissKonDetailResolver {
         return html
     }
 
+    /// Extracts image URLs from the detail page HTML.
+    ///
+    /// misskon detail pages have this structure:
+    /// ```
+    /// <div class="entry">
+    ///     <div class="page-link"> ...top pagination... </div>
+    ///     <p> <img data-src="..." /> <br /> ... </p>
+    ///     <div class="page-link"> ...bottom pagination... </div>
+    /// </div><!-- .entry /-->
+    /// ```
+    ///
+    /// We need to extract from between the two page-link divs (or after the first
+    /// if only one exists, or from the entire entry if none exist).
     private static func extractImageURLs(from html: String) -> [URL] {
         let lower = html.lowercased()
+
+        // Find entry div start
         guard let entryStart = lower.range(of: "<div class=\"entry\">")?.upperBound
-                ?? lower.range(of: "<div class=\"entry ")?.upperBound
-                ?? lower.range(of: "class=\"entry\"")?.upperBound else {
+                ?? lower.range(of: "<div class=\"entry ")?.upperBound else {
             return []
         }
-        let entryHTML = String(html[entryStart...])
+        let afterEntryStart = html.index(entryStart, offsetBy: 0)
+        let entryTail = String(html[afterEntryStart...])
 
-        // Find end of entry content (before page-link, tags, or sharing divs)
-        let endMarkers = [
-            "<div class=\"page-link\"",
-            "<div class=\"post-tag\"",
-            "<div class=\"share-post\"",
-            "<div class=\"post-navigation\"",
-            "<div class=\"article-footer\""
-        ]
-        let end = endMarkers
-            .compactMap { entryHTML.lowercased().range(of: $0)?.lowerBound }
-            .min() ?? entryHTML.endIndex
-        let content = String(entryHTML[..<end])
+        // Find all page-link divs within the entry area
+        let pageLinkPattern = regex(#"<div\s+class=["']page-link["']"#)
+        let pageLinkMatches = pageLinkPattern.matches(
+            in: entryTail.lowercased(),
+            range: NSRange(entryTail.startIndex..<entryTail.endIndex, in: entryTail)
+        )
 
-        // Extract image URLs from data-src attributes (misskon uses lazy loading)
+        // Find entry end marker
+        let entryEndMarker = "</div><!-- .entry"
+        let entryEndRange = entryTail.lowercased().range(of: entryEndMarker)
+
+        // Determine the content range for image extraction
+        let contentStart: String.Index
+        let contentEnd: String.Index
+
+        if pageLinkMatches.count >= 2 {
+            // Standard case: images between top and bottom page-link divs
+            let topEnd = Range(pageLinkMatches[0].range, in: entryTail)!.upperBound
+            // Scan forward from top page-link end to find the actual end of the div
+            let afterTop = entryTail[topEnd...]
+            if let divClose = afterTop.range(of: "</div>") {
+                contentStart = afterTop.index(divClose.upperBound, offsetBy: 0)
+            } else {
+                contentStart = topEnd
+            }
+            let bottomStart = Range(pageLinkMatches[1].range, in: entryTail)!.lowerBound
+            contentEnd = bottomStart
+        } else if pageLinkMatches.count == 1 {
+            // Only one page-link: extract content after it
+            let plEnd = Range(pageLinkMatches[0].range, in: entryTail)!.upperBound
+            let afterPL = entryTail[plEnd...]
+            if let divClose = afterPL.range(of: "</div>") {
+                contentStart = afterPL.index(divClose.upperBound, offsetBy: 0)
+            } else {
+                contentStart = plEnd
+            }
+            if let endRange = entryEndRange {
+                contentEnd = endRange.lowerBound
+            } else {
+                contentEnd = entryTail.endIndex
+            }
+        } else {
+            // No page-link: extract from entry start to entry end
+            contentStart = entryTail.startIndex
+            if let endRange = entryEndRange {
+                contentEnd = endRange.lowerBound
+            } else {
+                contentEnd = entryTail.endIndex
+            }
+        }
+
+        guard contentStart < contentEnd else { return [] }
+        let content = String(entryTail[contentStart..<contentEnd])
+
+        // Extract image URLs — misskon uses data-src for lazy loading
         let pattern = #"<img[^>]+data-src=["']([^"']+)["']"#
         let urls = matches(pattern: pattern, in: content)
             .compactMap { $0.removingPercentEncoding }
             .compactMap(URL.init(string:))
             .filter { url in
                 let host = url.host?.lowercased() ?? ""
-                return host.contains("misskon.com") || host.contains("tez.misskon.com")
+                return host.contains("misskon.com")
             }
         return orderedUnique(urls)
     }
 
+    /// Resolves all page URLs for a detail page.
+    ///
+    /// The page-link nav only shows a few page numbers (e.g. 1-4), but by scanning
+    /// all anchor tags and the current page indicator we can determine the max page.
+    /// Page URL format: `{baseURL}{N}/` (page 1 = baseURL without number)
     private static func resolvePageURLs(from html: String, baseURL: URL) -> [URL] {
         guard let currentText = firstMatch(pageLinkCurrentRegex, in: html),
               let currentPage = Int(currentText) else {
             return [baseURL]
         }
 
-        // Find all page anchors
         let anchorMatches = allMatches(pageLinkAnchorRegex, in: html)
         var pageNumbers = Set([currentPage])
         for (_, pageText) in anchorMatches {
@@ -79,9 +139,7 @@ enum MissKonDetailResolver {
         }
 
         let maxPage = pageNumbers.max() ?? currentPage
-
-        // Construct all page URLs following the pattern: baseURL/N/
-        if maxPage <= 1 { return [baseURL] }
+        guard maxPage > 1 else { return [baseURL] }
 
         let baseString = baseURL.absoluteString.hasSuffix("/")
             ? baseURL.absoluteString
