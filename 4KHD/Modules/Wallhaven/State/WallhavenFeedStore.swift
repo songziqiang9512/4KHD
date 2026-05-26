@@ -43,6 +43,8 @@ final class WallhavenFeedStore {
 
     var isBrowsingUploader = false
     var uploaderUsername: String?
+    private var uploaderPage = 1
+    private var uploaderHasMore = true
 
     /// Saved state for back navigation from uploader view.
     private var savedState: (wallpapers: [Wallpaper], page: Int, lastPage: Int, seed: String?, scrollItemID: Wallpaper.ID?, searchQuery: String?)?
@@ -205,6 +207,10 @@ final class WallhavenFeedStore {
 
     func loadMoreIfNeeded() {
         guard section != .favorites else { return }
+        if isBrowsingUploader {
+            loadMoreUploaderWorks()
+            return
+        }
         guard !isRefreshingList, canLoadMoreList else { return }
         let searchSection = section
         let nextPage = currentPage + 1
@@ -414,23 +420,59 @@ final class WallhavenFeedStore {
         searchTask?.cancel()
         isBrowsingUploader = true
         uploaderUsername = username
+        uploaderPage = 1
+        uploaderHasMore = true
         isRefreshingList = true
         feedErrorMessage = nil
         wallpapers = []
-        canLoadMoreList = false
+        canLoadMoreList = true
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let items = try await WallhavenUploaderResolver.resolve(
                     username: username,
+                    page: self.uploaderPage,
                     apiKey: self.accountStore.apiKey
                 )
                 guard !Task.isCancelled else { return }
                 self.wallpapers = items
-                self.canLoadMoreList = false
+                self.uploaderHasMore = !items.isEmpty
+                self.canLoadMoreList = self.uploaderHasMore
                 self.feedErrorMessage = items.isEmpty ? "未找到 @\(username) 的作品" : nil
                 self.selectedWallpaperID = items.first?.id
                 self.onSelectionChanged?(items.first)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.feedErrorMessage = error.localizedDescription
+            }
+            self.isRefreshingList = false
+            self.loadTask = nil
+        }
+    }
+
+    private func loadMoreUploaderWorks() {
+        guard isBrowsingUploader, uploaderHasMore, !isRefreshingList,
+              let username = uploaderUsername else { return }
+        let nextPage = uploaderPage + 1
+        loadTask?.cancel()
+        isRefreshingList = true
+        feedErrorMessage = nil
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let items = try await WallhavenUploaderResolver.resolve(
+                    username: username,
+                    page: nextPage,
+                    apiKey: self.accountStore.apiKey
+                )
+                guard !Task.isCancelled else { return }
+                if !items.isEmpty {
+                    self.wallpapers.append(contentsOf: items)
+                    self.uploaderPage = nextPage
+                }
+                self.uploaderHasMore = !items.isEmpty
+                self.canLoadMoreList = self.uploaderHasMore
+                self.feedErrorMessage = nil
             } catch {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription
@@ -468,6 +510,8 @@ final class WallhavenFeedStore {
     private func clearUploaderBrowsing() {
         isBrowsingUploader = false
         uploaderUsername = nil
+        uploaderPage = 1
+        uploaderHasMore = false
         savedState = nil
     }
 

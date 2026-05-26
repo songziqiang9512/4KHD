@@ -3,9 +3,9 @@ import Foundation
 enum WallhavenUploaderResolver {
     private static let apiClient = WallhavenAPIClient()
 
-    /// Resolve wallpapers uploaded by a given username.
+    /// Resolve wallpapers uploaded by a given username, with page support.
     /// Tries `@username` API search first; falls back to HTML scraping.
-    static func resolve(username: String, apiKey: String?) async throws -> [Wallpaper] {
+    static func resolve(username: String, page: Int, apiKey: String?) async throws -> [Wallpaper] {
         // 1. Try API search with @username (percent-encoded by URLComponents).
         let parameters = WallhavenSearchParameters(
             query: "@\(username)",
@@ -16,17 +16,17 @@ enum WallhavenUploaderResolver {
             topRange: .oneYear,
             resolution: .any,
             ratio: .any,
-            page: 1,
+            page: page,
             seed: nil,
             collection: nil
         )
-        if let page = try? await apiClient.search(parameters: parameters, apiKey: apiKey),
-           !page.wallpapers.isEmpty {
-            return page.wallpapers
+        if let result = try? await apiClient.search(parameters: parameters, apiKey: apiKey),
+           !result.wallpapers.isEmpty {
+            return result.wallpapers
         }
 
         // 2. Fallback: scrape the uploads page HTML for wallpaper IDs.
-        guard let html = try? await fetchUploadsHTML(username: username),
+        guard let html = try? await fetchUploadsHTML(username: username, page: page),
               !html.isEmpty else {
             return []
         }
@@ -46,8 +46,10 @@ enum WallhavenUploaderResolver {
 
     // MARK: - HTML scraping
 
-    private static func fetchUploadsHTML(username: String) async throws -> String {
-        let urlString = "https://wallhaven.cc/user/\(username)/uploads"
+    private static func fetchUploadsHTML(username: String, page: Int) async throws -> String {
+        let urlString = page <= 1
+            ? "https://wallhaven.cc/user/\(username)/uploads"
+            : "https://wallhaven.cc/user/\(username)/uploads?page=\(page)"
         guard let url = URL(string: urlString) else {
             throw WallhavenAPIError.invalidURL
         }
