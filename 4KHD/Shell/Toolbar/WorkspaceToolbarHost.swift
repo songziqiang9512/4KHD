@@ -114,6 +114,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.localSort)
             identifiers.append(ItemID.importFolder)
         }
+        if currentModuleID == .missKon {
+            identifiers.append(ItemID.localGridColumns)
+        }
         if currentModuleID == .fourKHDGallery {
             identifiers.append(ItemID.favorite)
         }
@@ -359,13 +362,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     @objc private func localGridColumnsChanged(_ sender: NSSegmentedControl) {
+        let delta: Int
         switch sender.selectedSegment {
-        case 0:
-            appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
-        case 1:
-            appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
-        default:
-            break
+        case 0: delta = 1
+        case 1: delta = -1
+        default: return
+        }
+        if currentModuleID == .missKon {
+            appContext.toolbarContext.adjustMissKonGridColumns(delta: delta)
+        } else {
+            appContext.toolbarContext.adjustLocalGridColumns(delta: delta)
         }
         refresh()
     }
@@ -504,6 +510,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             _ = snapshot.searchText
             _ = snapshot.layout
             _ = snapshot.isRefreshing
+            _ = snapshot.canIncreaseGridColumns
+            _ = snapshot.canDecreaseGridColumns
             _ = snapshot.canSelectPreviousImage
             _ = snapshot.canSelectNextImage
             _ = snapshot.canSaveImage
@@ -561,13 +569,18 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func updateLocalGridColumnsControl() {
         guard let localGridColumnsControl else { return }
-        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
+        switch snapshot {
+        case .local(let s):
+            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
+            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
+        case .missKon(let s):
+            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
+            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
+        default:
             localGridColumnsControl.setEnabled(false, forSegment: 0)
             localGridColumnsControl.setEnabled(false, forSegment: 1)
-            return
         }
-        localGridColumnsControl.setEnabled(snapshot.canIncreaseGridColumns, forSegment: 0)
-        localGridColumnsControl.setEnabled(snapshot.canDecreaseGridColumns, forSegment: 1)
     }
 
     private func updateRefreshItem() {

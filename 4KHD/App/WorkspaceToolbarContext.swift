@@ -24,6 +24,8 @@ enum WorkspaceToolbarSnapshot {
         let searchText: String
         let layout: MissKonContentLayout
         let isRefreshing: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
@@ -193,6 +195,12 @@ final class WorkspaceToolbarContext {
                     searchText: missKonStore.searchText,
                     layout: missKonPreferences.layout,
                     isRefreshing: missKonStore.isRefreshingList,
+                    canIncreaseGridColumns: missKonPreferences.layout == .grid
+                        && !detailPaneController.isPresented
+                        && missKonPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: missKonPreferences.layout == .grid
+                        && !detailPaneController.isPresented
+                        && missKonPreferences.canDecreaseGridColumns,
                     canSelectPreviousImage: selectedIndex > 0,
                     canSelectNextImage: selectedIndex < slots.count - 1,
                     canSaveImage: haveImageURL,
@@ -251,6 +259,12 @@ final class WorkspaceToolbarContext {
         guard localPreferences.layout == .grid,
               !detailPaneController.isPresented else { return }
         localPreferences.adjustGridColumns(delta: delta)
+    }
+
+    func adjustMissKonGridColumns(delta: Int) {
+        guard missKonPreferences.layout == .grid,
+              !detailPaneController.isPresented else { return }
+        missKonPreferences.adjustGridColumns(delta: delta)
     }
 
     func refresh(for moduleID: WorkspaceModuleID) {

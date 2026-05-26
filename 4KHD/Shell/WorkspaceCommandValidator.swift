@@ -163,10 +163,15 @@ final class WorkspaceCommandValidator {
     }
 
     private func canAdjustLocalGridColumns(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {
-        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else {
+        let snapshot = appContext.toolbarContext.snapshot(for: moduleID)
+        switch snapshot {
+        case .local(let s):
+            return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
+        case .missKon(let s):
+            return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
+        default:
             return false
         }
-        return delta > 0 ? snapshot.canIncreaseGridColumns : snapshot.canDecreaseGridColumns
     }
 
     private func updateFavoriteValidationItem(

@@ -3,6 +3,8 @@ import Observation
 
 @MainActor
 final class MissKonContentViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, WorkspaceFocusable {
+    static let minimumGridColumnCount = MissKonContentPreferences.minimumGridColumnCount
+
     let library: MissKonGalleryStore
     private let preferences: MissKonContentPreferences
     private let detailPane: WorkspaceDetailPaneController
@@ -96,8 +98,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             gridView.update(
                 items: library.visibleItems,
                 selectedItemID: library.selectedItemID,
-                minimumColumnCount: nil,
-                maximumColumnCount: nil,
+                minimumColumnCount: Self.minimumGridColumnCount,
+                maximumColumnCount: preferences.gridColumnCount,
                 preferredCardMinimumWidth: 136,
                 showsFooter: shouldShowFooter,
                 isRefreshing: library.isRefreshingList,
@@ -124,6 +126,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             _ = library.feedErrorMessage
             _ = library.activeSearchQuery
             _ = preferences.layout
+            _ = preferences.gridColumnCount
             _ = detailPane.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in

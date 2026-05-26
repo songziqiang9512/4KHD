@@ -218,12 +218,20 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     @objc func increaseLocalGridColumns(_ sender: Any?) {
-        appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
+        if currentModuleID == .missKon {
+            appContext.toolbarContext.adjustMissKonGridColumns(delta: 1)
+        } else {
+            appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
+        }
         refreshToolbarState()
     }
 
     @objc func decreaseLocalGridColumns(_ sender: Any?) {
-        appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
+        if currentModuleID == .missKon {
+            appContext.toolbarContext.adjustMissKonGridColumns(delta: -1)
+        } else {
+            appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
+        }
         refreshToolbarState()
     }
 
