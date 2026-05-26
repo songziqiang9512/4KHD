@@ -68,21 +68,22 @@ enum MissKonDetailResolver {
         let contentStart: String.Index
         let contentEnd: String.Index
 
-        if pageLinkMatches.count >= 2 {
+        if pageLinkMatches.count >= 2,
+           let topRange = Range(pageLinkMatches[0].range, in: entryTail),
+           let bottomRange = Range(pageLinkMatches[1].range, in: entryTail) {
             // Standard case: images between top and bottom page-link divs
-            let topEnd = Range(pageLinkMatches[0].range, in: entryTail)!.upperBound
-            // Scan forward from top page-link end to find the actual end of the div
+            let topEnd = topRange.upperBound
             let afterTop = entryTail[topEnd...]
             if let divClose = afterTop.range(of: "</div>") {
                 contentStart = afterTop.index(divClose.upperBound, offsetBy: 0)
             } else {
                 contentStart = topEnd
             }
-            let bottomStart = Range(pageLinkMatches[1].range, in: entryTail)!.lowerBound
-            contentEnd = bottomStart
-        } else if pageLinkMatches.count == 1 {
+            contentEnd = bottomRange.lowerBound
+        } else if pageLinkMatches.count == 1,
+                  let plRange = Range(pageLinkMatches[0].range, in: entryTail) {
             // Only one page-link: extract content after it
-            let plEnd = Range(pageLinkMatches[0].range, in: entryTail)!.upperBound
+            let plEnd = plRange.upperBound
             let afterPL = entryTail[plEnd...]
             if let divClose = afterPL.range(of: "</div>") {
                 contentStart = afterPL.index(divClose.upperBound, offsetBy: 0)

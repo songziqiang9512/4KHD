@@ -1,9 +1,11 @@
 import AppKit
 import Foundation
 import Nuke
+import Observation
 import UniformTypeIdentifiers
 
 @MainActor
+@Observable
 final class MissKonDetailInteractionController {
     var resetToken = UUID()
     var saveMessage = ""

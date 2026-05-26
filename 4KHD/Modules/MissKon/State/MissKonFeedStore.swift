@@ -200,6 +200,9 @@ final class MissKonFeedStore {
                 self.nextSearchPageURL = page.nextPageURL
                 self.canLoadMoreList = page.nextPageURL != nil
                 self.feedErrorMessage = nil
+                let firstItem = page.items.first
+                self.selectedItemID = firstItem?.id
+                self.onSelectionChanged?(firstItem)
             } catch {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription
