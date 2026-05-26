@@ -165,8 +165,9 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         gridLayout.aspectRatioProvider = { [weak self] indexPath in
             guard let self, indexPath.item < self.items.count else { return 16.0 / 9.0 }
             let item = self.items[indexPath.item]
-            if let ratio = self.aspectRatiosByItemID[item.id] { return ratio }
-            return item.coverAspectRatio.map { CGFloat($0) } ?? 0.74
+            if let ratio = self.aspectRatiosByItemID[item.id], ratio.isFinite, ratio > 0 { return ratio }
+            if let ratio = item.coverAspectRatio.map({ CGFloat($0) }), ratio.isFinite, ratio > 0 { return ratio }
+            return 0.74
         }
 
         collectionView.collectionViewLayout = gridLayout
@@ -251,7 +252,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     private func selectAdjacent(delta: Int) -> Bool {
         guard !items.isEmpty else { return false }
-        let current = selectedItemID.flatMap { id in items.firstIndex { $0.id == id } } ?? 0
+        let current = selectedItemID.flatMap { id in items.firstIndex { $0.id == id } } ?? collectionView.selectionIndexPaths.first?.item ?? 0
         let next = min(max(current + delta, 0), items.count - 1)
         guard next != current else { return true }
         previousSelectedItemID = selectedItemID

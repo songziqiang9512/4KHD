@@ -59,6 +59,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         super.viewDidLoad()
         imageView.onImageDisplayed = { [weak self] in
             self?.isDetailReady = true
+            self?.detailFailed = false
             self?.reloadDetail()
         }
         filmstripView.onSelect = { [weak self] index in
