@@ -8,14 +8,14 @@
 - **环境**: macOS 26+, Xcode 26+, Swift 6, SPM(Nuke)
 - **构建**: `xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build`
 - **文件数**: ~130 Swift 文件，MissKon 模块占 18 个
-- **最新提交**: `2e9065b` — 10 个提交在本次会话中
+- **最新提交**: `c31c863` — 文档同步提交；本轮如有未提交 P3 改动，以 `git status` 为准
 
 ## 四个模块当前状态
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 4KHDGallery | ✅ 完整稳定 | 参考实现，本轮新增 gridColumnCount 支持 |
-| MissKon | ✅ 完成度 98% | 核心链路完整，数据安全审计通过 |
+| 4KHDGallery | ✅ 完整稳定 | 参考实现，支持 gridColumnCount 和列表/网格切换位置恢复 |
+| MissKon | ✅ 完成度 98% | 核心链路完整，数据安全审计通过，列表/网格切换位置恢复 |
 | LocalLibrary | ✅ 完整稳定 | — |
 | Favorites | ✅ 完整 | 独立模块，共享 FavoritesStore，域名验证防泄漏 |
 
@@ -23,7 +23,7 @@
 
 ### 已完成的全部能力
 
-**浏览：** 侧边栏 8 分类 + 列表/网格双视图 + 分页加载 + section 缓存 + 磁盘持久化
+**浏览：** 侧边栏 8 分类 + 列表/网格双视图 + 切换保留滚动位置 + 分页加载 + section 缓存 + 磁盘持久化
 **详情：** 渐进加载 + 封面过渡 + 相邻预加载 + 导航按钮 + 键盘 + 胶片条 + 保存/缩放
 **交互：** 工具栏全功能 + 搜索高亮 + 错误重试(footer+详情区) + 右键菜单(SF Symbols)
 **收藏：** MissKonFavoritesBridge + 共享 FavoritesStore + 域名验证防泄漏
@@ -77,6 +77,7 @@ find 4KHD -name '*.swift' | wc -l
 3. **收藏域名验证：** 两桥均验证 `detailURL.host`，新增模块需同步添加。
 4. **详情面板复用：** `lastDetailModuleID` 跟踪在 WorkspaceShell 中，跨模块切换时正确重建。
 5. **缓存过期：** `cacheMaxAge = 3600`（1 小时），仅对网络刷新章节生效，收藏 section 始终实时读取 FavoritesStore。
+6. **单元测试：** 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；后续补测试需先建立测试 target 和可测的纯逻辑入口。
 
 ### 共享层清单
 

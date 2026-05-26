@@ -59,6 +59,18 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView)
     }
 
+    func firstVisibleItemID() -> GalleryItem.ID? {
+        collectionView.indexPathsForVisibleItems()
+            .filter { items.indices.contains($0.item) }
+            .min { $0.item < $1.item }
+            .map { items[$0.item].id }
+    }
+
+    func scrollItemIntoViewIfNeeded(withID itemID: GalleryItem.ID) {
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+        scrollItemIntoViewIfNeeded(at: IndexPath(item: index, section: 0))
+    }
+
     func update(
         items: [GalleryItem],
         selectedItemID: GalleryItem.ID?,
@@ -433,6 +445,30 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         previousSelectedItemID = selectedItemID
     }
 
+    private func scrollItemIntoViewIfNeeded(at indexPath: IndexPath) {
+        guard items.indices.contains(indexPath.item) else { return }
+        guard let attributes = gridLayout.layoutAttributesForItem(at: indexPath) else {
+            collectionView.scrollToItems(at: [indexPath], scrollPosition: .nearestVerticalEdge)
+            return
+        }
+        let frame = attributes.frame
+        let visible = scrollView.contentView.bounds
+        guard frame.isValidScrollRect,
+              visible.isValidScrollRect,
+              gridLayout.collectionViewContentSize.isValidScrollSize else {
+            return
+        }
+        guard !visible.contains(frame) else { return }
+        let minY = -scrollView.contentInsets.top
+        let contentHeight = gridLayout.collectionViewContentSize.height
+        let maxY = max(minY, contentHeight - visible.height + scrollView.contentInsets.bottom)
+        let targetY = frame.minY < visible.minY ? frame.minY - 4 : frame.maxY - visible.height + 4
+        let y = min(max(minY, targetY), maxY)
+        guard y.isFinite, y < 100_000 else { return }
+        scrollView.contentView.setBoundsOrigin(NSPoint(x: visible.origin.x, y: y))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
     private func selectAdjacent(delta: Int) -> Bool {
         guard !items.isEmpty else { return false }
         let current = selectedItemID.flatMap { id in items.firstIndex { $0.id == id } }
@@ -477,6 +513,22 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         refreshVisibleSelection()
         onSelect?(item)
         onOpenDetail?()
+    }
+}
+
+private extension NSRect {
+    var isValidScrollRect: Bool {
+        origin.x.isFinite
+            && origin.y.isFinite
+            && size.isValidScrollSize
+            && size.width >= 0
+            && size.height >= 0
+    }
+}
+
+private extension NSSize {
+    var isValidScrollSize: Bool {
+        width.isFinite && height.isFinite
     }
 }
 

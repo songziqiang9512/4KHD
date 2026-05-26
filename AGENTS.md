@@ -143,10 +143,15 @@
 **首次启动无内容：** `refreshFromNetwork` 自动选择第一项
 **详情面板重建：** 同模块内复用 detailController，跟踪 `lastDetailModuleID`
 
+### 第七轮：P3 体验补齐
+
+**列表/网格滚动位置：** Gallery/MissKon 在双视图切换时用第一个可见图集 ID 恢复位置，避免切换后跳回选中项或顶部；Gallery 收藏分组列表也按图集 ID 对齐。
+**测试现状：** 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；单元测试仍是后续 P3。
+
 ### 模块状态评估
 
-**4KHDGallery：** 稳定完整。新增 `gridColumnCount` 支持（列数 2-6 可调）。
-**MissKon：** 完成度约 98%。核心链路完整，数据安全审计通过，收藏跨模块验证。
+**4KHDGallery：** 稳定完整。新增 `gridColumnCount` 支持（列数 2-6 可调），列表/网格切换保留滚动位置。
+**MissKon：** 完成度约 98%。核心链路完整，数据安全审计通过，收藏跨模块验证，列表/网格切换保留滚动位置。
 **LocalLibrary / Favorites：** 稳定无变更。
 
 ### 共享层清单

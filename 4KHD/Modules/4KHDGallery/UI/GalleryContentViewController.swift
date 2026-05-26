@@ -26,6 +26,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private var lastAppliedRows: [Row] = []
     private var lastGridColumnCount = 4
     private var lastVisibleListSignature: [Int: GalleryVisibleListRowSignature] = [:]
+    private var pendingScrollItemID: GalleryItem.ID?
     private let reloadQueue = WorkspaceCoalescingQueue(
         name: "GalleryContent Reload",
         interval: 0.05,
@@ -118,6 +119,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     func reloadContent() {
         favoriteAuthorOverrides = loadFavoriteAuthorOverrides()
         rebuildRows()
+        capturePendingScrollItemIfSwitchingLayout()
 
         switch preferences.layout {
         case .list:
@@ -133,6 +135,10 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             }
             syncTableSelection()
             lastVisibleListSignature = visibleListSignature()
+            if let pendingScrollItemID,
+               let row = rows.firstIndex(of: .item(pendingScrollItemID)) {
+                tableView.scrollRowToVisible(row)
+            }
         case .grid:
             setActiveView(gridView)
             let columnCountChanged = preferences.gridColumnCount != lastGridColumnCount
@@ -163,11 +169,38 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
                     showsFooter: shouldShowFooter
                 )
             }
+            if let pendingScrollItemID {
+                DispatchQueue.main.async { [weak self] in
+                    self?.gridView.scrollItemIntoViewIfNeeded(withID: pendingScrollItemID)
+                }
+            }
         }
+        pendingScrollItemID = nil
     }
 
     private func setActiveView(_ nextView: NSView) {
         animateViewTransition(to: nextView, activeView: &activeView)
+    }
+
+    private func capturePendingScrollItemIfSwitchingLayout() {
+        if activeView === gridView, preferences.layout == .list {
+            pendingScrollItemID = gridView.firstVisibleItemID()
+        } else if activeView === tableScrollView, preferences.layout == .grid {
+            pendingScrollItemID = firstVisibleTableItemID()
+        }
+    }
+
+    private func firstVisibleTableItemID() -> GalleryItem.ID? {
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        guard visibleRows.length > 0 else { return nil }
+        let upperBound = min(visibleRows.location + visibleRows.length, rows.count)
+        guard visibleRows.location < upperBound else { return nil }
+        for row in visibleRows.location..<upperBound {
+            if case .item(let id) = rows[row] {
+                return id
+            }
+        }
+        return nil
     }
 
     private func observeState() {

@@ -16,6 +16,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     private var isApplyingSelection = false
     private var lastAppliedVisibleIDs: [MissKonItem.ID] = []
     private var lastShowsFooter = false
+    private var pendingScrollItemID: MissKonItem.ID?
     private let reloadQueue = WorkspaceCoalescingQueue(name: "MissKonContent Reload", interval: 0.05, maxInterval: 0.12)
 
     init(library: MissKonGalleryStore, preferences: MissKonContentPreferences, detailPane: WorkspaceDetailPaneController) {
@@ -91,6 +92,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     }
 
     private func reloadContent() {
+        capturePendingScrollItemIfSwitchingLayout()
+
         switch preferences.layout {
         case .list:
             setActiveView(tableScrollView)
@@ -105,6 +108,10 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 reloadVisibleListRows()
             }
             syncTableSelection()
+            if let pendingScrollItemID,
+               let row = library.visibleItems.firstIndex(where: { $0.id == pendingScrollItemID }) {
+                tableView.scrollRowToVisible(row)
+            }
         case .grid:
             setActiveView(gridView)
             gridView.update(
@@ -119,7 +126,13 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 errorMessage: library.feedErrorMessage,
                 canLoadMore: library.canLoadMoreList
             )
+            if let pendingScrollItemID {
+                DispatchQueue.main.async { [weak self] in
+                    self?.gridView.scrollItemIntoViewIfNeeded(withID: pendingScrollItemID)
+                }
+            }
         }
+        pendingScrollItemID = nil
     }
 
     private func reloadVisibleListRows() {
@@ -132,6 +145,22 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
     private func setActiveView(_ nextView: NSView) {
         animateViewTransition(to: nextView, activeView: &activeView)
+    }
+
+    private func capturePendingScrollItemIfSwitchingLayout() {
+        if activeView === gridView, preferences.layout == .list {
+            pendingScrollItemID = gridView.firstVisibleItemID()
+        } else if activeView === tableScrollView, preferences.layout == .grid {
+            pendingScrollItemID = firstVisibleTableItemID()
+        }
+    }
+
+    private func firstVisibleTableItemID() -> MissKonItem.ID? {
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        guard visibleRows.length > 0 else { return nil }
+        let upperBound = min(visibleRows.location + visibleRows.length, library.visibleItems.count)
+        guard visibleRows.location < upperBound else { return nil }
+        return library.visibleItems[visibleRows.location].id
     }
 
     private func observeState() {
