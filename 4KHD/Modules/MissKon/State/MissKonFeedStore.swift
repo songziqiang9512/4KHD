@@ -114,6 +114,12 @@ final class MissKonFeedStore {
                 self.feedErrorMessage = nil
                 self.cacheTimestamps[self.section] = Date()
                 self.saveCacheIfNeeded()
+                // Auto-select first item if nothing is selected (e.g., first launch)
+                if self.selectedItemID == nil || !merged.contains(where: { $0.id == self.selectedItemID }) {
+                    let firstItem = merged.first
+                    self.selectedItemID = firstItem?.id
+                    self.onSelectionChanged?(firstItem)
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription

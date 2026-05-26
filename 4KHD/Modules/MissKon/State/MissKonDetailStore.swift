@@ -41,6 +41,19 @@ final class MissKonDetailStore {
         let pageURLs = item.pageURLs
         let itemID = item.id
 
+        // Populate an initial placeholder slot so the detail view never shows
+        // "没有可显示内容" during the async resolution gap (aligns with Gallery).
+        if !pageURLs.isEmpty {
+            imageSlots = [MissKonImageSlot(
+                id: "\(itemID)-init",
+                displayIndex: 0,
+                pageURL: pageURLs[0],
+                pageImageIndex: 0,
+                knownURL: item.coverURL
+            )]
+            selectedSlotID = imageSlots[0].id
+        }
+
         guard !pageURLs.isEmpty else { return }
 
         resolveTask = Task { [weak self] in

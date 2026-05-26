@@ -489,6 +489,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         appContext.moduleRegistry.bootstrapModules()
     }
 
+    private var lastDetailModuleID: WorkspaceModuleID?
+
     private func reloadColumns(for route: WorkspaceRoute) {
         sidebarController.reload()
         let moduleContext = WorkspaceModuleControllerContext(
@@ -500,9 +502,14 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         contentController.setContentController(
             appContext.moduleRegistry.contentController(for: route, context: moduleContext)
         )
-        detailController.setContentController(
-            appContext.moduleRegistry.detailController(for: route, context: moduleContext)
-        )
+        // Only rebuild the detail controller when switching between different modules.
+        // Within the same module, the existing controller observes store changes.
+        if route.moduleID != lastDetailModuleID {
+            lastDetailModuleID = route.moduleID
+            detailController.setContentController(
+                appContext.moduleRegistry.detailController(for: route, context: moduleContext)
+            )
+        }
     }
 
     private func applyDetailPaneVisibility(_ isPresented: Bool) {

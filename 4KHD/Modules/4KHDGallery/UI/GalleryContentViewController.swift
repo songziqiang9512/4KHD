@@ -24,6 +24,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private var isObserving = false
     private var isApplyingSelection = false
     private var lastAppliedRows: [Row] = []
+    private var lastGridColumnCount = 4
     private var lastVisibleListSignature: [Int: GalleryVisibleListRowSignature] = [:]
     private let reloadQueue = WorkspaceCoalescingQueue(
         name: "GalleryContent Reload",
@@ -134,8 +135,10 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             lastVisibleListSignature = visibleListSignature()
         case .grid:
             setActiveView(gridView)
-            if rows != lastAppliedRows {
+            let columnCountChanged = preferences.gridColumnCount != lastGridColumnCount
+            if rows != lastAppliedRows || columnCountChanged {
                 lastAppliedRows = rows
+                lastGridColumnCount = preferences.gridColumnCount
                 gridView.update(
                     items: library.visibleItems,
                     selectedItemID: library.selectedItemID,
