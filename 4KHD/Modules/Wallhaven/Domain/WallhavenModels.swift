@@ -25,6 +25,11 @@ struct Wallpaper: Identifiable, Codable, Hashable {
     let category: String?
     let views: Int?
     let favorites: Int?
+    let uploader: String?
+
+    var uploaderProfileURL: URL? {
+        uploader.flatMap { URL(string: "https://wallhaven.cc/user/\($0)") }
+    }
 
     var aspectRatio: Double? {
         guard let width, let height, width > 0, height > 0 else { return nil }

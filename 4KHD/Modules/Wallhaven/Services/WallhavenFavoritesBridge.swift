@@ -50,7 +50,8 @@ enum WallhavenFavoritesBridge {
             purity: .sfw,
             category: nil,
             views: nil,
-            favorites: nil
+            favorites: nil,
+            uploader: nil
         )
     }
 

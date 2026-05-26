@@ -25,8 +25,17 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         b.imagePosition = .imageLeading
         return b
     }()
-    private let tagsChrome = DetailOverlayChromeView(cornerRadius: 11)
-    private let tagsView = WallhavenTagsView()
+    private let uploaderChrome = DetailOverlayChromeView(cornerRadius: 11)
+    private let uploaderButton: NSButton = {
+        let b = NSButton(title: "", target: nil, action: nil)
+        b.bezelStyle = .inline
+        b.controlSize = .small
+        b.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        b.isBordered = false
+        b.image = NSImage(systemSymbolName: "person.circle", accessibilityDescription: "作者")
+        b.imagePosition = .imageLeading
+        return b
+    }()
     private let actionChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let actionLabel = NSTextField(labelWithString: "")
     private let desktopButton: NSButton = {
@@ -99,11 +108,10 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         sourceButton.action = #selector(openSourcePage)
         sourceChrome.addSubview(sourceButton)
 
-        tagsChrome.addSubview(tagsView)
-        tagsView.onTagClick = { [weak self] tag in
-            self?.library.submitSearch(tag)
-        }
-        tagsChrome.isHidden = true
+        uploaderButton.target = self
+        uploaderButton.action = #selector(uploaderClicked)
+        uploaderChrome.addSubview(uploaderButton)
+        uploaderChrome.isHidden = true
 
         actionLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         actionLabel.textColor = .labelColor
@@ -119,13 +127,13 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         desktopButton.action = #selector(setAsDesktopFromDetail)
 
         for subview in [imageView, emptyLabel, previousButton, nextButton,
-                        infoChrome, tagsChrome, sourceChrome, actionChrome, desktopButton] {
+                        infoChrome, uploaderChrome, sourceChrome, actionChrome, desktopButton] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
         infoLabel.translatesAutoresizingMaskIntoConstraints = false
         sourceButton.translatesAutoresizingMaskIntoConstraints = false
-        tagsView.translatesAutoresizingMaskIntoConstraints = false
+        uploaderButton.translatesAutoresizingMaskIntoConstraints = false
         actionLabel.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
@@ -147,14 +155,12 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             nextButton.widthAnchor.constraint(equalToConstant: 40),
             nextButton.heightAnchor.constraint(equalToConstant: 40),
 
-            tagsChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            tagsChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            tagsChrome.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
-            tagsChrome.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
-            tagsChrome.heightAnchor.constraint(equalTo: tagsView.heightAnchor, constant: 12),
-            tagsView.leadingAnchor.constraint(equalTo: tagsChrome.leadingAnchor, constant: 8),
-            tagsView.trailingAnchor.constraint(equalTo: tagsChrome.trailingAnchor, constant: -8),
-            tagsView.topAnchor.constraint(equalTo: tagsChrome.topAnchor, constant: 6),
+            uploaderChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            uploaderChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            uploaderChrome.heightAnchor.constraint(equalToConstant: 24),
+            uploaderButton.leadingAnchor.constraint(equalTo: uploaderChrome.leadingAnchor, constant: 8),
+            uploaderButton.trailingAnchor.constraint(equalTo: uploaderChrome.trailingAnchor, constant: -8),
+            uploaderButton.centerYAnchor.constraint(equalTo: uploaderChrome.centerYAnchor),
 
             infoChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             infoChrome.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -4),
@@ -218,7 +224,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             previousButton.isHidden = true
             nextButton.isHidden = true
             infoChrome.isHidden = true
-            tagsChrome.isHidden = true
+            uploaderChrome.isHidden = true
             sourceChrome.isHidden = true
             actionChrome.isHidden = true
             desktopButton.isHidden = true
@@ -234,7 +240,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             previousButton.isHidden = true
             nextButton.isHidden = true
             infoChrome.isHidden = true
-            tagsChrome.isHidden = true
+            uploaderChrome.isHidden = true
             sourceChrome.isHidden = true
             actionChrome.isHidden = true
             desktopButton.isHidden = true
@@ -284,8 +290,14 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         actionLabel.stringValue = detailStatusText
         actionChrome.isHidden = detailStatusText.isEmpty
 
-        // Build tag buttons
-        buildTagButtons(for: displayWallpaper)
+        // Uploader display
+        if let uploader = displayWallpaper.uploader {
+            uploaderButton.title = "\(uploader) 的作品"
+            uploaderButton.toolTip = "搜索 @\(uploader) 的作品"
+            uploaderChrome.isHidden = false
+        } else {
+            uploaderChrome.isHidden = true
+        }
 
         // Load image — prefer fullImageUrl from detail; fall back to search data.
         let imageURL = displayWallpaper.fullImageUrl ?? displayWallpaper.previewUrl ?? wallpaper.previewUrl ?? wallpaper.fullImageUrl
@@ -332,13 +344,11 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         library.select(wallpaperList[index + 1])
     }
 
-    private func buildTagButtons(for wallpaper: Wallpaper) {
-        guard !wallpaper.tags.isEmpty else {
-            tagsChrome.isHidden = true
-            return
-        }
-        tagsChrome.isHidden = false
-        tagsView.setTags(wallpaper.tags, maxWidth: 420)
+    @objc private func uploaderClicked() {
+        guard let wallpaper = library.effectiveSelectedWallpaper ?? library.selectedWallpaper,
+              let uploader = wallpaper.uploader else { return }
+        // Wallhaven API q parameter supports @username syntax to filter by uploader.
+        library.submitSearch("@\(uploader)")
     }
 
     @objc private func openSourcePage() {

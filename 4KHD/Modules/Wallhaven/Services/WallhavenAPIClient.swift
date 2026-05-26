@@ -187,6 +187,11 @@ private struct WallhavenWallpaperDTO: Decodable {
     let path: String?
     let thumbs: Thumbs?
     let tags: [Tag]?
+    let uploader: Uploader?
+
+    struct Uploader: Decodable {
+        let username: String?
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -207,6 +212,7 @@ private struct WallhavenWallpaperDTO: Decodable {
         case path
         case thumbs
         case tags
+        case uploader
     }
 
     struct Thumbs: Decodable {
@@ -254,7 +260,8 @@ private struct WallhavenWallpaperDTO: Decodable {
             purity: WallhavenPurity.fromAPIValue(purity),
             category: category,
             views: views,
-            favorites: favorites
+            favorites: favorites,
+            uploader: uploader?.username
         )
     }
 }
