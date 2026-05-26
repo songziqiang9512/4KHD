@@ -155,8 +155,8 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             nextButton.widthAnchor.constraint(equalToConstant: 40),
             nextButton.heightAnchor.constraint(equalToConstant: 40),
 
-            uploaderChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            uploaderChrome.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            uploaderChrome.leadingAnchor.constraint(equalTo: sourceChrome.trailingAnchor, constant: 6),
+            uploaderChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
             uploaderChrome.heightAnchor.constraint(equalToConstant: 24),
             uploaderButton.leadingAnchor.constraint(equalTo: uploaderChrome.leadingAnchor, constant: 8),
             uploaderButton.trailingAnchor.constraint(equalTo: uploaderChrome.trailingAnchor, constant: -8),
@@ -293,7 +293,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         // Uploader display
         if let uploader = displayWallpaper.uploader {
             uploaderButton.title = "\(uploader) 的作品"
-            uploaderButton.toolTip = "在浏览器中打开 wallhaven.cc/user/\(uploader)/uploads"
+            uploaderButton.toolTip = "浏览 @\(uploader) 的所有上传作品"
             uploaderChrome.isHidden = false
         } else {
             uploaderChrome.isHidden = true
@@ -301,12 +301,21 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
         // Load image — prefer fullImageUrl from detail; fall back to search data.
         let imageURL = displayWallpaper.fullImageUrl ?? displayWallpaper.previewUrl ?? wallpaper.previewUrl ?? wallpaper.fullImageUrl
+        let isIncomplete = wallpaper.width == nil && wallpaper.fullImageUrl == nil
         if currentWallpaperID != wallpaper.id {
             currentWallpaperID = wallpaper.id
             detailInteraction.saveMessage = ""
-            imageView.setImageURL(imageURL, preservesCurrentImageUntilLoaded: false)
+            if isIncomplete {
+                // Favorites-recovered wallpaper: show loading until /w/{id} resolves.
+                imageView.setImageURL(nil, preservesCurrentImageUntilLoaded: false)
+                imageView.showLoading("加载详情中...")
+            } else {
+                imageView.setImageURL(imageURL, preservesCurrentImageUntilLoaded: false)
+            }
         }
-        currentImageURL = imageURL
+        if !isIncomplete {
+            currentImageURL = imageURL
+        }
 
         if detailInteraction.resetToken != resetTokenSeen {
             resetTokenSeen = detailInteraction.resetToken
@@ -471,6 +480,12 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
                 self.fitImage(resetMagnification: true)
             }
         }
+    }
+
+    func showLoading(_ message: String) {
+        placeholderLabel.stringValue = message
+        retryButton.isHidden = true
+        placeholderContainer.isHidden = false
     }
 
     func showFailure(retry: @escaping () -> Void) {
