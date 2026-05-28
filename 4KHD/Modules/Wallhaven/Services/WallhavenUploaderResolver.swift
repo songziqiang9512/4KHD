@@ -76,27 +76,28 @@ enum WallhavenUploaderResolver {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Extract wallpaper IDs from Wallhaven uploads page HTML.
-    /// Wallpaper links appear as data-wallpaper-id="{id}", href="/w/{id}", or href="https://wallhaven.cc/w/{id}".
+    /// Extract wallpaper IDs from Wallhaven uploads page HTML, preserving page order.
+    /// Matches data-wallpaper-id="{id}", href="/w/{id}", or href="https://wallhaven.cc/w/{id}".
     private static func extractWallpaperIDs(from html: String) -> [String] {
-        let dataIDPattern = #"data-wallpaper-id="([a-zA-Z0-9]+)""#
-        let hrefWPattern = #"href="(?:https://wallhaven\.cc)?/w/([a-zA-Z0-9]+)""#
-
-        var seen = Set<String>()
-        var ids: [String] = []
-
-        for pattern in [dataIDPattern, hrefWPattern] {
+        let patterns: [(String, Int)] = [
+            (#"data-wallpaper-id="([a-zA-Z0-9]+)""#, 1),
+            (#"href="(?:https://wallhaven\.cc)?/w/([a-zA-Z0-9]+)""#, 1)
+        ]
+        // Collect (location, id) tuples, sort by location, then dedup.
+        var entries: [(location: Int, id: String)] = []
+        for (pattern, groupIndex) in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
             let range = NSRange(html.startIndex..<html.endIndex, in: html)
             for match in regex.matches(in: html, options: [], range: range) {
-                guard match.numberOfRanges >= 2,
-                      let r = Range(match.range(at: 1), in: html) else { continue }
-                let id = String(html[r])
-                if seen.insert(id).inserted {
-                    ids.append(id)
-                }
+                guard match.numberOfRanges > groupIndex,
+                      let r = Range(match.range(at: groupIndex), in: html) else { continue }
+                entries.append((match.range.location, String(html[r])))
             }
         }
-        return ids
+        entries.sort { $0.location < $1.location }
+        var seen = Set<String>()
+        return entries.compactMap {
+            seen.insert($0.id).inserted ? $0.id : nil
+        }
     }
 }
