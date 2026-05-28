@@ -106,7 +106,7 @@ final class GalleryFeedStore {
 
     func refreshFromNetwork() {
         if activeSearchQuery != nil {
-            submitSearch()
+            submitSearch(force: true)
             return
         }
         guard section.isNetworkBacked else { return }
@@ -128,28 +128,36 @@ final class GalleryFeedStore {
 
     // MARK: - 搜索
 
-    func submitSearch() {
+    func submitSearch(force: Bool = false) {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
             clearSearch()
             return
         }
-        guard query != activeSearchQuery else { return }
+        guard force || query != activeSearchQuery else { return }
         activeSearchQuery = query
         visibleCount = 18
         selectedItemID = nil
         searchItems = []
         searchNextPageURL = nil
+        pendingSearchLoadMore = false
         searchRefreshTask?.cancel()
         listRefreshTasks.values.forEach { $0.cancel() }
         listRefreshTasks.removeAll()
         errorMessage = nil
         isRefreshingList = true
+        let requestQuery = query
         searchRefreshTask = Task { [weak self] in
             do {
-                let page = try await SiteListResolver.resolveSearch(query: query)
+                let page = try await SiteListResolver.resolveSearch(query: requestQuery)
+                guard !Task.isCancelled,
+                      self?.activeSearchQuery == requestQuery
+                else { return }
                 self?.applySearchPage(page, replacing: true)
             } catch {
+                guard !Task.isCancelled,
+                      self?.activeSearchQuery == requestQuery
+                else { return }
                 self?.errorMessage = "搜索失败"
                 self?.finishSearchRefresh()
             }
@@ -255,13 +263,20 @@ final class GalleryFeedStore {
             return
         }
         guard let nextPageURL = searchNextPageURL else { return }
+        let requestQuery = activeSearchQuery
         errorMessage = nil
         isRefreshingList = true
         searchRefreshTask = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolveSearch(pageURL: nextPageURL)
+                guard !Task.isCancelled,
+                      self?.activeSearchQuery == requestQuery
+                else { return }
                 self?.applySearchPage(page, replacing: false)
             } catch {
+                guard !Task.isCancelled,
+                      self?.activeSearchQuery == requestQuery
+                else { return }
                 self?.errorMessage = "搜索失败"
                 self?.finishSearchRefresh()
             }

@@ -737,10 +737,11 @@ final class WallhavenFeedStore {
         resolvedWallpaper = wallpaper
         isResolvingDetail = true
         let requestID = wallpaper.id
+        let requestApiKey = accountStore.apiKey
         resolveTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let full = try await self.apiClient.wallpaper(id: requestID, apiKey: self.accountStore.apiKey)
+                let full = try await self.apiClient.wallpaper(id: requestID, apiKey: requestApiKey)
                 guard !Task.isCancelled,
                       self.resolvedWallpaper?.id == requestID
                 else { return }
