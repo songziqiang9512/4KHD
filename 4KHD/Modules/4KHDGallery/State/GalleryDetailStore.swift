@@ -19,6 +19,7 @@ final class GalleryDetailStore {
     @ObservationIgnored private var resolvedPageURLs: [GalleryItem.ID: [URL]] = [:]
     @ObservationIgnored private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
     @ObservationIgnored private var detailPageTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var failedPageURLs: Set<URL> = []
     @ObservationIgnored private var pendingSelectionIndex: Int?
     @ObservationIgnored private let prefetchDistance = 6
 
@@ -42,6 +43,7 @@ final class GalleryDetailStore {
     /// 切换 / 重选当前图集时调用：重建 slot、cursor、清掉 in-flight 任务。
     func prepare(for item: GalleryItem?) {
         errorMessage = nil
+        failedPageURLs.removeAll()
         cancelOutstandingDetailPageTasks()
         currentItem = item
         pendingSelectionIndex = nil
@@ -95,6 +97,11 @@ final class GalleryDetailStore {
         let pageURLs = pageURLs(for: item)
         guard cursor < pageURLs.count else { return false }
         let pageURL = pageURLs[cursor]
+        guard !failedPageURLs.contains(pageURL) else {
+            // Skip previously-failed pages; advance cursor and try next.
+            itemPageCursors[item.id] = cursor + 1
+            return ensureNextDetailPageLoaded(reason: reason)
+        }
         guard requestedDetailPageURLs[item.id, default: []].insert(pageURL).inserted else {
             // 已发过请求还没回，视为在路上。
             return true
@@ -220,14 +227,14 @@ final class GalleryDetailStore {
         if prefetchPageURL == pageURL {
             prefetchPageURL = nil
         }
-        // 失败时清掉 requested set 里这条，让链路在合适时机能再次考虑它；
-        // cursor 回滚到失败页，避免后续直接跳过这一页。
+        failedPageURLs.insert(pageURL)
         if let request = requestedDetailPageIndexByURL.removeValue(forKey: pageURL) {
             itemPageCursors[request.itemID] = min(itemPageCursors[request.itemID, default: request.cursor], request.cursor)
         }
         for itemID in requestedDetailPageURLs.keys {
             requestedDetailPageURLs[itemID]?.remove(pageURL)
         }
+        // Advance to next page instead of infinite retry; chainLoadIfNeeded will skip failed pages.
         chainLoadIfNeeded()
     }
 

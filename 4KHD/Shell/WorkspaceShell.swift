@@ -497,8 +497,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         }
 
         CookieBridge.shared.start()
-        appContext.routeController.applyCurrentRoute()
         appContext.moduleRegistry.bootstrapModules()
+        appContext.routeController.applyCurrentRoute()
     }
 
     private var lastDetailModuleID: WorkspaceModuleID?

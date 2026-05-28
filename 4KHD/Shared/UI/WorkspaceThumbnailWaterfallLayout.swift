@@ -126,7 +126,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             heights[column] += height + metrics.rowSpacing
         }
         layoutMetrics = metrics
-        didLayoutAllItems = true
+        didLayoutAllItems = nextItemIndex >= itemCount
         contentHeight = max(
             (heights.max() ?? metrics.sectionInset.top) + metrics.sectionInset.bottom - metrics.rowSpacing,
             metrics.sectionInset.top + metrics.sectionInset.bottom

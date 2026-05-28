@@ -38,8 +38,8 @@ class RemoteImageView: NSView {
     }
 
     func setImage(url: URL?, maxPixelSize: CGFloat = 220) {
-        imageTask?.cancel()
         guard loadedURL != url else { return }
+        imageTask?.cancel()
         loadedURL = url
         guard let url else {
             imageView.image = nil

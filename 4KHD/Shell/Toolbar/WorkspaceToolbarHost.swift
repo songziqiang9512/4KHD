@@ -194,11 +194,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case ItemID.localGridColumns:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             let increaseImage = NSImage(
-                systemSymbolName: "minus.magnifyingglass",
+                systemSymbolName: "plus.magnifyingglass",
                 accessibilityDescription: "增加列数"
             ) ?? NSImage()
             let decreaseImage = NSImage(
-                systemSymbolName: "plus.magnifyingglass",
+                systemSymbolName: "minus.magnifyingglass",
                 accessibilityDescription: "减少列数"
             ) ?? NSImage()
             let control = NSSegmentedControl(
