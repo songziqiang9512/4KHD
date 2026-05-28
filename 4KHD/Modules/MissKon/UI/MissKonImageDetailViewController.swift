@@ -200,6 +200,11 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
+        // Trigger detail resolution when pane becomes visible and item is prepared but not yet resolved.
+        if shouldLoadDetailContent, library.imageSlots.count <= 1, !library.isResolving {
+            library.detail.resolve(item: item)
+        }
+
         guard shouldLoadDetailContent else {
             currentSlotID = nil
             currentImageURL = nil

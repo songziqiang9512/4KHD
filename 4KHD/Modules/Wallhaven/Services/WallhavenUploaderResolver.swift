@@ -5,12 +5,12 @@ enum WallhavenUploaderResolver {
 
     /// Resolve wallpapers uploaded by a given username, with page support.
     /// Tries `@username` API search first; falls back to HTML scraping.
-    static func resolve(username: String, page: Int, apiKey: String?) async throws -> [Wallpaper] {
-        // 1. Try API search with @username (percent-encoded by URLComponents).
+    static func resolve(username: String, page: Int, purity: WallhavenPurity, apiKey: String?) async throws -> [Wallpaper] {
+        // 1. Try API search with @username, respecting the user's purity setting.
         let parameters = WallhavenSearchParameters(
             query: "@\(username)",
             category: .all,
-            purity: .all,
+            purity: purity,
             sorting: .dateAdded,
             order: .desc,
             topRange: .oneYear,
@@ -34,17 +34,25 @@ enum WallhavenUploaderResolver {
         let ids = extractWallpaperIDs(from: html)
         guard !ids.isEmpty else { return [] }
 
-        // Resolve details in parallel, preserving original page order.
-        let targetIDs = Array(ids.prefix(24))
+        // Resolve details in parallel, preserving page order.
+        // Limit to 16 IDs and 4 concurrent to avoid hammering the API.
+        let targetIDs = Array(ids.prefix(16))
         guard !targetIDs.isEmpty else { return [] }
         return await withTaskGroup(of: Wallpaper?.self) { group in
-            for id in targetIDs {
-                group.addTask {
-                    try? await apiClient.wallpaper(id: id, apiKey: apiKey)
-                }
-            }
+            var cursor = 0
+            var running = 0
             var byID: [String: Wallpaper] = [:]
-            for await result in group {
+            while cursor < targetIDs.count || running > 0 {
+                while running < 4, cursor < targetIDs.count {
+                    let id = targetIDs[cursor]
+                    cursor += 1
+                    running += 1
+                    group.addTask {
+                        try? await apiClient.wallpaper(id: id, apiKey: apiKey)
+                    }
+                }
+                guard let result = await group.next() else { break }
+                running -= 1
                 if let wallpaper = result { byID[wallpaper.id] = wallpaper }
             }
             return targetIDs.compactMap { byID[$0] }

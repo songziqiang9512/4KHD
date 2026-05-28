@@ -12,16 +12,16 @@ final class MissKonGalleryStore {
         self.feed = feed
         self.detail = detail
         self.favorites = favorites
-        // Wire feed selection changes to detail resolution, matching FourKHDGalleryStore pattern.
+        // Wire feed selection changes to detail preparation (no network until detail visible).
         feed.onSelectionChanged = { [weak detail] item in
             if let item {
-                detail?.resolve(item: item)
+                detail?.prepare(item: item)
             } else {
                 detail?.clear()
             }
         }
         if let item = feed.selectedItem {
-            detail.resolve(item: item)
+            detail.prepare(item: item)
         } else {
             detail.clear()
         }
@@ -39,7 +39,7 @@ final class MissKonGalleryStore {
         set {
             feed.selectedItemID = newValue
             if let item = feed.selectedItem {
-                detail.resolve(item: item)
+                detail.prepare(item: item)
             } else {
                 detail.clear()
             }

@@ -301,17 +301,20 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
         // Load image — prefer fullImageUrl from detail; fall back to search data.
         let imageURL = displayWallpaper.fullImageUrl ?? displayWallpaper.previewUrl ?? wallpaper.previewUrl ?? wallpaper.fullImageUrl
-        let isIncomplete = wallpaper.width == nil && wallpaper.fullImageUrl == nil
+        let isIncomplete = (displayWallpaper.width == nil && displayWallpaper.fullImageUrl == nil)
         if currentWallpaperID != wallpaper.id {
             currentWallpaperID = wallpaper.id
             detailInteraction.saveMessage = ""
             if isIncomplete {
-                // Favorites-recovered wallpaper: show loading until /w/{id} resolves.
                 imageView.setImageURL(nil, preservesCurrentImageUntilLoaded: false)
                 imageView.showLoading("加载详情中...")
             } else {
                 imageView.setImageURL(imageURL, preservesCurrentImageUntilLoaded: false)
             }
+        } else if currentImageURL != imageURL, !isIncomplete {
+            // Detail resolution completed: upgrade preview → fullImageUrl.
+            currentImageURL = imageURL
+            imageView.setImageURL(imageURL, preservesCurrentImageUntilLoaded: true)
         }
         if !isIncomplete {
             currentImageURL = imageURL

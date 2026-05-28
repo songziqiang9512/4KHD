@@ -29,8 +29,10 @@ final class MissKonDetailStore {
         return resolvedPages[slot.pageURL]?.imageURLs.element(at: slot.pageImageIndex)
     }
 
-    func resolve(item: MissKonItem, force: Bool = false) {
-        guard force || item.id != currentItem?.id else { return }
+    /// Set up placeholder state without starting network resolution.
+    /// Called on list selection so detail pane can show cover immediately.
+    func prepare(item: MissKonItem) {
+        guard item.id != currentItem?.id else { return }
         cancelResolveTask()
         resolvedPages = [:]
         failedPageURLs = []
@@ -41,22 +43,25 @@ final class MissKonDetailStore {
 
         currentItem = item
         let pageURLs = item.pageURLs
-        let itemID = item.id
-
-        // Populate an initial placeholder slot so the detail view never shows
-        // "没有可显示内容" during the async resolution gap (aligns with Gallery).
-        if !pageURLs.isEmpty {
-            imageSlots = [MissKonImageSlot(
-                id: "\(itemID)-init",
-                displayIndex: 0,
-                pageURL: pageURLs[0],
-                pageImageIndex: 0,
-                knownURL: item.coverURL
-            )]
-            selectedSlotID = imageSlots[0].id
-        }
-
         guard !pageURLs.isEmpty else { return }
+
+        imageSlots = [MissKonImageSlot(
+            id: "\(item.id)-init",
+            displayIndex: 0,
+            pageURL: pageURLs[0],
+            pageImageIndex: 0,
+            knownURL: item.coverURL
+        )]
+        selectedSlotID = imageSlots[0].id
+    }
+
+    /// Start resolving detail pages. Called when detail pane or immersive opens.
+    func resolve(item: MissKonItem, force: Bool = false) {
+        guard force || item.id == currentItem?.id else { return }
+        guard resolvedPages.isEmpty else { return } // Already resolving or resolved.
+        let pageURLs = item.pageURLs
+        guard !pageURLs.isEmpty else { return }
+        let itemID = item.id
 
         resolveTask = Task { [weak self] in
             guard let self else { return }
@@ -83,9 +88,9 @@ final class MissKonDetailStore {
                 }
             }
 
-            // Resolve remaining pages in parallel batches (cap at 50 pages, 6 per batch).
+            // Resolve remaining pages in small parallel batches (cap at 50 pages, 2 per batch).
             while !pendingURLs.isEmpty, !Task.isCancelled, resolvedPages.count < 50 {
-                let maxBatch = min(6, 50 - resolvedPages.count)
+                let maxBatch = min(2, 50 - resolvedPages.count)
                 let batch = Array(pendingURLs.prefix(maxBatch))
                 pendingURLs.removeFirst(min(pendingURLs.count, batch.count))
 

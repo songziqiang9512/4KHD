@@ -29,6 +29,10 @@ final class WallhavenFeedStore {
     private var searchLoadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
+    /// In-flight markers to prevent duplicate load-more from rapid UI triggers.
+    private var inFlightPage: Int?
+    private var inFlightSearchPage: Int?
+    private var inFlightUploaderPage: Int?
 
     /// Cached per section preserves items across section switches (currently only .browse).
     private var cachedWallpapers: [WallhavenSection: [Wallpaper]] = [:]
@@ -141,6 +145,7 @@ final class WallhavenFeedStore {
     }
 
     private func resetAndRefresh() {
+        clearUploaderBrowsing()
         loadTask?.cancel()
         loadTask = nil
         searchLoadTask?.cancel()
@@ -237,10 +242,12 @@ final class WallhavenFeedStore {
         guard !isRefreshingList, canLoadMoreList else { return }
         let searchSection = section
         let nextPage = currentPage + 1
+        guard inFlightPage != nextPage else { return }
+        inFlightPage = nextPage
+        isRefreshingList = true
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
-            self.isRefreshingList = true
             self.feedErrorMessage = nil
             do {
                 let page = try await self.performSearch(page: nextPage)
@@ -268,6 +275,7 @@ final class WallhavenFeedStore {
             if self.section == searchSection {
                 self.isRefreshingList = false
                 self.loadTask = nil
+                self.inFlightPage = nil
             }
         }
     }
@@ -332,10 +340,12 @@ final class WallhavenFeedStore {
         guard !isRefreshingList, canLoadMoreList, activeSearchQuery != nil else { return }
         let requestQuery = activeSearchQuery
         let nextPage = currentPage + 1
+        guard inFlightSearchPage != nextPage else { return }
+        inFlightSearchPage = nextPage
+        isRefreshingList = true
         searchLoadTask?.cancel()
         searchLoadTask = Task { [weak self] in
             guard let self else { return }
-            self.isRefreshingList = true
             self.feedErrorMessage = nil
             do {
                 let page = try await self.performSearch(page: nextPage, query: requestQuery)
@@ -355,6 +365,7 @@ final class WallhavenFeedStore {
             if self.activeSearchQuery == requestQuery {
                 self.isRefreshingList = false
                 self.searchLoadTask = nil
+                self.inFlightSearchPage = nil
             }
         }
     }
@@ -370,6 +381,8 @@ final class WallhavenFeedStore {
         loadTask = nil
         activeSearchQuery = nil
         searchText = ""
+        inFlightPage = nil
+        inFlightSearchPage = nil
         canLoadMoreList = false
         isRefreshingList = false
         restoreSectionCache()
@@ -450,6 +463,7 @@ final class WallhavenFeedStore {
         uploaderUsername = username
         uploaderPage = 1
         uploaderHasMore = true
+        inFlightUploaderPage = 1
         isRefreshingList = true
         feedErrorMessage = nil
         wallpapers = []
@@ -460,6 +474,7 @@ final class WallhavenFeedStore {
                 let items = try await WallhavenUploaderResolver.resolve(
                     username: username,
                     page: self.uploaderPage,
+                    purity: self.accountStore.purity,
                     apiKey: self.accountStore.apiKey
                 )
                 guard !Task.isCancelled else { return }
@@ -476,6 +491,7 @@ final class WallhavenFeedStore {
             guard self.isBrowsingUploader else { return }
             self.isRefreshingList = false
             self.loadTask = nil
+            self.inFlightUploaderPage = nil
         }
     }
 
@@ -483,6 +499,8 @@ final class WallhavenFeedStore {
         guard isBrowsingUploader, uploaderHasMore, !isRefreshingList,
               let username = uploaderUsername else { return }
         let nextPage = uploaderPage + 1
+        guard inFlightUploaderPage != nextPage else { return }
+        inFlightUploaderPage = nextPage
         loadTask?.cancel()
         isRefreshingList = true
         feedErrorMessage = nil
@@ -492,11 +510,14 @@ final class WallhavenFeedStore {
                 let items = try await WallhavenUploaderResolver.resolve(
                     username: username,
                     page: nextPage,
+                    purity: self.accountStore.purity,
                     apiKey: self.accountStore.apiKey
                 )
                 guard !Task.isCancelled else { return }
                 if !items.isEmpty {
-                    self.wallpapers.append(contentsOf: items)
+                    let existingIDs = Set(self.wallpapers.map(\.id))
+                    let newItems = items.filter { !existingIDs.contains($0.id) }
+                    self.wallpapers.append(contentsOf: newItems)
                     self.uploaderPage = nextPage
                 }
                 self.uploaderHasMore = !items.isEmpty
@@ -509,6 +530,7 @@ final class WallhavenFeedStore {
             guard self.isBrowsingUploader else { return }
             self.isRefreshingList = false
             self.loadTask = nil
+            self.inFlightUploaderPage = nil
         }
     }
 
