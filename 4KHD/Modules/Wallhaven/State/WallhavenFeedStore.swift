@@ -29,6 +29,8 @@ final class WallhavenFeedStore {
     private var searchLoadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
+    /// Request token to invalidate stale Task completions.
+    private var listRequestToken = UUID()
     /// In-flight markers to prevent duplicate load-more from rapid UI triggers.
     private var inFlightPage: Int?
     private var inFlightSearchPage: Int?
@@ -145,6 +147,7 @@ final class WallhavenFeedStore {
     }
 
     private func resetAndRefresh() {
+        listRequestToken = UUID()
         clearUploaderBrowsing()
         loadTask?.cancel()
         loadTask = nil
@@ -176,6 +179,7 @@ final class WallhavenFeedStore {
 
     func setSection(_ newSection: WallhavenSection) {
         guard section != newSection else { return }
+        listRequestToken = UUID()
         loadTask?.cancel()
         searchLoadTask?.cancel()
         searchTask?.cancel()
@@ -196,6 +200,7 @@ final class WallhavenFeedStore {
             return
         }
         isRefreshingList = true
+        let requestToken = listRequestToken
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -228,7 +233,7 @@ final class WallhavenFeedStore {
                     self.feedErrorMessage = error.localizedDescription
                 }
             }
-            if self.section == searchSection {
+            if self.section == searchSection, self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.loadTask = nil
             }
@@ -251,6 +256,7 @@ final class WallhavenFeedStore {
         guard inFlightPage != nextPage else { return }
         inFlightPage = nextPage
         isRefreshingList = true
+        let requestToken = listRequestToken
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -278,7 +284,7 @@ final class WallhavenFeedStore {
                     self.feedErrorMessage = error.localizedDescription
                 }
             }
-            if self.section == searchSection {
+            if self.section == searchSection, self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.loadTask = nil
                 self.inFlightPage = nil
@@ -315,7 +321,7 @@ final class WallhavenFeedStore {
         searchTask?.cancel()
         searchLoadTask?.cancel()
         inFlightSearchPage = nil
-        searchLoadTask?.cancel()
+        let requestToken = listRequestToken
         searchTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingList = true
@@ -337,7 +343,7 @@ final class WallhavenFeedStore {
                 guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
-            if self.activeSearchQuery == requestQuery {
+            if self.activeSearchQuery == requestQuery, self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.searchTask = nil
             }
@@ -351,6 +357,7 @@ final class WallhavenFeedStore {
         guard inFlightSearchPage != nextPage else { return }
         inFlightSearchPage = nextPage
         isRefreshingList = true
+        let requestToken = listRequestToken
         searchLoadTask?.cancel()
         searchLoadTask = Task { [weak self] in
             guard let self else { return }
@@ -370,7 +377,7 @@ final class WallhavenFeedStore {
                 guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
-            if self.activeSearchQuery == requestQuery {
+            if self.activeSearchQuery == requestQuery, self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.searchLoadTask = nil
                 self.inFlightSearchPage = nil
@@ -379,6 +386,7 @@ final class WallhavenFeedStore {
     }
 
     func clearSearch() {
+        listRequestToken = UUID()
         searchTask?.cancel()
         searchTask = nil
         searchLoadTask?.cancel()
@@ -476,6 +484,7 @@ final class WallhavenFeedStore {
         feedErrorMessage = nil
         wallpapers = []
         canLoadMoreList = true
+        let requestToken = listRequestToken
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -485,7 +494,7 @@ final class WallhavenFeedStore {
                     purity: self.accountStore.purity,
                     apiKey: self.accountStore.apiKey
                 )
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
                 self.wallpapers = items
                 self.uploaderHasMore = !items.isEmpty
                 self.canLoadMoreList = self.uploaderHasMore
@@ -493,10 +502,10 @@ final class WallhavenFeedStore {
                 self.selectedWallpaperID = items.first?.id
                 self.onSelectionChanged?(items.first)
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
-            guard self.isBrowsingUploader else { return }
+            guard self.isBrowsingUploader, self.listRequestToken == requestToken else { return }
             self.isRefreshingList = false
             self.loadTask = nil
             self.inFlightUploaderPage = nil
@@ -509,6 +518,7 @@ final class WallhavenFeedStore {
         let nextPage = uploaderPage + 1
         guard inFlightUploaderPage != nextPage else { return }
         inFlightUploaderPage = nextPage
+        let requestToken = listRequestToken
         loadTask?.cancel()
         isRefreshingList = true
         feedErrorMessage = nil
@@ -521,7 +531,7 @@ final class WallhavenFeedStore {
                     purity: self.accountStore.purity,
                     apiKey: self.accountStore.apiKey
                 )
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
                 if !items.isEmpty {
                     let existingIDs = Set(self.wallpapers.map(\.id))
                     let newItems = items.filter { !existingIDs.contains($0.id) }
@@ -532,10 +542,10 @@ final class WallhavenFeedStore {
                 self.canLoadMoreList = self.uploaderHasMore
                 self.feedErrorMessage = nil
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
-            guard self.isBrowsingUploader else { return }
+            guard self.isBrowsingUploader, self.listRequestToken == requestToken else { return }
             self.isRefreshingList = false
             self.loadTask = nil
             self.inFlightUploaderPage = nil
@@ -568,6 +578,7 @@ final class WallhavenFeedStore {
     }
 
     private func clearUploaderBrowsing() {
+        listRequestToken = UUID()
         isBrowsingUploader = false
         uploaderUsername = nil
         uploaderPage = 1

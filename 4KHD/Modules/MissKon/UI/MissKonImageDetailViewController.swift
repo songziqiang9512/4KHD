@@ -200,10 +200,11 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
-        // Trigger detail resolution when pane becomes visible, item is prepared but not yet resolved,
-        // and there's no prior error (failed resolution should stay failed until explicit retry).
-        if shouldLoadDetailContent, library.imageSlots.count <= 1,
-           !library.isResolving, library.errorMessage == nil, library.resolvedPageCount == 0 {
+        // Trigger or resume detail resolution when pane becomes visible,
+        // unless already complete or previously failed.
+        if shouldLoadDetailContent,
+           !library.isResolving, library.errorMessage == nil,
+           !library.detail.isResolutionComplete {
             library.detail.resolve(item: item)
         }
 
@@ -219,8 +220,17 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         }
 
         let slots = library.imageSlots
-        guard !slots.isEmpty else {
-            if !library.isResolving, library.errorMessage != nil {
+        // All resolution failed: only cover placeholder exists, show retry.
+        let allFailed = !slots.isEmpty && library.errorMessage != nil
+            && library.resolvedPageCount == 0 && !library.isResolving
+        if slots.isEmpty || allFailed {
+            if allFailed {
+                detailFailed = true
+                imageView.isHidden = false
+                imageView.showFailure { [weak self] in
+                    self?.library.detail.retry()
+                }
+            } else if !library.isResolving, library.errorMessage != nil {
                 detailFailed = true
                 imageView.isHidden = false
                 imageView.showFailure { [weak self] in
@@ -229,7 +239,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             } else {
                 imageView.isHidden = true
             }
-            emptyLabel.isHidden = false
+            emptyLabel.isHidden = allFailed
             previousButton.isHidden = true
             nextButton.isHidden = true
             counterChrome.isHidden = true

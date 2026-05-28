@@ -8,6 +8,7 @@ final class MissKonDetailStore {
     var imageSlots: [MissKonImageSlot] = []
     var selectedSlotID: MissKonImageSlot.ID?
     var isResolving = false
+    var isResolutionComplete = false
     var errorMessage: String?
 
     private var resolvedPages: [URL: MissKonResolvedImagePage] = [:]
@@ -46,6 +47,7 @@ final class MissKonDetailStore {
         resolvedPages = [:]
         failedPageURLs = []
         isResolving = false
+        isResolutionComplete = false
         errorMessage = nil
         imageSlots = []
         selectedSlotID = nil
@@ -72,8 +74,7 @@ final class MissKonDetailStore {
             resolvedPages = [:]
             failedPageURLs = []
             errorMessage = nil
-        } else {
-            guard resolvedPages.isEmpty else { return } // Already resolving or resolved.
+            isResolutionComplete = false
         }
         let pageURLs = item.pageURLs
         guard !pageURLs.isEmpty else { return }
@@ -89,11 +90,20 @@ final class MissKonDetailStore {
             }
             self.isResolving = true
 
-            var pendingURLs = pageURLs
+            // Resume: filter out already-resolved or previously-failed pages.
+            var pendingURLs = pageURLs.filter {
+                !self.resolvedPages.keys.contains($0) && !self.failedPageURLs.contains($0)
+            }
+            if pendingURLs.isEmpty, !self.resolvedPages.isEmpty {
+                // All pages previously resolved; skip to publish.
+                self.publishSlots()
+                self.isResolutionComplete = true
+                return
+            }
             var seenURLs = Set(pageURLs)
-            var resolvedAny = false
+            var resolvedAny = !self.resolvedPages.isEmpty
 
-            // Resolve first page eagerly and publish immediately
+            // Resolve first pending page eagerly and publish immediately
             if let firstURL = pendingURLs.first {
                 pendingURLs.removeFirst()
                 do {
@@ -101,7 +111,9 @@ final class MissKonDetailStore {
                     guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
                     self.resolvedPages[firstURL] = page
                     for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
-                        pendingURLs.append(newURL)
+                        if !self.resolvedPages.keys.contains(newURL), !self.failedPageURLs.contains(newURL) {
+                            pendingURLs.append(newURL)
+                        }
                     }
                     resolvedAny = true
                     self.publishSlots()
@@ -111,8 +123,8 @@ final class MissKonDetailStore {
             }
 
             // Resolve remaining pages in small parallel batches (cap at 50 pages, 2 per batch).
-            while !pendingURLs.isEmpty, !Task.isCancelled, resolvedPages.count < 50 {
-                let maxBatch = min(2, 50 - resolvedPages.count)
+            while !pendingURLs.isEmpty, !Task.isCancelled, self.resolvedPages.count < 50 {
+                let maxBatch = min(2, 50 - self.resolvedPages.count)
                 let batch = Array(pendingURLs.prefix(maxBatch))
                 pendingURLs.removeFirst(min(pendingURLs.count, batch.count))
 
@@ -142,7 +154,9 @@ final class MissKonDetailStore {
                     case .success(let page):
                         self.resolvedPages[url] = page
                         for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
-                            newURLs.append(newURL)
+                            if !self.resolvedPages.keys.contains(newURL), !self.failedPageURLs.contains(newURL) {
+                                newURLs.append(newURL)
+                            }
                         }
                         resolvedAny = true
                     case .failure:
@@ -157,6 +171,7 @@ final class MissKonDetailStore {
             if !resolvedAny {
                 self.errorMessage = "无法解析任何图片"
             }
+            self.isResolutionComplete = true
         }
     }
 
