@@ -50,6 +50,10 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         inspectorWindowController?.saveState()
     }
 
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+
     @objc func showMainWindow(_ sender: Any?) {
         windowController?.showWindow(sender)
         windowController?.window?.makeKeyAndOrderFront(sender)
