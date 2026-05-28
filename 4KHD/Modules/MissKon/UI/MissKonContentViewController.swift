@@ -17,6 +17,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     private var lastAppliedVisibleIDs: [MissKonItem.ID] = []
     private var lastShowsFooter = false
     private var pendingScrollItemID: MissKonItem.ID?
+    private var pendingScrollOffset: CGFloat?
+    private var lastSection: MissKonSection?
     private let reloadQueue = WorkspaceCoalescingQueue(name: "MissKonContent Reload", interval: 0.05, maxInterval: 0.12)
 
     init(library: MissKonGalleryStore, preferences: MissKonContentPreferences, detailPane: WorkspaceDetailPaneController) {
@@ -92,6 +94,18 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     }
 
     private func reloadContent() {
+        // Save scroll offset for the outgoing section before content changes.
+        if let lastSection, lastSection != library.section {
+            saveCurrentScrollOffset(for: lastSection)
+        }
+        lastSection = library.section
+
+        // Capture scroll target for restoring position when returning to a section.
+        if let cachedOffset = library.feed.cachedScrollOffsets[library.section] {
+            pendingScrollOffset = cachedOffset
+            library.feed.cachedScrollOffsets[library.section] = nil
+        }
+
         capturePendingScrollItemIfSwitchingLayout()
 
         switch preferences.layout {
@@ -104,13 +118,17 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 lastShowsFooter = currentShowsFooter
                 NSView.performWithoutAnimation { tableView.reloadData() }
             } else {
-                // Content unchanged; refresh visible rows for metadata updates (e.g., search highlight)
                 reloadVisibleListRows()
             }
             syncTableSelection()
             if let pendingScrollItemID,
                let row = library.visibleItems.firstIndex(where: { $0.id == pendingScrollItemID }) {
                 tableView.scrollRowToVisible(row)
+            } else if let offset = pendingScrollOffset, library.visibleItems.indices.contains(0) {
+                let clipView = tableScrollView.contentView
+                let clamped = min(max(offset, -tableScrollView.contentInsets.top),
+                                  max(0, tableView.frame.height - clipView.bounds.height))
+                clipView.setBoundsOrigin(NSPoint(x: 0, y: clamped))
             }
         case .grid:
             setActiveView(gridView)
@@ -130,9 +148,17 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 DispatchQueue.main.async { [weak self] in
                     self?.gridView.scrollItemIntoViewIfNeeded(withID: pendingScrollItemID)
                 }
+            } else if let offset = pendingScrollOffset {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    let clipView = self.gridView.scrollView.contentView
+                    let maxY = max(0, self.gridView.scrollView.documentView?.frame.height ?? 0 - clipView.bounds.height)
+                    clipView.setBoundsOrigin(NSPoint(x: 0, y: min(offset, maxY)))
+                }
             }
         }
         pendingScrollItemID = nil
+        pendingScrollOffset = nil
     }
 
     private func reloadVisibleListRows() {
@@ -311,6 +337,17 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }),
               let row = library.visibleItems.firstIndex(where: { $0.id == item.id }) else { return }
         SharingPresenter.show(items: [item.detailURL as NSURL], relativeTo: tableView.rect(ofRow: row), of: tableView, preferredEdge: .maxX)
+    }
+
+    private func saveCurrentScrollOffset(for section: MissKonSection) {
+        let offset: CGFloat
+        switch preferences.layout {
+        case .list:
+            offset = tableScrollView.contentView.bounds.origin.y
+        case .grid:
+            offset = gridView.scrollView.contentView.bounds.origin.y
+        }
+        library.feed.cachedScrollOffsets[section] = offset
     }
 
     private func clearSearch() -> Bool {

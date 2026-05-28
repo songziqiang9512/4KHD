@@ -10,7 +10,8 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     var onRetry: (() -> Void)?
     var contextMenuProvider: ((MissKonItem) -> NSMenu?)?
 
-    private let scrollView = NSScrollView()
+    private let gridScrollView = NSScrollView()
+    var scrollView: NSScrollView { gridScrollView }
     private let collectionView = MissKonGridCollectionView()
     private let gridLayout = WorkspaceThumbnailWaterfallLayout()
     private var items: [MissKonItem] = []

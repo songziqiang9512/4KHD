@@ -205,6 +205,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             currentImageURL = nil
             detailFailed = false
             imageView.setImageURL(nil)
+            RemoteImagePipeline.shared.stopDetailPrefetching()
             isDetailReady = false
             return
         }
@@ -315,8 +316,13 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         default:
             break
         }
+        if library.isResolving {
+            let pages = library.resolvedPageCount
+            let images = library.resolvedImageCount
+            if pages > 0 { return "解析中 (\(pages) 页, \(images) 张)" }
+            return "解析中"
+        }
         if !isDetailReady { return "解析中" }
-        if library.isResolving { return "解析中" }
         return ""
     }
 
