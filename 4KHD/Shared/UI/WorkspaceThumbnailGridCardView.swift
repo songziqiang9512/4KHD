@@ -130,6 +130,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         isPressingCard = false
         isSelectedState = false
         currentScale = 1
+        imageView.contentMode = .aspectFill
         imageView.image = placeholderImage
         placeholderLabel.stringValue = "加载中..."
         placeholderLabel.isHidden = false

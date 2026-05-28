@@ -67,8 +67,7 @@ enum DetailPageHTMLResolver {
     }
 
     private nonisolated static func urls(in html: String) -> [URL] {
-        let pattern = #"(?:href|src|data-src|data-lazy-src)=["']([^"']+)["']"#
-        return matches(pattern: pattern, in: html)
+        return matches(regex: urlExtractionRegex, in: html)
             .compactMap { decodeHTML($0) }
             .compactMap(URL.init(string:))
     }
@@ -82,16 +81,10 @@ enum DetailPageHTMLResolver {
         //   1) 找出所有锚点指向 + 当前页（li.current）+ baseURL 自身能读到的最大页号
         //   2) 按 URL 模板 `<detail.html>/N` 把 1..max 全部生成出来
         // 这样不论画廊有 5 页还是 50 页，中间也不会漏。
-        let anchorPattern = #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["']"#
-        // current 既可能挂在 li 上（4khd 现状），也可能挂在 span 上（其它 WP 主题），都兼容。
-        let currentLiPattern = #"<li[^>]+class=["'][^"']*current[^"']*["'][^>]*>\s*<span[^>]*>\s*([0-9,]+)\s*</span>"#
-        let currentSpanPattern = #"<span[^>]+class=["'][^"']*(?:page-numbers\s+current|current\s+page-numbers)[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#
-
-        let anchorURLs = matches(pattern: anchorPattern, in: html)
+        let anchorURLs = matches(regex: pageAnchorRegex, in: html)
             .compactMap { decodeHTML($0) }
             .compactMap(URL.init(string:))
 
-        // 用字符串方式精确剥掉 baseURL 末尾的 `/N`，保证 page1 URL 和 detailURL 字面相等。
         let basePage = stripTrailingPageSegment(from: baseURL)
         let basePageString = basePage.absoluteString
 
@@ -101,8 +94,8 @@ enum DetailPageHTMLResolver {
         for url in sameGalleryAnchors {
             if let n = url.trailingPageNumber { maxPageNumber = max(maxPageNumber, n) }
         }
-        for pattern in [currentLiPattern, currentSpanPattern] {
-            if let text = matches(pattern: pattern, in: html).first,
+        for regex in [currentLiRegex, currentSpanRegex] {
+            if let text = matches(regex: regex, in: html).first,
                let n = Int(text.replacingOccurrences(of: ",", with: "")) {
                 maxPageNumber = max(maxPageNumber, n)
             }
@@ -130,10 +123,25 @@ enum DetailPageHTMLResolver {
         return URL(string: stripped) ?? url
     }
 
-    private nonisolated static func matches(pattern: String, in text: String) -> [String] {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return []
-        }
+    // Cached regexes to avoid recompilation on every call.
+    private nonisolated static let urlExtractionRegex = try! NSRegularExpression(
+        pattern: #"(?:href|src|data-src|data-lazy-src)=["']([^"']+)["']"#,
+        options: [.caseInsensitive]
+    )
+    private nonisolated static let pageAnchorRegex = try! NSRegularExpression(
+        pattern: #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["']"#,
+        options: [.caseInsensitive]
+    )
+    private nonisolated static let currentLiRegex = try! NSRegularExpression(
+        pattern: #"<li[^>]+class=["'][^"']*current[^"']*["'][^>]*>\s*<span[^>]*>\s*([0-9,]+)\s*</span>"#,
+        options: [.caseInsensitive]
+    )
+    private nonisolated static let currentSpanRegex = try! NSRegularExpression(
+        pattern: #"<span[^>]+class=["'][^"']*(?:page-numbers\s+current|current\s+page-numbers)[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#,
+        options: [.caseInsensitive]
+    )
+
+    private nonisolated static func matches(regex: NSRegularExpression, in text: String) -> [String] {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.matches(in: text, range: range).compactMap { result in
             guard result.numberOfRanges > 1,

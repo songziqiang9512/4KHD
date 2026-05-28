@@ -18,6 +18,11 @@ class WorkspaceZoomableImageView: NSView {
         nil
     }
 
+    func replaceImage(_ newImage: NSImage?) {
+        lastFitSize = .zero
+        imageView.image = newImage
+    }
+
     override func layout() {
         super.layout()
         if abs(scrollView.magnification - 1) < 0.001 {

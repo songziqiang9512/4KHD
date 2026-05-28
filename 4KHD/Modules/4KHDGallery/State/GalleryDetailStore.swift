@@ -50,6 +50,9 @@ final class GalleryDetailStore {
         prefetchPageURL = nil
         selectedImageIndex = 0
         loadedImageSlots = []
+        itemPageCursors.removeAll()
+        resolvedPageURLs.removeAll()
+        requestedDetailPageURLs.removeAll()
         requestedDetailPageIndexByURL.removeAll()
         guard let item else { return }
         itemPageCursors[item.id] = min(pageURLs(for: item).count, 1)
