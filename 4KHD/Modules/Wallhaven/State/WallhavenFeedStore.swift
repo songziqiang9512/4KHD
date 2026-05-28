@@ -216,32 +216,35 @@ final class WallhavenFeedStore {
             let searchSection = self.section
             do {
                 let page = try await self.performSearch(page: 1)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.section == searchSection,
+                      self.activeSearchQuery == nil
+                else { return }
                 self.cachedWallpapers[searchSection] = page.wallpapers
                 self.cachedPages[searchSection] = (page.currentPage, page.lastPage, page.seed)
                 self.cacheTimestamps[searchSection] = Date()
-                if self.section == searchSection, self.activeSearchQuery == nil {
-                    self.wallpapers = page.wallpapers
-                    self.currentPage = page.currentPage
-                    self.lastPage = page.lastPage
-                    self.seed = page.seed
-                    self.canLoadMoreList = page.canLoadMore
-                    self.feedErrorMessage = nil
-                    let previousID = self.selectedWallpaperID
-                    if self.selectedWallpaperID == nil || !page.wallpapers.contains(where: { $0.id == self.selectedWallpaperID }) {
-                        self.selectedWallpaperID = page.wallpapers.first?.id
-                    }
-                    if self.selectedWallpaperID != previousID {
-                        self.onSelectionChanged?(self.selectedWallpaper)
-                    }
+                self.wallpapers = page.wallpapers
+                self.currentPage = page.currentPage
+                self.lastPage = page.lastPage
+                self.seed = page.seed
+                self.canLoadMoreList = page.canLoadMore
+                self.feedErrorMessage = nil
+                let previousID = self.selectedWallpaperID
+                if self.selectedWallpaperID == nil || !page.wallpapers.contains(where: { $0.id == self.selectedWallpaperID }) {
+                    self.selectedWallpaperID = page.wallpapers.first?.id
+                }
+                if self.selectedWallpaperID != previousID {
+                    self.onSelectionChanged?(self.selectedWallpaper)
                 }
             } catch {
-                guard !Task.isCancelled else { return }
-                if self.section == searchSection {
-                    self.feedErrorMessage = error.localizedDescription
-                }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.section == searchSection
+                else { return }
+                self.feedErrorMessage = error.localizedDescription
             }
-            if self.section == searchSection, self.listRequestToken == requestToken {
+            if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.loadTask = nil
             }
@@ -271,28 +274,31 @@ final class WallhavenFeedStore {
             self.feedErrorMessage = nil
             do {
                 let page = try await self.performSearch(page: nextPage)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.section == searchSection,
+                      self.activeSearchQuery == nil
+                else { return }
                 var existing = self.cachedWallpapers[searchSection] ?? []
                 let existingIDs = Set(existing.map(\.id))
                 let newItems = page.wallpapers.filter { !existingIDs.contains($0.id) }
                 existing.append(contentsOf: newItems)
                 self.cachedWallpapers[searchSection] = existing
                 self.cachedPages[searchSection] = (page.currentPage, page.lastPage, page.seed)
-                if self.section == searchSection, self.activeSearchQuery == nil {
-                    self.wallpapers = existing
-                    self.currentPage = page.currentPage
-                    self.lastPage = page.lastPage
-                    self.seed = page.seed
-                    self.canLoadMoreList = page.canLoadMore
-                    self.feedErrorMessage = nil
-                }
+                self.wallpapers = existing
+                self.currentPage = page.currentPage
+                self.lastPage = page.lastPage
+                self.seed = page.seed
+                self.canLoadMoreList = page.canLoadMore
+                self.feedErrorMessage = nil
             } catch {
-                guard !Task.isCancelled else { return }
-                if self.section == searchSection {
-                    self.feedErrorMessage = error.localizedDescription
-                }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.section == searchSection
+                else { return }
+                self.feedErrorMessage = error.localizedDescription
             }
-            if self.section == searchSection, self.listRequestToken == requestToken {
+            if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.loadTask = nil
                 self.inFlightPage = nil
@@ -337,7 +343,10 @@ final class WallhavenFeedStore {
             let requestQuery = trimmed
             do {
                 let page = try await self.performSearch(page: 1, query: requestQuery)
-                guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.activeSearchQuery == requestQuery
+                else { return }
                 self.wallpapers = page.wallpapers
                 self.currentPage = page.currentPage
                 self.lastPage = page.lastPage
@@ -348,10 +357,13 @@ final class WallhavenFeedStore {
                 self.selectedWallpaperID = first?.id
                 self.onSelectionChanged?(first)
             } catch {
-                guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.activeSearchQuery == requestQuery
+                else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
-            if self.activeSearchQuery == requestQuery, self.listRequestToken == requestToken {
+            if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.searchTask = nil
             }
@@ -372,7 +384,10 @@ final class WallhavenFeedStore {
             self.feedErrorMessage = nil
             do {
                 let page = try await self.performSearch(page: nextPage, query: requestQuery)
-                guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.activeSearchQuery == requestQuery
+                else { return }
                 var existingIDs = Set(self.wallpapers.map(\.id))
                 let newItems = page.wallpapers.filter { existingIDs.insert($0.id).inserted }
                 self.wallpapers.append(contentsOf: newItems)
@@ -382,10 +397,13 @@ final class WallhavenFeedStore {
                 self.canLoadMoreList = page.canLoadMore
                 self.feedErrorMessage = nil
             } catch {
-                guard !Task.isCancelled, self.activeSearchQuery == requestQuery else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.activeSearchQuery == requestQuery
+                else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
-            if self.activeSearchQuery == requestQuery, self.listRequestToken == requestToken {
+            if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
                 self.searchLoadTask = nil
                 self.inFlightSearchPage = nil
@@ -483,6 +501,7 @@ final class WallhavenFeedStore {
         )
         loadTask?.cancel()
         searchTask?.cancel()
+        searchLoadTask?.cancel()
         isBrowsingUploader = true
         uploaderUsername = username
         uploaderPage = 1
