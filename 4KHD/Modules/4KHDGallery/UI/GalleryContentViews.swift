@@ -21,11 +21,15 @@ final class GalleryListRowView: NSTableCellView {
         nil
     }
 
-    func configure(item: GalleryItem, isFavorite: Bool, isCached: Bool) {
+    func configure(item: GalleryItem, isFavorite: Bool, isCached: Bool, searchQuery: String? = nil) {
         coverView.setImage(url: item.coverURL, maxPixelSize: 180)
         kindLabel.configure(kind: item.kind)
         kindLabel.isHidden = item.kind == .gallery
-        titleLabel.stringValue = item.title
+        if let query = searchQuery, !query.isEmpty {
+            titleLabel.attributedStringValue = highlightedAttributedString(item.title, query: query)
+        } else {
+            titleLabel.stringValue = item.title
+        }
         subtitleLabel.stringValue = item.subtitle
         favoriteIcon.isHidden = !isFavorite
         cachedIcon.isHidden = !isCached
@@ -156,6 +160,7 @@ final class GalleryFooterRowView: NSTableCellView {
 
     private let progress = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
+    var onRetry: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -171,14 +176,21 @@ final class GalleryFooterRowView: NSTableCellView {
         progress.isHidden = !isRefreshing || errorMessage != nil
         if let errorMessage {
             progress.stopAnimation(nil)
-            label.stringValue = errorMessage
+            label.stringValue = "\(errorMessage) — 点击重试"
+            label.textColor = .systemRed
         } else if isRefreshing {
             progress.startAnimation(nil)
-            label.stringValue = "加载下一页"
+            label.stringValue = "加载中..."
+            label.textColor = .tertiaryLabelColor
         } else {
             progress.stopAnimation(nil)
-            label.stringValue = canLoadMore ? "继续加载" : (hasItems ? "已到末尾" : "")
+            label.stringValue = canLoadMore ? "加载更多" : (hasItems ? "已到末尾" : "无内容")
+            label.textColor = .tertiaryLabelColor
         }
+    }
+
+    @objc private func didClick() {
+        onRetry?()
     }
 
     private func setupView() {
@@ -200,6 +212,9 @@ final class GalleryFooterRowView: NSTableCellView {
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+
+        let click = NSClickGestureRecognizer(target: self, action: #selector(didClick))
+        addGestureRecognizer(click)
     }
 }
 

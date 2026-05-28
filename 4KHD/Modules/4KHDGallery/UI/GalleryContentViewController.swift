@@ -96,7 +96,11 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacentFromTable(delta: delta) ?? false
         }
-        tableView.keyboardContext = WorkspaceKeyboardContext(stepSelection: tableView.arrowKeyHandler)
+        tableView.keyboardContext = WorkspaceKeyboardContext(
+            stepSelection: tableView.arrowKeyHandler,
+            onEscape: { [weak self] in self?.clearSearch() ?? false },
+            onEnter: { [weak self] in self?.openSelectedTableItemInDetail(); return true }
+        )
         tableView.target = self
         tableView.doubleAction = #selector(openSelectedTableItemInDetail)
     }
@@ -111,6 +115,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         gridView.onNeedsMore = { [weak self] in
             self?.library.loadMoreListIfNeeded()
         }
+        gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
+        gridView.onRetry = { [weak self] in self?.library.refreshFromNetwork() }
         gridView.contextMenuProvider = { [weak self] item in
             self?.makeContextMenu(for: item)
         }
@@ -148,6 +154,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
                 gridView.update(
                     items: library.visibleItems,
                     selectedItemID: library.selectedItemID,
+                    searchQuery: library.activeSearchQuery,
                     minimumColumnCount: GalleryContentPreferences.minimumGridColumnCount,
                     maximumColumnCount: preferences.gridColumnCount,
                     preferredCardMinimumWidth: 136,
@@ -595,7 +602,8 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
                 view.configure(
                     item: item,
                     isFavorite: library.isFavorite(item),
-                    isCached: library.isCached(item)
+                    isCached: library.isCached(item),
+                    searchQuery: library.activeSearchQuery
                 )
             }
             return view
@@ -608,6 +616,14 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
                 canLoadMore: library.canLoadMoreList,
                 hasItems: !library.visibleItems.isEmpty
             )
+            view.onRetry = { [weak self] in
+                guard let self else { return }
+                if self.library.feedErrorMessage != nil {
+                    self.library.refreshFromNetwork()
+                } else {
+                    self.library.loadMoreListIfNeeded()
+                }
+            }
             return view
         }
     }
@@ -617,6 +633,12 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
         let row = tableView.selectedRow
         guard rows.indices.contains(row), case .item(let id) = rows[row], let item = rowItems[id] else { return }
         library.select(item)
+    }
+
+    private func clearSearch() -> Bool {
+        guard library.activeSearchQuery != nil else { return false }
+        library.clearSearch()
+        return true
     }
 }
 

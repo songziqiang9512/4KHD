@@ -6,6 +6,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     var onSelect: ((GalleryItem) -> Void)?
     var onOpenDetail: (() -> Void)?
     var onNeedsMore: (() -> Void)?
+    var onEscape: (() -> Bool)?
+    var onRetry: (() -> Void)?
     var contextMenuProvider: ((GalleryItem) -> NSMenu?)?
 
     private let scrollView = NSScrollView()
@@ -21,6 +23,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var minimumColumnCount: Int?
     private var maximumColumnCount: Int?
     private var preferredCardMinimumWidth: CGFloat = 160
+    private var searchQuery: String?
     private var isFavorite: (GalleryItem) -> Bool = { _ in false }
     private var isCached: (GalleryItem) -> Bool = { _ in false }
     private var isApplyingSelection = false
@@ -74,6 +77,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     func update(
         items: [GalleryItem],
         selectedItemID: GalleryItem.ID?,
+        searchQuery: String?,
         minimumColumnCount: Int?,
         maximumColumnCount: Int?,
         preferredCardMinimumWidth: CGFloat,
@@ -96,6 +100,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.items = items
         self.previousSelectedItemID = self.selectedItemID
         self.selectedItemID = selectedItemID
+        self.searchQuery = searchQuery
         self.minimumColumnCount = minimumColumnCount
         self.maximumColumnCount = maximumColumnCount
         self.preferredCardMinimumWidth = preferredCardMinimumWidth
@@ -192,6 +197,13 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
                 canLoadMore: canLoadMore,
                 hasItems: !items.isEmpty
             )
+            item.onRetry = { [weak self] in
+                if self?.errorMessage != nil {
+                    self?.onRetry?()
+                } else {
+                    self?.onNeedsMore?()
+                }
+            }
             return item
         }
 
@@ -203,6 +215,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         item.configure(
             item: galleryItem,
             isSelected: galleryItem.id == selectedItemID,
+            searchQuery: searchQuery,
             isFavorite: isFavorite(galleryItem),
             isCached: isCached(galleryItem),
             onImageAspectRatioResolved: { [weak self] ratio in
@@ -286,7 +299,16 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         collectionView.arrowKeyHandler = { [weak self] delta in
             self?.selectAdjacent(delta: delta) ?? false
         }
-        collectionView.keyboardContext = WorkspaceKeyboardContext(stepSelection: collectionView.arrowKeyHandler)
+        collectionView.keyboardContext = WorkspaceKeyboardContext(
+            stepSelection: collectionView.arrowKeyHandler,
+            onEscape: { [weak self] in self?.onEscape?() ?? false },
+            onEnter: { [weak self] in
+                guard let self, let id = self.selectedItemID,
+                      let indexPath = self.items.firstIndex(where: { $0.id == id }) else { return false }
+                self.openDetail(for: IndexPath(item: indexPath, section: 0))
+                return true
+            }
+        )
         collectionView.contextMenuProvider = { [weak self] indexPath in
             self?.makeContextMenu(for: indexPath)
         }
@@ -595,6 +617,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
     func configure(
         item: GalleryItem,
         isSelected: Bool,
+        searchQuery: String?,
         isFavorite: Bool,
         isCached: Bool,
         onImageAspectRatioResolved: @escaping (CGFloat) -> Void
@@ -602,7 +625,8 @@ final class GalleryGridItemView: NSCollectionViewItem {
         representedID = item.id
         cardView.setText(
             title: item.title,
-            metadata: metadataText(for: item, isFavorite: isFavorite, isCached: isCached)
+            metadata: metadataText(for: item, isFavorite: isFavorite, isCached: isCached),
+            highlightQuery: searchQuery
         )
         applySelectionState(isSelected)
         loadCover(for: item, onImageAspectRatioResolved: onImageAspectRatioResolved)
@@ -683,6 +707,7 @@ final class GalleryGridFooterItem: NSCollectionViewItem {
 
     private let progress = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
+    var onRetry: (() -> Void)?
 
     override func loadView() {
         view = NSView()
@@ -693,14 +718,21 @@ final class GalleryGridFooterItem: NSCollectionViewItem {
         progress.isHidden = !isRefreshing || errorMessage != nil
         if let errorMessage {
             progress.stopAnimation(nil)
-            label.stringValue = errorMessage
+            label.stringValue = "\(errorMessage) — 点击重试"
+            label.textColor = .systemRed
         } else if isRefreshing {
             progress.startAnimation(nil)
-            label.stringValue = "加载下一页"
+            label.stringValue = "加载中..."
+            label.textColor = .tertiaryLabelColor
         } else {
             progress.stopAnimation(nil)
-            label.stringValue = canLoadMore ? "继续加载" : (hasItems ? "已到末尾" : "")
+            label.stringValue = canLoadMore ? "加载更多" : (hasItems ? "已到末尾" : "无内容")
+            label.textColor = .tertiaryLabelColor
         }
+    }
+
+    @objc private func didClick() {
+        onRetry?()
     }
 
     private func setupView() {
@@ -722,5 +754,8 @@ final class GalleryGridFooterItem: NSCollectionViewItem {
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
+
+        let click = NSClickGestureRecognizer(target: self, action: #selector(didClick))
+        view.addGestureRecognizer(click)
     }
 }
