@@ -200,11 +200,10 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
-        // Trigger or resume detail resolution when pane becomes visible,
-        // unless already complete or previously failed.
+        // Start initial resolution only once per item: first open, no pages yet, no error.
         if shouldLoadDetailContent,
-           !library.isResolving, library.errorMessage == nil,
-           !library.detail.isResolutionComplete {
+           library.resolvedPageCount == 0,
+           library.errorMessage == nil {
             library.detail.resolve(item: item)
         }
 

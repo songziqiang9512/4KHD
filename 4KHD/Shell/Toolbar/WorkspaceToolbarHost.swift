@@ -1174,7 +1174,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .alertFirstButtonReturn:
             let key = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             store.apiKey = key.isEmpty ? nil : key
-            if let error = store.keychainError {
+            if let error = store.keyStorageError {
                 let errorAlert = NSAlert()
                 errorAlert.messageText = "保存失败，API Key 未启用"
                 errorAlert.informativeText = error

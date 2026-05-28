@@ -93,7 +93,9 @@ final class MissKonDetailStore {
         }
         guard !knownPageURLs.isEmpty else { return }
         isResolving = true
-        loadPage(knownPageURLs[0], prefetchNext: 2)
+        // Only prefetch if first page hasn't been resolved yet.
+        let firstResolved = resolvedPages.keys.contains(knownPageURLs[0])
+        loadPage(knownPageURLs[0], prefetchNext: firstResolved ? 0 : 2)
     }
 
     /// User navigated to a slot — load its page if not yet resolved.
@@ -135,11 +137,15 @@ final class MissKonDetailStore {
             return
         }
 
+        let itemID = currentItem?.id
         pageTasks[pageURL] = Task { [weak self] in
             guard let self else { return }
             do {
                 let page = try await MissKonDetailResolver.resolve(pageURL: pageURL)
-                guard !Task.isCancelled, self.pageTasks[pageURL] != nil else { return }
+                guard !Task.isCancelled,
+                      self.currentItem?.id == itemID,
+                      self.pageTasks[pageURL] != nil
+                else { return }
                 self.resolvedPages[pageURL] = page
                 // Merge discovered page URLs into knownPageURLs.
                 for newURL in page.pageURLs where !self.knownPageURLs.contains(newURL) {
@@ -152,7 +158,10 @@ final class MissKonDetailStore {
                 }
                 self.checkCompletion()
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      self.currentItem?.id == itemID,
+                      self.pageTasks[pageURL] != nil
+                else { return }
                 self.pageTasks[pageURL] = nil
                 self.failedPageURLs.insert(pageURL)
                 self.checkCompletion()
@@ -203,50 +212,46 @@ final class MissKonDetailStore {
 
     // MARK: - Slot management
 
-    /// Merge a resolved page's imageURLs into placeholder slots.
+    /// Merge a resolved page: replace all slots for this pageURL with exact imageURLs.
     private func mergeResolvedPage(_ page: MissKonResolvedImagePage, pageURL: URL) {
         guard let item = currentItem else { return }
         var slots = imageSlots
-        // Update placeholder slots that belong to this page with real URLs.
-        for i in slots.indices where slots[i].pageURL == pageURL {
-            let imageIndex = slots[i].pageImageIndex
-            if let realURL = page.imageURLs.element(at: imageIndex) {
-                slots[i] = MissKonImageSlot(
-                    id: slots[i].id,
-                    displayIndex: slots[i].displayIndex,
-                    pageURL: pageURL,
-                    pageImageIndex: imageIndex,
-                    knownURL: realURL
-                )
-            }
+        // Remove all placeholder slots belonging to this pageURL.
+        let keepIndices = slots.indices.filter { slots[$0].pageURL != pageURL }
+        var newSlots = keepIndices.map { slots[$0] }
+        // Find insertion point: right before the first slot of the same page, or at end.
+        let insertAt: Int
+        if let firstSamePageIdx = slots.firstIndex(where: { $0.pageURL == pageURL }),
+           let beforeIdx = newSlots.firstIndex(where: { $0.displayIndex >= slots[firstSamePageIdx].displayIndex }) {
+            insertAt = beforeIdx
+        } else {
+            insertAt = newSlots.count
         }
-        // If page provided URLs beyond our placeholder count, append new slots.
-        let existingInPage = slots.filter { $0.pageURL == pageURL }.count
-        if page.imageURLs.count > existingInPage {
-            let baseDisplayIndex = slots.count
-            for offset in existingInPage..<page.imageURLs.count {
-                slots.append(MissKonImageSlot(
-                    id: "\(item.id)-pExtra-\(pageURL.absoluteString.hashValue)-\(offset)",
-                    displayIndex: baseDisplayIndex + (offset - existingInPage),
-                    pageURL: pageURL,
-                    pageImageIndex: offset,
-                    knownURL: page.imageURLs[offset]
-                ))
-            }
+        // Insert exact imageURLs for this page.
+        let baseDisplayIndex = insertAt > 0 ? newSlots[insertAt - 1].displayIndex + 1 : 0
+        let pageSlots: [MissKonImageSlot] = page.imageURLs.enumerated().map { offset, imageURL in
+            MissKonImageSlot(
+                id: "\(item.id)-p-\(pageURL.absoluteString.hashValue)-\(offset)",
+                displayIndex: baseDisplayIndex + offset,
+                pageURL: pageURL,
+                pageImageIndex: offset,
+                knownURL: imageURL
+            )
         }
+        newSlots.insert(contentsOf: pageSlots, at: insertAt)
         // Re-index display indices.
-        for i in slots.indices { slots[i] = MissKonImageSlot(
-            id: slots[i].id,
+        for i in newSlots.indices { newSlots[i] = MissKonImageSlot(
+            id: newSlots[i].id,
             displayIndex: i,
-            pageURL: slots[i].pageURL,
-            pageImageIndex: slots[i].pageImageIndex,
-            knownURL: slots[i].knownURL
+            pageURL: newSlots[i].pageURL,
+            pageImageIndex: newSlots[i].pageImageIndex,
+            knownURL: newSlots[i].knownURL
         )}
-        imageSlots = slots
+        imageSlots = newSlots
         errorMessage = nil
-        // Maintain selection across merges.
-        if selectedSlotID == nil || !slots.contains(where: { $0.id == selectedSlotID }) {
-            selectedSlotID = slots.first?.id
+        // Maintain selection: fall back to first slot in replaced page, or first overall.
+        if selectedSlotID == nil || !newSlots.contains(where: { $0.id == selectedSlotID }) {
+            selectedSlotID = pageSlots.first?.id ?? newSlots.first?.id
         }
     }
 
