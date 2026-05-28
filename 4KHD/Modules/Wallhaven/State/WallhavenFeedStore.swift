@@ -207,6 +207,59 @@ final class WallhavenFeedStore {
             refreshFavorites()
             return
         }
+        // Re-route to current mode so toolbar refresh / footer retry work correctly.
+        if isBrowsingUploader, let username = uploaderUsername {
+            uploaderPage = 1
+            inFlightUploaderPage = 1
+            uploaderHasMore = true
+            isRefreshingList = true
+            feedErrorMessage = nil
+            wallpapers = []
+            canLoadMoreList = true
+            let requestUsername = username
+            let requestPurity = accountStore.purity
+            let requestApiKey = accountStore.apiKey
+            let requestToken = beginListRequest()
+            loadTask?.cancel()
+            loadTask = nil
+            loadTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let items = try await WallhavenUploaderResolver.resolve(
+                        username: requestUsername,
+                        page: 1,
+                        purity: requestPurity,
+                        apiKey: requestApiKey
+                    )
+                    guard !Task.isCancelled,
+                          self.listRequestToken == requestToken,
+                          self.isBrowsingUploader,
+                          self.uploaderUsername == requestUsername
+                    else { return }
+                    self.wallpapers = items
+                    self.uploaderHasMore = !items.isEmpty
+                    self.canLoadMoreList = self.uploaderHasMore
+                    self.feedErrorMessage = items.isEmpty ? "未找到 @\(requestUsername) 的作品" : nil
+                    self.selectedWallpaperID = items.first?.id
+                    self.onSelectionChanged?(items.first)
+                } catch {
+                    guard !Task.isCancelled,
+                          self.listRequestToken == requestToken
+                    else { return }
+                    self.feedErrorMessage = error.localizedDescription
+                }
+                if self.listRequestToken == requestToken {
+                    self.isRefreshingList = false
+                    self.loadTask = nil
+                    self.inFlightUploaderPage = nil
+                }
+            }
+            return
+        }
+        if let query = activeSearchQuery, !query.isEmpty {
+            submitSearch(query, force: true)
+            return
+        }
         isRefreshingList = true
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: 1)
@@ -332,9 +385,10 @@ final class WallhavenFeedStore {
         }
     }
 
-    func submitSearch(_ query: String) {
+    func submitSearch(_ query: String, force: Bool = false) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != activeSearchQuery else { return }
+        guard !trimmed.isEmpty else { return }
+        guard force || trimmed != activeSearchQuery else { return }
         // Exit uploader browsing so load-more goes to search pagination.
         clearUploaderBrowsing()
         activeSearchQuery = trimmed

@@ -110,6 +110,10 @@ final class MissKonFeedStore {
             if section == .favorites { restoreSectionCache() }
             return
         }
+        if let query = activeSearchQuery, !query.isEmpty {
+            submitSearch(query, force: true)
+            return
+        }
         let requestSection = section
         isRefreshingList = true
         inFlightPageURL = nil
@@ -252,9 +256,10 @@ final class MissKonFeedStore {
         }
     }
 
-    func submitSearch(_ query: String) {
+    func submitSearch(_ query: String, force: Bool = false) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != activeSearchQuery else { return }
+        guard !trimmed.isEmpty else { return }
+        guard force || trimmed != activeSearchQuery else { return }
         activeSearchQuery = trimmed
         isRefreshingList = true
         feedErrorMessage = nil
