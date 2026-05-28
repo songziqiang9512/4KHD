@@ -164,6 +164,7 @@ final class MissKonDetailStore {
                 else { return }
                 self.pageTasks[pageURL] = nil
                 self.failedPageURLs.insert(pageURL)
+                self.removeSlots(forFailedPage: pageURL)
                 self.checkCompletion()
             }
         }
@@ -215,43 +216,69 @@ final class MissKonDetailStore {
     /// Merge a resolved page: replace all slots for this pageURL with exact imageURLs.
     private func mergeResolvedPage(_ page: MissKonResolvedImagePage, pageURL: URL) {
         guard let item = currentItem else { return }
-        var slots = imageSlots
-        // Remove all placeholder slots belonging to this pageURL.
-        let keepIndices = slots.indices.filter { slots[$0].pageURL != pageURL }
-        var newSlots = keepIndices.map { slots[$0] }
-        // Find insertion point: right before the first slot of the same page, or at end.
-        let insertAt: Int
-        if let firstSamePageIdx = slots.firstIndex(where: { $0.pageURL == pageURL }),
-           let beforeIdx = newSlots.firstIndex(where: { $0.displayIndex >= slots[firstSamePageIdx].displayIndex }) {
-            insertAt = beforeIdx
-        } else {
-            insertAt = newSlots.count
-        }
-        // Insert exact imageURLs for this page.
-        let baseDisplayIndex = insertAt > 0 ? newSlots[insertAt - 1].displayIndex + 1 : 0
         let pageSlots: [MissKonImageSlot] = page.imageURLs.enumerated().map { offset, imageURL in
             MissKonImageSlot(
                 id: "\(item.id)-p-\(pageURL.absoluteString.hashValue)-\(offset)",
-                displayIndex: baseDisplayIndex + offset,
+                displayIndex: 0,
                 pageURL: pageURL,
                 pageImageIndex: offset,
                 knownURL: imageURL
             )
         }
-        newSlots.insert(contentsOf: pageSlots, at: insertAt)
-        // Re-index display indices.
-        for i in newSlots.indices { newSlots[i] = MissKonImageSlot(
-            id: newSlots[i].id,
-            displayIndex: i,
-            pageURL: newSlots[i].pageURL,
-            pageImageIndex: newSlots[i].pageImageIndex,
-            knownURL: newSlots[i].knownURL
-        )}
-        imageSlots = newSlots
+        replaceSlots(for: pageURL, with: pageSlots)
         errorMessage = nil
-        // Maintain selection: fall back to first slot in replaced page, or first overall.
-        if selectedSlotID == nil || !newSlots.contains(where: { $0.id == selectedSlotID }) {
-            selectedSlotID = pageSlots.first?.id ?? newSlots.first?.id
+    }
+
+    /// Remove placeholder slots for a page that failed to resolve.
+    private func removeSlots(forFailedPage pageURL: URL) {
+        replaceSlots(for: pageURL, with: [])
+    }
+
+    /// Replace all slots for `pageURL` with `newSlots` (empty = remove), then reindex + repair selection.
+    private func replaceSlots(for pageURL: URL, with pageSlots: [MissKonImageSlot]) {
+        var slots = imageSlots
+        // Remember the position of the first removed slot for insertion.
+        let firstRemovedIndex = slots.firstIndex(where: { $0.pageURL == pageURL })
+        let selectedSlot = selectedSlotID.flatMap { id in slots.first(where: { $0.id == id }) }
+        let selectedIndex = selectedSlot.flatMap { s in slots.firstIndex(where: { $0.id == s.id }) }
+
+        // Filter out all slots for this pageURL.
+        let keepIndices = slots.indices.filter { slots[$0].pageURL != pageURL }
+        var newSlots = keepIndices.map { slots[$0] }
+
+        if !pageSlots.isEmpty {
+            // Find insertion point: before the first slot that was after the removed block.
+            let insertAt: Int
+            if let firstIdx = firstRemovedIndex,
+               let beforeIdx = newSlots.firstIndex(where: { $0.displayIndex >= slots[firstIdx].displayIndex }) {
+                insertAt = beforeIdx
+            } else {
+                insertAt = newSlots.count
+            }
+            newSlots.insert(contentsOf: pageSlots, at: insertAt)
+        }
+
+        reindex(&newSlots)
+        imageSlots = newSlots
+
+        // Repair selection.
+        if let id = selectedSlotID, newSlots.contains(where: { $0.id == id }) { return }
+        if let idx = selectedIndex {
+            let target = min(idx, newSlots.count - 1)
+            if target >= 0 { selectedSlotID = newSlots[target].id; return }
+        }
+        selectedSlotID = newSlots.first?.id
+    }
+
+    private func reindex(_ slots: inout [MissKonImageSlot]) {
+        for i in slots.indices {
+            slots[i] = MissKonImageSlot(
+                id: slots[i].id,
+                displayIndex: i,
+                pageURL: slots[i].pageURL,
+                pageImageIndex: slots[i].pageImageIndex,
+                knownURL: slots[i].knownURL
+            )
         }
     }
 
