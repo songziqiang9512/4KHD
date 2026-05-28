@@ -287,9 +287,14 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             let end = min(selectedIndex + 2, slots.count - 1)
             let adjacentURLs = slots[start...end].compactMap { $0.knownURL }
             RemoteImagePipeline.shared.prefetchDetailImages(adjacentURLs)
+
+            // If user clicked a placeholder slot, eagerly load its page.
+            if selectedSlot.knownURL == nil {
+                library.detail.ensurePageLoadedForSlot(at: selectedIndex)
+            }
         }
 
-        // Trigger next page load when approaching the end.
+        // Trigger next page load when approaching the end of resolved images.
         library.detail.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
 
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"

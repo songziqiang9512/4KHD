@@ -13,21 +13,21 @@ final class MissKonDetailStore {
 
     private var resolvedPages: [URL: MissKonResolvedImagePage] = [:]
     private var failedPageURLs = Set<URL>()
-    private var resolveTask: Task<Void, Never>?
-    private var inFlightPageURLs: Set<URL> = []
+    /// All page URLs discovered so far (initial + discovered via page.pageURLs).
+    private var knownPageURLs: [URL] = []
+    /// Per-page in-flight tasks.
+    private var pageTasks: [URL: Task<Void, Never>] = [:]
 
-    private func cancelResolveTask() {
-        resolveTask?.cancel()
-        resolveTask = nil
+    // MARK: - Cancel
+
+    private func cancelAllPageTasks() {
+        for task in pageTasks.values { task.cancel() }
+        pageTasks.removeAll()
         isResolving = false
-        inFlightPageURLs.removeAll()
     }
 
     func cancelResolution() {
-        resolveTask?.cancel()
-        resolveTask = nil
-        isResolving = false
-        inFlightPageURLs.removeAll()
+        cancelAllPageTasks()
     }
 
     var resolvedPageCount: Int { resolvedPages.count }
@@ -44,7 +44,7 @@ final class MissKonDetailStore {
 
     func prepare(item: MissKonItem) {
         guard item.id != currentItem?.id else { return }
-        cancelResolveTask()
+        cancelAllPageTasks()
         resolvedPages = [:]
         failedPageURLs = []
         isResolving = false
@@ -54,16 +54,16 @@ final class MissKonDetailStore {
         selectedSlotID = nil
 
         currentItem = item
-        let pageURLs = item.pageURLs
-        guard !pageURLs.isEmpty else { return }
+        knownPageURLs = item.pageURLs
+        guard !knownPageURLs.isEmpty else { return }
 
         // Generate placeholder slots based on imageCount, falling back to page estimate.
-        let estimatedCount = item.imageCount > 0 ? item.imageCount : pageURLs.count * 12
+        let estimatedCount = item.imageCount > 0 ? item.imageCount : knownPageURLs.count * 12
         var slots: [MissKonImageSlot] = []
         for globalIndex in 0..<max(estimatedCount, 1) {
-            let pageIndex = min(globalIndex / 12, pageURLs.count - 1)
+            let pageIndex = min(globalIndex / 12, knownPageURLs.count - 1)
             let imageInPage = globalIndex % 12
-            let pageURL = pageURLs[pageIndex]
+            let pageURL = knownPageURLs[pageIndex]
             let slot = MissKonImageSlot(
                 id: "\(item.id)-p\(pageIndex)-i\(imageInPage)",
                 displayIndex: globalIndex,
@@ -79,117 +79,125 @@ final class MissKonDetailStore {
 
     // MARK: - Progressive resolution
 
-    /// Start resolving — only first page eagerly. Further pages load on demand.
+    /// Start resolving first page; prefetch next 2 pages when first completes.
     func resolve(item: MissKonItem, force: Bool = false) {
         guard force || item.id == currentItem?.id else { return }
         if force {
-            cancelResolveTask()
+            cancelAllPageTasks()
             resolvedPages = [:]
             failedPageURLs = []
             errorMessage = nil
             isResolutionComplete = false
         } else {
-            guard resolveTask == nil, !isResolutionComplete else { return }
+            guard pageTasks.isEmpty, !isResolutionComplete else { return }
         }
-        let pageURLs = item.pageURLs
-        guard !pageURLs.isEmpty else { return }
-        let itemID = item.id
+        guard !knownPageURLs.isEmpty else { return }
         isResolving = true
-
-        resolveTask = Task { [weak self] in
-            guard let self else { return }
-            defer {
-                if self.currentItem?.id == itemID {
-                    self.isResolving = false
-                    self.resolveTask = nil
-                }
-            }
-
-            // Filter to pages not yet resolved/failed/in-flight.
-            let pending = pageURLs.filter {
-                !self.resolvedPages.keys.contains($0)
-                && !self.failedPageURLs.contains($0)
-                && !self.inFlightPageURLs.contains($0)
-            }
-            guard let firstURL = pending.first else {
-                if self.resolvedPages.isEmpty {
-                    self.errorMessage = "无法解析任何图片"
-                } else {
-                    self.isResolutionComplete = true
-                }
-                return
-            }
-
-            self.inFlightPageURLs.insert(firstURL)
-            do {
-                let page = try await MissKonDetailResolver.resolve(pageURL: firstURL)
-                guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-                self.resolvedPages[firstURL] = page
-                self.inFlightPageURLs.remove(firstURL)
-                self.mergeResolvedPage(page, pageURL: firstURL)
-            } catch {
-                self.inFlightPageURLs.remove(firstURL)
-                self.failedPageURLs.insert(firstURL)
-            }
-
-            // Check if that single page covers all — for single-page items, mark complete.
-            if self.resolvedPages.count >= pageURLs.count
-                || self.resolvedPages.values.reduce(0, { $0 + $1.imageURLs.count }) >= self.imageSlots.count {
-                self.isResolutionComplete = true
-            }
-        }
+        loadPage(knownPageURLs[0], prefetchNext: 2)
     }
 
-    /// Called when user navigates near the end of loaded slots.
+    /// User navigated to a slot — load its page if not yet resolved.
+    func ensurePageLoadedForSlot(at displayIndex: Int) {
+        guard !isResolutionComplete,
+              imageSlots.indices.contains(displayIndex) else { return }
+        let slot = imageSlots[displayIndex]
+        guard slot.knownURL == nil else { return }
+        guard !resolvedPages.keys.contains(slot.pageURL),
+              !failedPageURLs.contains(slot.pageURL) else { return }
+        loadPage(slot.pageURL, prefetchNext: 0)
+        // Also trigger threshold check.
+        ensureNextDetailPageLoadedIfApproachingEnd(from: displayIndex)
+    }
+
+    /// Called when user navigates near the end of resolved slots.
     func ensureNextDetailPageLoadedIfApproachingEnd(from index: Int) {
-        guard !isResolutionComplete, !isResolving else { return }
-        let threshold = imageSlots.count - 4
-        guard index >= max(threshold, 0) else { return }
-        ensureNextDetailPageLoaded()
+        guard !isResolutionComplete else { return }
+        // Use maxResolvedDisplayIndex (last slot with knownURL), not total slot count.
+        let maxResolved = imageSlots.lastIndex(where: { $0.knownURL != nil }) ?? 0
+        guard index >= max(maxResolved - 4, 0) else { return }
+        loadNextUnresolvedPage()
     }
 
     /// Load the next unresolved page.
     func ensureNextDetailPageLoaded() {
-        guard let item = currentItem, !isResolutionComplete else { return }
-        let pageURLs = item.pageURLs
-        // Find the first page not yet resolved, failed, or in-flight.
-        guard let nextURL = pageURLs.first(where: {
-            !resolvedPages.keys.contains($0)
-            && !failedPageURLs.contains($0)
-            && !inFlightPageURLs.contains($0)
-        }) else {
-            if resolvedPages.count >= pageURLs.count {
-                isResolutionComplete = true
-            }
+        loadNextUnresolvedPage()
+    }
+
+    // MARK: - Page loading
+
+    private func loadPage(_ pageURL: URL, prefetchNext: Int) {
+        guard !isResolutionComplete else { return }
+        guard !pageTasks.keys.contains(pageURL),
+              !resolvedPages.keys.contains(pageURL),
+              !failedPageURLs.contains(pageURL) else {
+            // Already loading/resolved/failed — but still trigger prefetch if requested.
+            if prefetchNext > 0 { schedulePrefetch(count: prefetchNext, after: pageURL) }
             return
         }
 
-        inFlightPageURLs.insert(nextURL)
-        isResolving = true
-        let itemID = item.id
-        resolveTask?.cancel()
-        resolveTask = Task { [weak self] in
+        pageTasks[pageURL] = Task { [weak self] in
             guard let self else { return }
-            defer {
-                if self.currentItem?.id == itemID {
-                    self.isResolving = false
-                    self.resolveTask = nil
-                }
-            }
             do {
-                let page = try await MissKonDetailResolver.resolve(pageURL: nextURL)
-                guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-                self.resolvedPages[nextURL] = page
-                self.inFlightPageURLs.remove(nextURL)
-                self.mergeResolvedPage(page, pageURL: nextURL)
+                let page = try await MissKonDetailResolver.resolve(pageURL: pageURL)
+                guard !Task.isCancelled, self.pageTasks[pageURL] != nil else { return }
+                self.resolvedPages[pageURL] = page
+                // Merge discovered page URLs into knownPageURLs.
+                for newURL in page.pageURLs where !self.knownPageURLs.contains(newURL) {
+                    self.knownPageURLs.append(newURL)
+                }
+                self.pageTasks[pageURL] = nil
+                self.mergeResolvedPage(page, pageURL: pageURL)
+                if prefetchNext > 0 {
+                    self.schedulePrefetch(count: prefetchNext, after: pageURL)
+                }
+                self.checkCompletion()
             } catch {
-                self.inFlightPageURLs.remove(nextURL)
-                self.failedPageURLs.insert(nextURL)
+                guard !Task.isCancelled else { return }
+                self.pageTasks[pageURL] = nil
+                self.failedPageURLs.insert(pageURL)
+                self.checkCompletion()
             }
-            // Check completion.
-            if self.resolvedPages.count >= pageURLs.count {
-                self.isResolutionComplete = true
+        }
+        if pageTasks.count == 1 { isResolving = true }
+    }
+
+    private func loadNextUnresolvedPage() {
+        guard !isResolutionComplete else { return }
+        guard let nextURL = knownPageURLs.first(where: {
+            !resolvedPages.keys.contains($0)
+            && !failedPageURLs.contains($0)
+            && !pageTasks.keys.contains($0)
+        }) else { return }
+        loadPage(nextURL, prefetchNext: 0)
+    }
+
+    private func schedulePrefetch(count: Int, after pageURL: URL) {
+        // Find next unresolved pages in knownPageURLs after the given pageURL.
+        guard let startIdx = knownPageURLs.firstIndex(of: pageURL) else { return }
+        var loaded = 0
+        for idx in (startIdx + 1)..<knownPageURLs.count {
+            guard loaded < count else { break }
+            let candidate = knownPageURLs[idx]
+            guard !resolvedPages.keys.contains(candidate),
+                  !failedPageURLs.contains(candidate),
+                  !pageTasks.keys.contains(candidate) else { continue }
+            loadPage(candidate, prefetchNext: 0)
+            loaded += 1
+        }
+    }
+
+    private func checkCompletion() {
+        let allResolvedOrFailed = knownPageURLs.allSatisfy {
+            resolvedPages.keys.contains($0) || failedPageURLs.contains($0)
+        }
+        if allResolvedOrFailed && pageTasks.isEmpty {
+            isResolutionComplete = true
+            isResolving = false
+            if resolvedPages.isEmpty {
+                errorMessage = "无法解析任何图片"
             }
+        } else if pageTasks.isEmpty {
+            isResolving = false
         }
     }
 
@@ -245,7 +253,7 @@ final class MissKonDetailStore {
     // MARK: - Remaining
 
     func clear() {
-        cancelResolveTask()
+        cancelAllPageTasks()
         currentItem = nil
         imageSlots = []
         selectedSlotID = nil
@@ -253,6 +261,7 @@ final class MissKonDetailStore {
         errorMessage = nil
         resolvedPages = [:]
         failedPageURLs = []
+        knownPageURLs = []
     }
 
     func retry() {
