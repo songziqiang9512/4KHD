@@ -219,26 +219,22 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         }
 
         let slots = library.imageSlots
-        // All resolution failed: only cover placeholder exists, show retry.
-        let allFailed = !slots.isEmpty && library.errorMessage != nil
-            && library.resolvedPageCount == 0 && !library.isResolving
-        if slots.isEmpty || allFailed {
-            if allFailed {
+        let resolutionFailed = library.errorMessage != nil
+            && library.resolvedPageCount == 0
+            && !library.isResolving
+
+        if slots.isEmpty || resolutionFailed {
+            if resolutionFailed {
                 detailFailed = true
                 imageView.isHidden = false
                 imageView.showFailure { [weak self] in
                     self?.library.detail.retry()
                 }
-            } else if !library.isResolving, library.errorMessage != nil {
-                detailFailed = true
-                imageView.isHidden = false
-                imageView.showFailure { [weak self] in
-                    self?.library.detail.retry()
-                }
+                emptyLabel.isHidden = true
             } else {
                 imageView.isHidden = true
+                emptyLabel.isHidden = false
             }
-            emptyLabel.isHidden = allFailed
             previousButton.isHidden = true
             nextButton.isHidden = true
             counterChrome.isHidden = true
