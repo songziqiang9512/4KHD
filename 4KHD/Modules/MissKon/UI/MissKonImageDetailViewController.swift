@@ -275,24 +275,28 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             }
         }
         if currentSlotID != selectedSlot.id || currentImageURL != selectedSlot.knownURL {
-            let url = selectedSlot.knownURL ?? library.detail.imageURL(for: selectedSlot)
+            let url = selectedSlot.knownURL
             currentSlotID = selectedSlot.id
             currentImageURL = url
             detailInteraction.saveMessage = ""
-            // Preserve current image (cover or previous detail) while new detail loads
-            imageView.setImageURL(url, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
+            if let url {
+                imageView.setImageURL(url, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
+            }
             // Prefetch adjacent images for smoother navigation
             let start = max(selectedIndex - 2, 0)
             let end = min(selectedIndex + 2, slots.count - 1)
-            let adjacentURLs = slots[start...end].compactMap { $0.knownURL ?? library.detail.imageURL(for: $0) }
+            let adjacentURLs = slots[start...end].compactMap { $0.knownURL }
             RemoteImagePipeline.shared.prefetchDetailImages(adjacentURLs)
         }
+
+        // Trigger next page load when approaching the end.
+        library.detail.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
 
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
         statusLabel.stringValue = detailStatusText
         statusChrome.isHidden = statusLabel.stringValue.isEmpty
 
-        let showsFilmstrip = filmstripVisibility.isPresented && slots.count > 1
+        let showsFilmstrip = filmstripVisibility.isPresented && !slots.isEmpty
         updateFilmstripLayout(showsFilmstrip: showsFilmstrip)
         filmstripView.update(slots: slots, selectedSlotID: selectedSlot.id)
 

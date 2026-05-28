@@ -14,19 +14,20 @@ final class MissKonDetailStore {
     private var resolvedPages: [URL: MissKonResolvedImagePage] = [:]
     private var failedPageURLs = Set<URL>()
     private var resolveTask: Task<Void, Never>?
+    private var inFlightPageURLs: Set<URL> = []
 
     private func cancelResolveTask() {
         resolveTask?.cancel()
         resolveTask = nil
         isResolving = false
+        inFlightPageURLs.removeAll()
     }
 
-    /// Cancel in-flight page resolution without clearing current item, slots, or resolved pages.
-    /// Use when detail pane closes — keeps the list selection's placeholder intact.
     func cancelResolution() {
         resolveTask?.cancel()
         resolveTask = nil
         isResolving = false
+        inFlightPageURLs.removeAll()
     }
 
     var resolvedPageCount: Int { resolvedPages.count }
@@ -39,8 +40,8 @@ final class MissKonDetailStore {
         return resolvedPages[slot.pageURL]?.imageURLs.element(at: slot.pageImageIndex)
     }
 
-    /// Set up placeholder state without starting network resolution.
-    /// Called on list selection so detail pane can show cover immediately.
+    // MARK: - Prepare
+
     func prepare(item: MissKonItem) {
         guard item.id != currentItem?.id else { return }
         cancelResolveTask()
@@ -56,17 +57,29 @@ final class MissKonDetailStore {
         let pageURLs = item.pageURLs
         guard !pageURLs.isEmpty else { return }
 
-        imageSlots = [MissKonImageSlot(
-            id: "\(item.id)-init",
-            displayIndex: 0,
-            pageURL: pageURLs[0],
-            pageImageIndex: 0,
-            knownURL: item.coverURL
-        )]
-        selectedSlotID = imageSlots[0].id
+        // Generate placeholder slots based on imageCount, falling back to page estimate.
+        let estimatedCount = item.imageCount > 0 ? item.imageCount : pageURLs.count * 12
+        var slots: [MissKonImageSlot] = []
+        for globalIndex in 0..<max(estimatedCount, 1) {
+            let pageIndex = min(globalIndex / 12, pageURLs.count - 1)
+            let imageInPage = globalIndex % 12
+            let pageURL = pageURLs[pageIndex]
+            let slot = MissKonImageSlot(
+                id: "\(item.id)-p\(pageIndex)-i\(imageInPage)",
+                displayIndex: globalIndex,
+                pageURL: pageURL,
+                pageImageIndex: imageInPage,
+                knownURL: globalIndex == 0 ? item.coverURL : nil
+            )
+            slots.append(slot)
+        }
+        imageSlots = slots
+        selectedSlotID = slots.first?.id
     }
 
-    /// Start resolving detail pages. Called when detail pane or immersive opens.
+    // MARK: - Progressive resolution
+
+    /// Start resolving — only first page eagerly. Further pages load on demand.
     func resolve(item: MissKonItem, force: Bool = false) {
         guard force || item.id == currentItem?.id else { return }
         if force {
@@ -92,90 +105,144 @@ final class MissKonDetailStore {
                 }
             }
 
-            // Resume: filter out already-resolved or previously-failed pages.
-            var pendingURLs = pageURLs.filter {
-                !self.resolvedPages.keys.contains($0) && !self.failedPageURLs.contains($0)
+            // Filter to pages not yet resolved/failed/in-flight.
+            let pending = pageURLs.filter {
+                !self.resolvedPages.keys.contains($0)
+                && !self.failedPageURLs.contains($0)
+                && !self.inFlightPageURLs.contains($0)
             }
-            if pendingURLs.isEmpty, !self.resolvedPages.isEmpty {
-                // All pages previously resolved; skip to publish.
-                self.publishSlots()
-                self.isResolutionComplete = true
+            guard let firstURL = pending.first else {
+                if self.resolvedPages.isEmpty {
+                    self.errorMessage = "无法解析任何图片"
+                } else {
+                    self.isResolutionComplete = true
+                }
                 return
             }
-            var seenURLs = Set(pageURLs)
-            var resolvedAny = !self.resolvedPages.isEmpty
 
-            // Resolve first pending page eagerly and publish immediately
-            if let firstURL = pendingURLs.first {
-                pendingURLs.removeFirst()
-                do {
-                    let page = try await MissKonDetailResolver.resolve(pageURL: firstURL)
-                    guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-                    self.resolvedPages[firstURL] = page
-                    for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
-                        if !self.resolvedPages.keys.contains(newURL), !self.failedPageURLs.contains(newURL) {
-                            pendingURLs.append(newURL)
-                        }
-                    }
-                    resolvedAny = true
-                    self.publishSlots()
-                } catch {
-                    self.failedPageURLs.insert(firstURL)
-                }
-            }
-
-            // Resolve remaining pages in small parallel batches (cap at 50 pages, 2 per batch).
-            while !pendingURLs.isEmpty, !Task.isCancelled, self.resolvedPages.count < 50 {
-                let maxBatch = min(2, 50 - self.resolvedPages.count)
-                let batch = Array(pendingURLs.prefix(maxBatch))
-                pendingURLs.removeFirst(min(pendingURLs.count, batch.count))
-
-                let batchResults: [(URL, Result<MissKonResolvedImagePage, Error>)] = await withTaskGroup(
-                    of: (URL, Result<MissKonResolvedImagePage, Error>).self
-                ) { group in
-                    for url in batch {
-                        group.addTask {
-                            do {
-                                let page = try await MissKonDetailResolver.resolve(pageURL: url)
-                                return (url, .success(page))
-                            } catch {
-                                return (url, .failure(error))
-                            }
-                        }
-                    }
-                    var results: [(URL, Result<MissKonResolvedImagePage, Error>)] = []
-                    for await result in group { results.append(result) }
-                    return results
-                }
-
+            self.inFlightPageURLs.insert(firstURL)
+            do {
+                let page = try await MissKonDetailResolver.resolve(pageURL: firstURL)
                 guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-
-                var newURLs: [URL] = []
-                for (url, result) in batchResults {
-                    switch result {
-                    case .success(let page):
-                        self.resolvedPages[url] = page
-                        for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
-                            if !self.resolvedPages.keys.contains(newURL), !self.failedPageURLs.contains(newURL) {
-                                newURLs.append(newURL)
-                            }
-                        }
-                        resolvedAny = true
-                    case .failure:
-                        self.failedPageURLs.insert(url)
-                    }
-                }
-                pendingURLs.append(contentsOf: newURLs)
-                self.publishSlots()
+                self.resolvedPages[firstURL] = page
+                self.inFlightPageURLs.remove(firstURL)
+                self.mergeResolvedPage(page, pageURL: firstURL)
+            } catch {
+                self.inFlightPageURLs.remove(firstURL)
+                self.failedPageURLs.insert(firstURL)
             }
 
-            guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-            if !resolvedAny {
-                self.errorMessage = "无法解析任何图片"
+            // Check if that single page covers all — for single-page items, mark complete.
+            if self.resolvedPages.count >= pageURLs.count
+                || self.resolvedPages.values.reduce(0, { $0 + $1.imageURLs.count }) >= self.imageSlots.count {
+                self.isResolutionComplete = true
             }
-            self.isResolutionComplete = true
         }
     }
+
+    /// Called when user navigates near the end of loaded slots.
+    func ensureNextDetailPageLoadedIfApproachingEnd(from index: Int) {
+        guard !isResolutionComplete, !isResolving else { return }
+        let threshold = imageSlots.count - 4
+        guard index >= max(threshold, 0) else { return }
+        ensureNextDetailPageLoaded()
+    }
+
+    /// Load the next unresolved page.
+    func ensureNextDetailPageLoaded() {
+        guard let item = currentItem, !isResolutionComplete else { return }
+        let pageURLs = item.pageURLs
+        // Find the first page not yet resolved, failed, or in-flight.
+        guard let nextURL = pageURLs.first(where: {
+            !resolvedPages.keys.contains($0)
+            && !failedPageURLs.contains($0)
+            && !inFlightPageURLs.contains($0)
+        }) else {
+            if resolvedPages.count >= pageURLs.count {
+                isResolutionComplete = true
+            }
+            return
+        }
+
+        inFlightPageURLs.insert(nextURL)
+        isResolving = true
+        let itemID = item.id
+        resolveTask?.cancel()
+        resolveTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.currentItem?.id == itemID {
+                    self.isResolving = false
+                    self.resolveTask = nil
+                }
+            }
+            do {
+                let page = try await MissKonDetailResolver.resolve(pageURL: nextURL)
+                guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
+                self.resolvedPages[nextURL] = page
+                self.inFlightPageURLs.remove(nextURL)
+                self.mergeResolvedPage(page, pageURL: nextURL)
+            } catch {
+                self.inFlightPageURLs.remove(nextURL)
+                self.failedPageURLs.insert(nextURL)
+            }
+            // Check completion.
+            if self.resolvedPages.count >= pageURLs.count {
+                self.isResolutionComplete = true
+            }
+        }
+    }
+
+    // MARK: - Slot management
+
+    /// Merge a resolved page's imageURLs into placeholder slots.
+    private func mergeResolvedPage(_ page: MissKonResolvedImagePage, pageURL: URL) {
+        guard let item = currentItem else { return }
+        var slots = imageSlots
+        // Update placeholder slots that belong to this page with real URLs.
+        for i in slots.indices where slots[i].pageURL == pageURL {
+            let imageIndex = slots[i].pageImageIndex
+            if let realURL = page.imageURLs.element(at: imageIndex) {
+                slots[i] = MissKonImageSlot(
+                    id: slots[i].id,
+                    displayIndex: slots[i].displayIndex,
+                    pageURL: pageURL,
+                    pageImageIndex: imageIndex,
+                    knownURL: realURL
+                )
+            }
+        }
+        // If page provided URLs beyond our placeholder count, append new slots.
+        let existingInPage = slots.filter { $0.pageURL == pageURL }.count
+        if page.imageURLs.count > existingInPage {
+            let baseDisplayIndex = slots.count
+            for offset in existingInPage..<page.imageURLs.count {
+                slots.append(MissKonImageSlot(
+                    id: "\(item.id)-pExtra-\(pageURL.absoluteString.hashValue)-\(offset)",
+                    displayIndex: baseDisplayIndex + (offset - existingInPage),
+                    pageURL: pageURL,
+                    pageImageIndex: offset,
+                    knownURL: page.imageURLs[offset]
+                ))
+            }
+        }
+        // Re-index display indices.
+        for i in slots.indices { slots[i] = MissKonImageSlot(
+            id: slots[i].id,
+            displayIndex: i,
+            pageURL: slots[i].pageURL,
+            pageImageIndex: slots[i].pageImageIndex,
+            knownURL: slots[i].knownURL
+        )}
+        imageSlots = slots
+        errorMessage = nil
+        // Maintain selection across merges.
+        if selectedSlotID == nil || !slots.contains(where: { $0.id == selectedSlotID }) {
+            selectedSlotID = slots.first?.id
+        }
+    }
+
+    // MARK: - Remaining
 
     func clear() {
         cancelResolveTask()
@@ -186,39 +253,6 @@ final class MissKonDetailStore {
         errorMessage = nil
         resolvedPages = [:]
         failedPageURLs = []
-    }
-
-    private func publishSlots() {
-        let sortedPages = resolvedPages.keys.sorted { a, b in
-            let aNum = a.trailingPageNumber ?? 1
-            let bNum = b.trailingPageNumber ?? 1
-            return aNum < bNum
-        }
-
-        var allSlots: [MissKonImageSlot] = []
-        var globalDisplayIndex = 0
-        for pageURL in sortedPages {
-            guard let page = resolvedPages[pageURL] else { continue }
-            for (imageIndex, imageURL) in page.imageURLs.enumerated() {
-                let slotID = "\(pageURL.absoluteString)-\(imageIndex)"
-                allSlots.append(MissKonImageSlot(
-                    id: slotID,
-                    displayIndex: globalDisplayIndex,
-                    pageURL: pageURL,
-                    pageImageIndex: imageIndex,
-                    knownURL: imageURL
-                ))
-                globalDisplayIndex += 1
-            }
-        }
-
-        if !allSlots.isEmpty {
-            imageSlots = allSlots
-            errorMessage = nil
-            if selectedSlotID == nil || !allSlots.contains(where: { $0.id == selectedSlotID }) {
-                selectedSlotID = allSlots.first?.id
-            }
-        }
     }
 
     func retry() {

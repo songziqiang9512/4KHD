@@ -299,25 +299,32 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             uploaderChrome.isHidden = true
         }
 
-        // Load image — prefer fullImageUrl from detail; fall back to search data.
-        let imageURL = displayWallpaper.fullImageUrl ?? displayWallpaper.previewUrl ?? wallpaper.previewUrl ?? wallpaper.fullImageUrl
+        // Load image — prefer fullImageUrl from detail; fall back to preview; never show blank.
+        let bestURL = displayWallpaper.fullImageUrl
+            ?? displayWallpaper.previewUrl
+            ?? wallpaper.previewUrl
+            ?? wallpaper.fullImageUrl
         let isIncomplete = (displayWallpaper.width == nil && displayWallpaper.fullImageUrl == nil)
+        let previewURL = displayWallpaper.previewUrl ?? wallpaper.previewUrl
         if currentWallpaperID != wallpaper.id {
             currentWallpaperID = wallpaper.id
             detailInteraction.saveMessage = ""
-            if isIncomplete {
+            if isIncomplete, let preview = previewURL {
+                // Show preview immediately while /w/{id} resolves.
+                imageView.setImageURL(preview, preservesCurrentImageUntilLoaded: false)
+            } else if isIncomplete {
                 imageView.setImageURL(nil, preservesCurrentImageUntilLoaded: false)
                 imageView.showLoading("加载详情中...")
             } else {
-                imageView.setImageURL(imageURL, preservesCurrentImageUntilLoaded: false)
+                imageView.setImageURL(bestURL, preservesCurrentImageUntilLoaded: false)
             }
-        } else if currentImageURL != imageURL, !isIncomplete {
+        } else if currentImageURL != bestURL, !isIncomplete {
             // Detail resolution completed: upgrade preview → fullImageUrl.
-            currentImageURL = imageURL
-            imageView.setImageURL(imageURL, preservesCurrentImageUntilLoaded: true)
+            currentImageURL = bestURL
+            imageView.setImageURL(bestURL, preservesCurrentImageUntilLoaded: true)
         }
         if !isIncomplete {
-            currentImageURL = imageURL
+            currentImageURL = bestURL
         }
 
         if detailInteraction.resetToken != resetTokenSeen {

@@ -24,7 +24,7 @@ final class MissKonListRowView: NSTableCellView {
         } else {
             titleLabel.stringValue = item.title
         }
-        subtitleLabel.stringValue = "\(item.imageCount) 张图片"
+        subtitleLabel.stringValue = item.imageCount > 0 ? "\(item.imageCount) 张图片" : "多张图片"
     }
 
     private func setupView() {
@@ -212,7 +212,7 @@ final class MissKonGridItemView: NSCollectionViewItem {
 
     func configure(item: MissKonItem, isSelected: Bool, searchQuery: String? = nil, onAspectRatio: @escaping (CGFloat) -> Void) {
         representedID = item.id
-        cardView.setText(title: item.title, metadata: "\(item.imageCount) 张图片", highlightQuery: searchQuery)
+        cardView.setText(title: item.title, metadata: item.imageCount > 0 ? "\(item.imageCount) 张图片" : "多张图片", highlightQuery: searchQuery)
         cardView.applySelectionState(isSelected)
         loadCover(for: item, onAspectRatio: onAspectRatio)
     }
