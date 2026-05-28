@@ -34,7 +34,7 @@ enum WallhavenUploaderResolver {
         let ids = extractWallpaperIDs(from: html)
         guard !ids.isEmpty else { return [] }
 
-        // Resolve details in parallel (URLSession limits per-host concurrency to 6).
+        // Resolve details in parallel, preserving original page order.
         let targetIDs = Array(ids.prefix(24))
         guard !targetIDs.isEmpty else { return [] }
         return await withTaskGroup(of: Wallpaper?.self) { group in
@@ -43,11 +43,11 @@ enum WallhavenUploaderResolver {
                     try? await apiClient.wallpaper(id: id, apiKey: apiKey)
                 }
             }
-            var results: [Wallpaper] = []
+            var byID: [String: Wallpaper] = [:]
             for await result in group {
-                if let wallpaper = result { results.append(wallpaper) }
+                if let wallpaper = result { byID[wallpaper.id] = wallpaper }
             }
-            return results
+            return targetIDs.compactMap { byID[$0] }
         }
     }
 
