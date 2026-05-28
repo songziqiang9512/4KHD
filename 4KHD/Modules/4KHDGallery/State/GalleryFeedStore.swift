@@ -118,6 +118,7 @@ final class GalleryFeedStore {
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolve(section: currentSection)
+                guard !Task.isCancelled else { return }
                 self?.applyNetworkPage(page, section: currentSection)
             } catch {
                 guard !Task.isCancelled else { return }
@@ -187,6 +188,7 @@ final class GalleryFeedStore {
         listRefreshTasks[currentSection] = Task { [weak self] in
             do {
                 let page = try await SiteListResolver.resolve(pageURL: nextPageURL, section: currentSection)
+                guard !Task.isCancelled else { return }
                 self?.appendNetworkPage(page, section: currentSection)
             } catch {
                 guard !Task.isCancelled else { return }
@@ -242,14 +244,15 @@ final class GalleryFeedStore {
 
     private func finishListRefresh(section: GallerySection, errorMessage: String? = nil) {
         listRefreshTasks[section] = nil
-        if section == self.section {
-            if let errorMessage {
-                self.errorMessage = errorMessage
-            }
-            isRefreshingList = false
-            if pendingListLoadMoreSections.remove(section) != nil {
-                loadMoreListIfNeeded()
-            }
+        guard section == self.section else { return }
+        // Do not clear search loading/error state from a stale list task.
+        if activeSearchQuery != nil { return }
+        if let errorMessage {
+            self.errorMessage = errorMessage
+        }
+        isRefreshingList = false
+        if pendingListLoadMoreSections.remove(section) != nil {
+            loadMoreListIfNeeded()
         }
     }
 
