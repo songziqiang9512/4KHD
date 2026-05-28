@@ -210,7 +210,12 @@ final class WallhavenFeedStore {
         isRefreshingList = true
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: 1)
+        inFlightPage = nil
+        inFlightSearchPage = nil
         loadTask?.cancel()
+        loadTask = nil
+        searchLoadTask?.cancel()
+        searchLoadTask = nil
         loadTask = Task { [weak self] in
             guard let self else { return }
             self.feedErrorMessage = nil
@@ -333,17 +338,20 @@ final class WallhavenFeedStore {
         // Exit uploader browsing so load-more goes to search pagination.
         clearUploaderBrowsing()
         activeSearchQuery = trimmed
+        isRefreshingList = true
+        feedErrorMessage = nil
         loadTask?.cancel()
+        loadTask = nil
         searchTask?.cancel()
+        searchTask = nil
         searchLoadTask?.cancel()
+        searchLoadTask = nil
         inFlightSearchPage = nil
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: 1, query: trimmed)
+        let requestQuery = trimmed
         searchTask = Task { [weak self] in
             guard let self else { return }
-            self.isRefreshingList = true
-            self.feedErrorMessage = nil
-            let requestQuery = trimmed
             do {
                 let page = try await self.performSearch(parameters: searchParams, apiKey: searchApiKey)
                 guard !Task.isCancelled,
@@ -625,17 +633,18 @@ final class WallhavenFeedStore {
     private var resolveTask: Task<Void, Never>?
 
     func resolveDetail(for wallpaper: Wallpaper) {
-        if resolvedWallpaper?.id == wallpaper.id { return } // Already resolved.
+        // If already resolving this wallpaper, skip duplicate.
+        if resolvedWallpaper?.id == wallpaper.id, isResolvingDetail { return }
 
         // Cancel any in-flight resolve before cache check, so a stale task
         // from a previous wallpaper cannot overwrite the new selection.
         resolveTask?.cancel()
         resolveTask = nil
+        isResolvingDetail = false
 
         // Check cache first.
         if let cached = detailCache[wallpaper.id] {
             resolvedWallpaper = cached
-            isResolvingDetail = false
             if let idx = wallpapers.firstIndex(where: { $0.id == wallpaper.id }) {
                 wallpapers[idx] = cached
             }

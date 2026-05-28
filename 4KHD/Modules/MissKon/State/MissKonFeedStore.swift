@@ -111,10 +111,12 @@ final class MissKonFeedStore {
             return
         }
         let requestSection = section
+        isRefreshingList = true
+        inFlightPageURL = nil
         loadTask?.cancel()
+        loadTask = nil
         loadTask = Task { [weak self] in
             guard let self else { return }
-            self.isRefreshingList = true
             self.feedErrorMessage = nil
             do {
                 let page = try await MissKonListResolver.resolve(section: requestSection)
