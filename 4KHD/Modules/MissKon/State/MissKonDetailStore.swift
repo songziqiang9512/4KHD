@@ -75,10 +75,13 @@ final class MissKonDetailStore {
             failedPageURLs = []
             errorMessage = nil
             isResolutionComplete = false
+        } else {
+            guard resolveTask == nil, !isResolutionComplete else { return }
         }
         let pageURLs = item.pageURLs
         guard !pageURLs.isEmpty else { return }
         let itemID = item.id
+        isResolving = true
 
         resolveTask = Task { [weak self] in
             guard let self else { return }
@@ -88,7 +91,6 @@ final class MissKonDetailStore {
                     self.resolveTask = nil
                 }
             }
-            self.isResolving = true
 
             // Resume: filter out already-resolved or previously-failed pages.
             var pendingURLs = pageURLs.filter {

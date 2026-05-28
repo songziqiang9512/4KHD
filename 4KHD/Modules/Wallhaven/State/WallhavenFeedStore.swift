@@ -31,6 +31,14 @@ final class WallhavenFeedStore {
     private var searchDebounceTask: Task<Void, Never>?
     /// Request token to invalidate stale Task completions.
     private var listRequestToken = UUID()
+
+    private func invalidateListRequests() { listRequestToken = UUID() }
+    private func beginListRequest() -> UUID {
+        let token = UUID()
+        listRequestToken = token
+        return token
+    }
+
     /// In-flight markers to prevent duplicate load-more from rapid UI triggers.
     private var inFlightPage: Int?
     private var inFlightSearchPage: Int?
@@ -147,7 +155,7 @@ final class WallhavenFeedStore {
     }
 
     private func resetAndRefresh() {
-        listRequestToken = UUID()
+        invalidateListRequests()
         clearUploaderBrowsing()
         loadTask?.cancel()
         loadTask = nil
@@ -179,7 +187,7 @@ final class WallhavenFeedStore {
 
     func setSection(_ newSection: WallhavenSection) {
         guard section != newSection else { return }
-        listRequestToken = UUID()
+        invalidateListRequests()
         loadTask?.cancel()
         searchLoadTask?.cancel()
         searchTask?.cancel()
@@ -200,7 +208,7 @@ final class WallhavenFeedStore {
             return
         }
         isRefreshingList = true
-        let requestToken = listRequestToken
+        let requestToken = beginListRequest()
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -256,7 +264,7 @@ final class WallhavenFeedStore {
         guard inFlightPage != nextPage else { return }
         inFlightPage = nextPage
         isRefreshingList = true
-        let requestToken = listRequestToken
+        let requestToken = beginListRequest()
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
@@ -321,7 +329,7 @@ final class WallhavenFeedStore {
         searchTask?.cancel()
         searchLoadTask?.cancel()
         inFlightSearchPage = nil
-        let requestToken = listRequestToken
+        let requestToken = beginListRequest()
         searchTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingList = true
@@ -357,7 +365,7 @@ final class WallhavenFeedStore {
         guard inFlightSearchPage != nextPage else { return }
         inFlightSearchPage = nextPage
         isRefreshingList = true
-        let requestToken = listRequestToken
+        let requestToken = beginListRequest()
         searchLoadTask?.cancel()
         searchLoadTask = Task { [weak self] in
             guard let self else { return }
@@ -386,7 +394,7 @@ final class WallhavenFeedStore {
     }
 
     func clearSearch() {
-        listRequestToken = UUID()
+        invalidateListRequests()
         searchTask?.cancel()
         searchTask = nil
         searchLoadTask?.cancel()
@@ -484,7 +492,7 @@ final class WallhavenFeedStore {
         feedErrorMessage = nil
         wallpapers = []
         canLoadMoreList = true
-        let requestToken = listRequestToken
+        let requestToken = beginListRequest()
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -518,7 +526,7 @@ final class WallhavenFeedStore {
         let nextPage = uploaderPage + 1
         guard inFlightUploaderPage != nextPage else { return }
         inFlightUploaderPage = nextPage
-        let requestToken = listRequestToken
+        let requestToken = beginListRequest()
         loadTask?.cancel()
         isRefreshingList = true
         feedErrorMessage = nil
@@ -554,6 +562,7 @@ final class WallhavenFeedStore {
 
     func restorePreviousBrowseState() {
         guard isBrowsingUploader else { return }
+        invalidateListRequests()
         loadTask?.cancel()
         searchTask?.cancel()
         guard let saved = savedState else {
@@ -578,7 +587,6 @@ final class WallhavenFeedStore {
     }
 
     private func clearUploaderBrowsing() {
-        listRequestToken = UUID()
         isBrowsingUploader = false
         uploaderUsername = nil
         uploaderPage = 1
