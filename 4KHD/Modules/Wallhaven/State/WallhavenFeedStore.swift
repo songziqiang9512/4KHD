@@ -576,6 +576,8 @@ final class WallhavenFeedStore {
         loadTask?.cancel()
         searchTask?.cancel()
         searchLoadTask?.cancel()
+        searchDebounceTask?.cancel()
+        searchDebounceTask = nil
         isBrowsingUploader = true
         uploaderUsername = username
         uploaderPage = 1

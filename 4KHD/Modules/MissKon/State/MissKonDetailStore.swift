@@ -237,8 +237,6 @@ final class MissKonDetailStore {
     /// Replace all slots for `pageURL` with `newSlots` (empty = remove), then reindex + repair selection.
     private func replaceSlots(for pageURL: URL, with pageSlots: [MissKonImageSlot]) {
         var slots = imageSlots
-        // Remember the position of the first removed slot for insertion.
-        let firstRemovedIndex = slots.firstIndex(where: { $0.pageURL == pageURL })
         let selectedSlot = selectedSlotID.flatMap { id in slots.first(where: { $0.id == id }) }
         let selectedIndex = selectedSlot.flatMap { s in slots.firstIndex(where: { $0.id == s.id }) }
 
@@ -247,14 +245,12 @@ final class MissKonDetailStore {
         var newSlots = keepIndices.map { slots[$0] }
 
         if !pageSlots.isEmpty {
-            // Find insertion point: before the first slot that was after the removed block.
-            let insertAt: Int
-            if let firstIdx = firstRemovedIndex,
-               let beforeIdx = newSlots.firstIndex(where: { $0.displayIndex >= slots[firstIdx].displayIndex }) {
-                insertAt = beforeIdx
-            } else {
-                insertAt = newSlots.count
-            }
+            // Insert after the last slot whose pageURL comes before `pageURL` in knownPageURLs.
+            guard let pageOrder = knownPageURLs.firstIndex(of: pageURL) else { return }
+            let insertAt = newSlots.firstIndex { slot in
+                guard let order = knownPageURLs.firstIndex(of: slot.pageURL) else { return false }
+                return order > pageOrder
+            } ?? newSlots.count
             newSlots.insert(contentsOf: pageSlots, at: insertAt)
         }
 
