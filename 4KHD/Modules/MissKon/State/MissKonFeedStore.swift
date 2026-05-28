@@ -253,13 +253,19 @@ final class MissKonFeedStore {
     func submitSearch(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != activeSearchQuery else { return }
+        activeSearchQuery = trimmed
+        isRefreshingList = true
+        feedErrorMessage = nil
+        nextSearchPageURL = nil
+        inFlightSearchPageURL = nil
         loadTask?.cancel()
+        loadTask = nil
         searchTask?.cancel()
+        searchTask = nil
+        searchLoadTask?.cancel()
+        searchLoadTask = nil
         searchTask = Task { [weak self] in
             guard let self else { return }
-            self.activeSearchQuery = trimmed
-            self.isRefreshingList = true
-            self.feedErrorMessage = nil
             do {
                 let page = try await MissKonListResolver.resolveSearch(query: trimmed)
                 guard !Task.isCancelled, self.activeSearchQuery == trimmed else { return }
@@ -272,10 +278,8 @@ final class MissKonFeedStore {
                 self.selectedItemID = firstItem?.id
                 self.onSelectionChanged?(firstItem)
             } catch {
-                guard !Task.isCancelled else { return }
-                if self.activeSearchQuery == trimmed {
-                    self.feedErrorMessage = error.localizedDescription
-                }
+                guard !Task.isCancelled, self.activeSearchQuery == trimmed else { return }
+                self.feedErrorMessage = error.localizedDescription
             }
             if self.activeSearchQuery == trimmed {
                 self.isRefreshingList = false

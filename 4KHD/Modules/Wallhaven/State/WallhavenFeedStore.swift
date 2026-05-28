@@ -209,13 +209,14 @@ final class WallhavenFeedStore {
         }
         isRefreshingList = true
         let requestToken = beginListRequest()
+        let (searchParams, searchApiKey) = makeSearchParameters(page: 1)
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
             self.feedErrorMessage = nil
             let searchSection = self.section
             do {
-                let page = try await self.performSearch(page: 1)
+                let page = try await self.performSearch(parameters: searchParams, apiKey: searchApiKey)
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
                       self.section == searchSection,
@@ -268,12 +269,13 @@ final class WallhavenFeedStore {
         inFlightPage = nextPage
         isRefreshingList = true
         let requestToken = beginListRequest()
+        let (searchParams, searchApiKey) = makeSearchParameters(page: nextPage)
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
             self.feedErrorMessage = nil
             do {
-                let page = try await self.performSearch(page: nextPage)
+                let page = try await self.performSearch(parameters: searchParams, apiKey: searchApiKey)
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
                       self.section == searchSection,
@@ -336,13 +338,14 @@ final class WallhavenFeedStore {
         searchLoadTask?.cancel()
         inFlightSearchPage = nil
         let requestToken = beginListRequest()
+        let (searchParams, searchApiKey) = makeSearchParameters(page: 1, query: trimmed)
         searchTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingList = true
             self.feedErrorMessage = nil
             let requestQuery = trimmed
             do {
-                let page = try await self.performSearch(page: 1, query: requestQuery)
+                let page = try await self.performSearch(parameters: searchParams, apiKey: searchApiKey)
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
                       self.activeSearchQuery == requestQuery
@@ -378,12 +381,13 @@ final class WallhavenFeedStore {
         inFlightSearchPage = nextPage
         isRefreshingList = true
         let requestToken = beginListRequest()
+        let (searchParams, searchApiKey) = makeSearchParameters(page: nextPage, query: requestQuery)
         searchLoadTask?.cancel()
         searchLoadTask = Task { [weak self] in
             guard let self else { return }
             self.feedErrorMessage = nil
             do {
-                let page = try await self.performSearch(page: nextPage, query: requestQuery)
+                let page = try await self.performSearch(parameters: searchParams, apiKey: searchApiKey)
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
                       self.activeSearchQuery == requestQuery
@@ -623,29 +627,33 @@ final class WallhavenFeedStore {
     func resolveDetail(for wallpaper: Wallpaper) {
         if resolvedWallpaper?.id == wallpaper.id { return } // Already resolved.
 
+        // Cancel any in-flight resolve before cache check, so a stale task
+        // from a previous wallpaper cannot overwrite the new selection.
+        resolveTask?.cancel()
+        resolveTask = nil
+
         // Check cache first.
         if let cached = detailCache[wallpaper.id] {
             resolvedWallpaper = cached
+            isResolvingDetail = false
             if let idx = wallpapers.firstIndex(where: { $0.id == wallpaper.id }) {
                 wallpapers[idx] = cached
             }
             return
         }
 
-        if resolveTask != nil {
-            resolveTask?.cancel()
-            resolveTask = nil
-        }
         resolvedWallpaper = wallpaper
         isResolvingDetail = true
+        let requestID = wallpaper.id
         resolveTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let full = try await self.apiClient.wallpaper(id: wallpaper.id, apiKey: self.accountStore.apiKey)
-                guard !Task.isCancelled else { return }
+                let full = try await self.apiClient.wallpaper(id: requestID, apiKey: self.accountStore.apiKey)
+                guard !Task.isCancelled,
+                      self.resolvedWallpaper?.id == requestID
+                else { return }
                 self.resolvedWallpaper = full
-                // Update the wallpaper in the list with resolved data.
-                if let idx = self.wallpapers.firstIndex(where: { $0.id == wallpaper.id }) {
+                if let idx = self.wallpapers.firstIndex(where: { $0.id == requestID }) {
                     self.wallpapers[idx] = full
                 }
                 self.detailCache[full.id] = full
@@ -653,8 +661,11 @@ final class WallhavenFeedStore {
             } catch {
                 // Keep the list-item data; resolvedWallpaper stays as the original.
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled,
+                  self.resolvedWallpaper?.id == requestID
+            else { return }
             self.isResolvingDetail = false
+            self.resolveTask = nil
         }
     }
 
@@ -695,8 +706,8 @@ final class WallhavenFeedStore {
 
     // MARK: - Private
 
-    private func performSearch(page: Int, query: String? = nil) async throws -> WallhavenPage {
-        let parameters = WallhavenSearchParameters(
+    private func makeSearchParameters(page: Int, query: String? = nil) -> (WallhavenSearchParameters, String?) {
+        let p = WallhavenSearchParameters(
             query: query ?? activeSearchQuery,
             category: category,
             purity: accountStore.purity,
@@ -709,6 +720,10 @@ final class WallhavenFeedStore {
             seed: sorting == .random ? seed : nil,
             collection: nil
         )
-        return try await apiClient.search(parameters: parameters, apiKey: accountStore.apiKey)
+        return (p, accountStore.apiKey)
+    }
+
+    private func performSearch(parameters: WallhavenSearchParameters, apiKey: String?) async throws -> WallhavenPage {
+        try await apiClient.search(parameters: parameters, apiKey: apiKey)
     }
 }
