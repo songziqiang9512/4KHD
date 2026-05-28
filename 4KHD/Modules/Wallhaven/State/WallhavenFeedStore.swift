@@ -222,6 +222,12 @@ final class WallhavenFeedStore {
             let requestToken = beginListRequest()
             loadTask?.cancel()
             loadTask = nil
+            searchTask?.cancel()
+            searchTask = nil
+            searchLoadTask?.cancel()
+            searchLoadTask = nil
+            searchDebounceTask?.cancel()
+            searchDebounceTask = nil
             loadTask = Task { [weak self] in
                 guard let self else { return }
                 do {
@@ -578,24 +584,34 @@ final class WallhavenFeedStore {
         wallpapers = []
         canLoadMoreList = true
         let requestToken = beginListRequest()
+        let requestUsername = username
+        let requestPurity = accountStore.purity
+        let requestApiKey = accountStore.apiKey
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let items = try await WallhavenUploaderResolver.resolve(
-                    username: username,
-                    page: self.uploaderPage,
-                    purity: self.accountStore.purity,
-                    apiKey: self.accountStore.apiKey
+                    username: requestUsername,
+                    page: 1,
+                    purity: requestPurity,
+                    apiKey: requestApiKey
                 )
-                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.isBrowsingUploader,
+                      self.uploaderUsername == requestUsername
+                else { return }
                 self.wallpapers = items
                 self.uploaderHasMore = !items.isEmpty
                 self.canLoadMoreList = self.uploaderHasMore
-                self.feedErrorMessage = items.isEmpty ? "未找到 @\(username) 的作品" : nil
+                self.feedErrorMessage = items.isEmpty ? "未找到 @\(requestUsername) 的作品" : nil
                 self.selectedWallpaperID = items.first?.id
                 self.onSelectionChanged?(items.first)
             } catch {
-                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.isBrowsingUploader
+                else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
             guard self.isBrowsingUploader, self.listRequestToken == requestToken else { return }
@@ -612,6 +628,10 @@ final class WallhavenFeedStore {
         guard inFlightUploaderPage != nextPage else { return }
         inFlightUploaderPage = nextPage
         let requestToken = beginListRequest()
+        let requestUsername = username
+        let requestPurity = accountStore.purity
+        let requestApiKey = accountStore.apiKey
+        let requestPage = nextPage
         loadTask?.cancel()
         isRefreshingList = true
         feedErrorMessage = nil
@@ -619,23 +639,30 @@ final class WallhavenFeedStore {
             guard let self else { return }
             do {
                 let items = try await WallhavenUploaderResolver.resolve(
-                    username: username,
-                    page: nextPage,
-                    purity: self.accountStore.purity,
-                    apiKey: self.accountStore.apiKey
+                    username: requestUsername,
+                    page: requestPage,
+                    purity: requestPurity,
+                    apiKey: requestApiKey
                 )
-                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.isBrowsingUploader,
+                      self.uploaderUsername == requestUsername
+                else { return }
                 if !items.isEmpty {
                     let existingIDs = Set(self.wallpapers.map(\.id))
                     let newItems = items.filter { !existingIDs.contains($0.id) }
                     self.wallpapers.append(contentsOf: newItems)
-                    self.uploaderPage = nextPage
+                    self.uploaderPage = requestPage
                 }
                 self.uploaderHasMore = !items.isEmpty
                 self.canLoadMoreList = self.uploaderHasMore
                 self.feedErrorMessage = nil
             } catch {
-                guard !Task.isCancelled, self.listRequestToken == requestToken else { return }
+                guard !Task.isCancelled,
+                      self.listRequestToken == requestToken,
+                      self.isBrowsingUploader
+                else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
             guard self.isBrowsingUploader, self.listRequestToken == requestToken else { return }
@@ -650,6 +677,8 @@ final class WallhavenFeedStore {
         invalidateListRequests()
         loadTask?.cancel()
         searchTask?.cancel()
+        searchLoadTask?.cancel()
+        searchDebounceTask?.cancel()
         guard let saved = savedState else {
             clearUploaderBrowsing()
             restoreSectionCache()
