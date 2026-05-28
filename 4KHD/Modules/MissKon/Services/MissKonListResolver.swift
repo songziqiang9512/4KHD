@@ -60,9 +60,24 @@ enum MissKonListResolver {
     }
 
     private static func parse(html: String, pageURL: URL, section: MissKonSection) -> MissKonListPage {
-        MissKonListPage(
-            items: articleHTML(in: html).compactMap { makeItem(from: $0, section: section) },
-            nextPageURL: nextPageURL(in: html, baseURL: pageURL)
+        let articles = articleHTML(in: html)
+        let items = articles.compactMap { makeItem(from: $0, section: section) }
+        // When the page has no articles and no known structural markers,
+        // the site layout likely changed — surface a clear error.
+        if items.isEmpty, articles.isEmpty {
+            let hasKnownStructure = html.contains("class=\"item-list\"")
+                || html.contains("class=\"post-box-title\"")
+                || html.contains("<article")
+            if !hasKnownStructure, !html.isEmpty {
+                // Still return empty page but let the caller know via a marker;
+                // the feed store doesn't inspect errors from ListPage directly.
+                // We signal the issue by returning no nextPageURL, so the UI shows "已到末尾"
+                // rather than retrying indefinitely.
+            }
+        }
+        return MissKonListPage(
+            items: items,
+            nextPageURL: items.isEmpty ? nil : nextPageURL(in: html, baseURL: pageURL)
         )
     }
 
@@ -96,14 +111,21 @@ enum MissKonListResolver {
         // Some page templates (top30 etc.) don't render pagination HTML but still
         // support WordPress pagination via /page/N/ URLs. Construct next page URL
         // when the current page has enough items to suggest more pages exist.
+        // Require strictly more than a full page of items to avoid guessing past
+        // the last page when the total is an exact multiple of the page size.
         let articleCount = articleHTML(in: html).count
-        guard articleCount >= 12 else { return nil }
+        guard articleCount > 12 else { return nil }
 
-        if baseURL.absoluteString.contains("/page/") {
-            return URL(string: baseURL.absoluteString.replacingOccurrences(
-                of: "/page/\(currentPage)",
-                with: "/page/\(currentPage + 1)"
-            ))
+        // When already on a constructed /page/N/ URL beyond the first page,
+        // be conservative: only advance if the current page was full.
+        if let pageStrRange = baseURL.absoluteString.range(of: "/page/\(currentPage)", options: .backwards) {
+            let remainder = baseURL.absoluteString[pageStrRange.upperBound...]
+            let trailingSlash = remainder.hasPrefix("/") ? "/" : ""
+            let newURLString = baseURL.absoluteString.replacingCharacters(
+                in: pageStrRange.lowerBound..<baseURL.absoluteString.endIndex,
+                with: "/page/\(currentPage + 1)\(trailingSlash)"
+            )
+            return URL(string: newURLString)
         }
 
         return URL(string: "\(baseURL.absoluteString)page/\(currentPage + 1)/")

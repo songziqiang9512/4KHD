@@ -45,8 +45,10 @@ enum MissKonFavoritesBridge {
 
     private nonisolated static func pageURLs(detailURL: URL, pageCount: Int) -> [URL] {
         let count = max(pageCount, 1)
+        let base = detailURL.absoluteString
+        let baseWithSlash = base.hasSuffix("/") ? base : base + "/"
         return (1...count).map { pageNumber in
-            pageNumber == 1 ? detailURL : detailURL.appendingPathComponent("\(pageNumber)")
+            pageNumber == 1 ? detailURL : URL(string: "\(baseWithSlash)\(pageNumber)/") ?? detailURL
         }
     }
 

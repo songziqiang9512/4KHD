@@ -18,7 +18,12 @@ final class MissKonFeedStore {
     private var nextPageURL: URL?
     private var nextSearchPageURL: URL?
     private var loadTask: Task<Void, Never>?
+    private var searchLoadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var searchDebounceTask: Task<Void, Never>?
+
+    /// Per-section scroll offset for restoring position across section switches.
+    var cachedScrollOffsets: [MissKonSection: CGFloat] = [:]
 
     /// Per-section cache preserves items across section switches.
     private var cachedItems: [MissKonSection: [MissKonItem]] = [:]
@@ -52,10 +57,19 @@ final class MissKonFeedStore {
 
     // MARK: - Cache Persistence
 
+    private static let maxCachedItemsPerSection = 200
+
     private func saveCache() {
         guard let fileURL = Self.cacheFileURL else { return }
+        // Trim each section to max items before persisting.
+        var trimmedItems: [MissKonSection: [MissKonItem]] = [:]
+        for (section, items) in cachedItems {
+            trimmedItems[section] = items.count > Self.maxCachedItemsPerSection
+                ? Array(items.suffix(Self.maxCachedItemsPerSection))
+                : items
+        }
         let snapshot = CacheSnapshot(
-            items: cachedItems.mapKeys { $0.rawValue },
+            items: trimmedItems.mapKeys { $0.rawValue },
             nextPageURLs: cachedNextPageURLs.mapKeys { $0.rawValue }.mapValues { $0.absoluteString },
             timestamps: cacheTimestamps.mapKeys { $0.rawValue }.mapValues { $0.timeIntervalSince1970 }
         )
@@ -184,8 +198,8 @@ final class MissKonFeedStore {
         guard !isRefreshingList, canLoadMoreList, activeSearchQuery != nil else { return }
         let requestQuery = activeSearchQuery
         let requestURL = nextSearchPageURL
-        loadTask?.cancel()
-        loadTask = Task { [weak self] in
+        searchLoadTask?.cancel()
+        searchLoadTask = Task { [weak self] in
             guard let self, let url = requestURL else { return }
             self.isRefreshingList = true
             self.feedErrorMessage = nil
@@ -207,8 +221,23 @@ final class MissKonFeedStore {
             }
             if self.activeSearchQuery == requestQuery {
                 self.isRefreshingList = false
-                self.loadTask = nil
+                self.searchLoadTask = nil
             }
+        }
+    }
+
+    func setSearchText(_ text: String) {
+        searchText = text
+        searchDebounceTask?.cancel()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            if activeSearchQuery != nil { clearSearch() }
+            return
+        }
+        searchDebounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            self?.submitSearch(trimmed)
         }
     }
 
@@ -249,6 +278,10 @@ final class MissKonFeedStore {
     func clearSearch() {
         searchTask?.cancel()
         searchTask = nil
+        searchLoadTask?.cancel()
+        searchLoadTask = nil
+        searchDebounceTask?.cancel()
+        searchDebounceTask = nil
         loadTask?.cancel()
         loadTask = nil
         activeSearchQuery = nil
@@ -275,6 +308,10 @@ final class MissKonFeedStore {
     private func onSectionChanged() {
         searchTask?.cancel()
         searchTask = nil
+        searchLoadTask?.cancel()
+        searchLoadTask = nil
+        searchDebounceTask?.cancel()
+        searchDebounceTask = nil
         loadTask?.cancel()
         loadTask = nil
         isRefreshingList = false
@@ -322,6 +359,7 @@ final class MissKonFeedStore {
         } else {
             allItems = []
             visibleItems = []
+            nextPageURL = nil
             let previousID = selectedItemID
             selectedItemID = nil
             if previousID != nil {

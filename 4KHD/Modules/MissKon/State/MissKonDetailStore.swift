@@ -16,8 +16,10 @@ final class MissKonDetailStore {
 
     private func cancelResolveTask() {
         resolveTask?.cancel()
+        isResolving = false
     }
 
+    var resolvedPageCount: Int { resolvedPages.count }
     var resolvedImageCount: Int {
         resolvedPages.reduce(0) { $0 + $1.value.imageURLs.count }
     }
@@ -81,21 +83,47 @@ final class MissKonDetailStore {
                 }
             }
 
-            // Resolve remaining pages
-            while !pendingURLs.isEmpty, !Task.isCancelled {
-                let pageURL = pendingURLs.removeFirst()
-                do {
-                    let page = try await MissKonDetailResolver.resolve(pageURL: pageURL)
-                    guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
-                    self.resolvedPages[pageURL] = page
-                    for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
-                        pendingURLs.append(newURL)
+            // Resolve remaining pages in parallel batches (cap at 50 pages, 6 per batch).
+            while !pendingURLs.isEmpty, !Task.isCancelled, resolvedPages.count < 50 {
+                let maxBatch = min(6, 50 - resolvedPages.count)
+                let batch = Array(pendingURLs.prefix(maxBatch))
+                pendingURLs.removeFirst(min(pendingURLs.count, batch.count))
+
+                let batchResults: [(URL, Result<MissKonResolvedImagePage, Error>)] = await withTaskGroup(
+                    of: (URL, Result<MissKonResolvedImagePage, Error>).self
+                ) { group in
+                    for url in batch {
+                        group.addTask {
+                            do {
+                                let page = try await MissKonDetailResolver.resolve(pageURL: url)
+                                return (url, .success(page))
+                            } catch {
+                                return (url, .failure(error))
+                            }
+                        }
                     }
-                    resolvedAny = true
-                    self.publishSlots()
-                } catch {
-                    self.failedPageURLs.insert(pageURL)
+                    var results: [(URL, Result<MissKonResolvedImagePage, Error>)] = []
+                    for await result in group { results.append(result) }
+                    return results
                 }
+
+                guard !Task.isCancelled, self.currentItem?.id == itemID else { return }
+
+                var newURLs: [URL] = []
+                for (url, result) in batchResults {
+                    switch result {
+                    case .success(let page):
+                        self.resolvedPages[url] = page
+                        for newURL in page.pageURLs where seenURLs.insert(newURL).inserted {
+                            newURLs.append(newURL)
+                        }
+                        resolvedAny = true
+                    case .failure:
+                        self.failedPageURLs.insert(url)
+                    }
+                }
+                pendingURLs.append(contentsOf: newURLs)
+                self.publishSlots()
             }
 
             guard !Task.isCancelled, self.currentItem?.id == itemID else { return }

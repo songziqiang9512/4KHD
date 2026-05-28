@@ -59,6 +59,8 @@ final class MissKonGalleryStore {
     var isResolving: Bool { detail.isResolving }
     var errorMessage: String? { detail.errorMessage }
     var currentItem: MissKonItem? { detail.currentItem }
+    var resolvedPageCount: Int { detail.resolvedPageCount }
+    var resolvedImageCount: Int { detail.resolvedImageCount }
 
     func select(_ item: MissKonItem) {
         feed.select(item)
@@ -66,6 +68,7 @@ final class MissKonGalleryStore {
 
     func refreshFromNetwork() { feed.refreshFromNetwork() }
     func loadMoreListIfNeeded() { feed.loadMoreListIfNeeded() }
+    func setSearchText(_ text: String) { feed.setSearchText(text) }
     func submitSearch(_ query: String) { feed.submitSearch(query) }
     func clearSearch() { feed.clearSearch() }
 
