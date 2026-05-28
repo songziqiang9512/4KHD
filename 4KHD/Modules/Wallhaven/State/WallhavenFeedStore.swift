@@ -156,6 +156,9 @@ final class WallhavenFeedStore {
         searchDebounceTask = nil
         activeSearchQuery = nil
         searchText = ""
+        inFlightPage = nil
+        inFlightSearchPage = nil
+        inFlightUploaderPage = nil
         cachedWallpapers[section] = nil
         cachedPages[section] = nil
         cacheTimestamps[section] = nil
@@ -180,6 +183,9 @@ final class WallhavenFeedStore {
         clearUploaderBrowsing()
         activeSearchQuery = nil
         searchText = ""
+        inFlightPage = nil
+        inFlightSearchPage = nil
+        inFlightUploaderPage = nil
         section = newSection
         restoreSectionCache()
     }
@@ -189,10 +195,10 @@ final class WallhavenFeedStore {
             refreshFavorites()
             return
         }
+        isRefreshingList = true
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             guard let self else { return }
-            self.isRefreshingList = true
             self.feedErrorMessage = nil
             let searchSection = self.section
             do {
@@ -307,6 +313,8 @@ final class WallhavenFeedStore {
         activeSearchQuery = trimmed
         loadTask?.cancel()
         searchTask?.cancel()
+        searchLoadTask?.cancel()
+        inFlightSearchPage = nil
         searchLoadTask?.cancel()
         searchTask = Task { [weak self] in
             guard let self else { return }
@@ -565,6 +573,7 @@ final class WallhavenFeedStore {
         uploaderPage = 1
         uploaderHasMore = false
         savedState = nil
+        inFlightUploaderPage = nil
     }
 
     // MARK: - Detail resolution

@@ -16,6 +16,15 @@ final class MissKonDetailStore {
 
     private func cancelResolveTask() {
         resolveTask?.cancel()
+        resolveTask = nil
+        isResolving = false
+    }
+
+    /// Cancel in-flight page resolution without clearing current item, slots, or resolved pages.
+    /// Use when detail pane closes — keeps the list selection's placeholder intact.
+    func cancelResolution() {
+        resolveTask?.cancel()
+        resolveTask = nil
         isResolving = false
     }
 
@@ -58,13 +67,26 @@ final class MissKonDetailStore {
     /// Start resolving detail pages. Called when detail pane or immersive opens.
     func resolve(item: MissKonItem, force: Bool = false) {
         guard force || item.id == currentItem?.id else { return }
-        guard resolvedPages.isEmpty else { return } // Already resolving or resolved.
+        if force {
+            cancelResolveTask()
+            resolvedPages = [:]
+            failedPageURLs = []
+            errorMessage = nil
+        } else {
+            guard resolvedPages.isEmpty else { return } // Already resolving or resolved.
+        }
         let pageURLs = item.pageURLs
         guard !pageURLs.isEmpty else { return }
         let itemID = item.id
 
         resolveTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if self.currentItem?.id == itemID {
+                    self.isResolving = false
+                    self.resolveTask = nil
+                }
+            }
             self.isResolving = true
 
             var pendingURLs = pageURLs
@@ -135,7 +157,6 @@ final class MissKonDetailStore {
             if !resolvedAny {
                 self.errorMessage = "无法解析任何图片"
             }
-            self.isResolving = false
         }
     }
 

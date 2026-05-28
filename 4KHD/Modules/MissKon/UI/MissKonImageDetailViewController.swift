@@ -200,8 +200,10 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
-        // Trigger detail resolution when pane becomes visible and item is prepared but not yet resolved.
-        if shouldLoadDetailContent, library.imageSlots.count <= 1, !library.isResolving {
+        // Trigger detail resolution when pane becomes visible, item is prepared but not yet resolved,
+        // and there's no prior error (failed resolution should stay failed until explicit retry).
+        if shouldLoadDetailContent, library.imageSlots.count <= 1,
+           !library.isResolving, library.errorMessage == nil, library.resolvedPageCount == 0 {
             library.detail.resolve(item: item)
         }
 
@@ -211,6 +213,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             detailFailed = false
             imageView.setImageURL(nil)
             RemoteImagePipeline.shared.stopDetailPrefetching()
+            library.detail.cancelResolution()
             isDetailReady = false
             return
         }
