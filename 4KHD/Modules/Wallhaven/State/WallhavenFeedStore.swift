@@ -250,7 +250,9 @@ final class WallhavenFeedStore {
                     self.onSelectionChanged?(items.first)
                 } catch {
                     guard !Task.isCancelled,
-                          self.listRequestToken == requestToken
+                          self.listRequestToken == requestToken,
+                          self.isBrowsingUploader,
+                          self.uploaderUsername == requestUsername
                     else { return }
                     self.feedErrorMessage = error.localizedDescription
                 }
@@ -610,7 +612,8 @@ final class WallhavenFeedStore {
             } catch {
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
-                      self.isBrowsingUploader
+                      self.isBrowsingUploader,
+                      self.uploaderUsername == requestUsername
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
@@ -661,7 +664,8 @@ final class WallhavenFeedStore {
             } catch {
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
-                      self.isBrowsingUploader
+                      self.isBrowsingUploader,
+                      self.uploaderUsername == requestUsername
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
             }

@@ -5,6 +5,8 @@ enum WallhavenUploaderResolver {
 
     /// Resolve wallpapers uploaded by a given username, with page support.
     /// Tries `@username` API search first; falls back to HTML scraping.
+    /// Throws only when both API and HTML scraping fail (network error).
+    /// Returns empty array when author has no uploads or page is beyond last.
     static func resolve(username: String, page: Int, purity: WallhavenPurity, apiKey: String?) async throws -> [Wallpaper] {
         // 1. Try API search with @username, respecting the user's purity setting.
         let parameters = WallhavenSearchParameters(
@@ -26,10 +28,9 @@ enum WallhavenUploaderResolver {
         }
 
         // 2. Fallback: scrape the uploads page HTML for wallpaper IDs.
-        guard let html = try? await fetchUploadsHTML(username: username, page: page),
-              !html.isEmpty else {
-            return []
-        }
+        // Use try (not try?) so network failures propagate to feed store catch → retry UI.
+        let html = try await fetchUploadsHTML(username: username, page: page)
+        guard !html.isEmpty else { return [] }
 
         let ids = extractWallpaperIDs(from: html)
         guard !ids.isEmpty else { return [] }
@@ -76,24 +77,24 @@ enum WallhavenUploaderResolver {
     }
 
     /// Extract wallpaper IDs from Wallhaven uploads page HTML.
-    /// Wallpaper links appear as href="/w/{id}" or data-wallpaper-id="{id}".
+    /// Wallpaper links appear as data-wallpaper-id="{id}", href="/w/{id}", or href="https://wallhaven.cc/w/{id}".
     private static func extractWallpaperIDs(from html: String) -> [String] {
-        // Match data-wallpaper-id="xxx" attributes (most reliable).
-        let pattern = #"data-wallpaper-id="([a-zA-Z0-9]+)""#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return []
-        }
-        let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let matches = regex.matches(in: html, options: [], range: range)
+        let dataIDPattern = #"data-wallpaper-id="([a-zA-Z0-9]+)""#
+        let hrefWPattern = #"href="(?:https://wallhaven\.cc)?/w/([a-zA-Z0-9]+)""#
 
         var seen = Set<String>()
         var ids: [String] = []
-        for match in matches {
-            guard match.numberOfRanges >= 2,
-                  let r = Range(match.range(at: 1), in: html) else { continue }
-            let id = String(html[r])
-            if seen.insert(id).inserted {
-                ids.append(id)
+
+        for pattern in [dataIDPattern, hrefWPattern] {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            for match in regex.matches(in: html, options: [], range: range) {
+                guard match.numberOfRanges >= 2,
+                      let r = Range(match.range(at: 1), in: html) else { continue }
+                let id = String(html[r])
+                if seen.insert(id).inserted {
+                    ids.append(id)
+                }
             }
         }
         return ids
