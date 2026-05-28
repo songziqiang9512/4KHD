@@ -167,7 +167,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         withObservationTracking {
             _ = library.section
             _ = library.selectedWallpaperID
-            _ = library.wallpapers.count
+            _ = library.wallpapers
             _ = library.canLoadMoreList
             _ = library.isRefreshingList
             _ = library.feedErrorMessage

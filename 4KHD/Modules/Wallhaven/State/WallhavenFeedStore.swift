@@ -26,6 +26,7 @@ final class WallhavenFeedStore {
     private var seed: String?
 
     private var loadTask: Task<Void, Never>?
+    private var searchLoadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
 
@@ -142,8 +143,12 @@ final class WallhavenFeedStore {
     private func resetAndRefresh() {
         loadTask?.cancel()
         loadTask = nil
+        searchLoadTask?.cancel()
+        searchLoadTask = nil
         searchTask?.cancel()
         searchTask = nil
+        searchDebounceTask?.cancel()
+        searchDebounceTask = nil
         activeSearchQuery = nil
         searchText = ""
         cachedWallpapers[section] = nil
@@ -164,7 +169,10 @@ final class WallhavenFeedStore {
     func setSection(_ newSection: WallhavenSection) {
         guard section != newSection else { return }
         loadTask?.cancel()
+        searchLoadTask?.cancel()
         searchTask?.cancel()
+        searchDebounceTask?.cancel()
+        clearUploaderBrowsing()
         activeSearchQuery = nil
         searchText = ""
         section = newSection
@@ -220,6 +228,10 @@ final class WallhavenFeedStore {
         guard section != .favorites else { return }
         if isBrowsingUploader {
             loadMoreUploaderWorks()
+            return
+        }
+        if activeSearchQuery != nil {
+            loadMoreSearchIfNeeded()
             return
         }
         guard !isRefreshingList, canLoadMoreList else { return }
@@ -282,9 +294,12 @@ final class WallhavenFeedStore {
     func submitSearch(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != activeSearchQuery else { return }
+        // Exit uploader browsing so load-more goes to search pagination.
+        clearUploaderBrowsing()
         activeSearchQuery = trimmed
         loadTask?.cancel()
         searchTask?.cancel()
+        searchLoadTask?.cancel()
         searchTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingList = true
@@ -317,8 +332,8 @@ final class WallhavenFeedStore {
         guard !isRefreshingList, canLoadMoreList, activeSearchQuery != nil else { return }
         let requestQuery = activeSearchQuery
         let nextPage = currentPage + 1
-        loadTask?.cancel()
-        loadTask = Task { [weak self] in
+        searchLoadTask?.cancel()
+        searchLoadTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingList = true
             self.feedErrorMessage = nil
@@ -339,7 +354,7 @@ final class WallhavenFeedStore {
             }
             if self.activeSearchQuery == requestQuery {
                 self.isRefreshingList = false
-                self.loadTask = nil
+                self.searchLoadTask = nil
             }
         }
     }
@@ -347,6 +362,8 @@ final class WallhavenFeedStore {
     func clearSearch() {
         searchTask?.cancel()
         searchTask = nil
+        searchLoadTask?.cancel()
+        searchLoadTask = nil
         searchDebounceTask?.cancel()
         searchDebounceTask = nil
         loadTask?.cancel()
@@ -456,6 +473,7 @@ final class WallhavenFeedStore {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
+            guard self.isBrowsingUploader else { return }
             self.isRefreshingList = false
             self.loadTask = nil
         }
@@ -488,6 +506,7 @@ final class WallhavenFeedStore {
                 guard !Task.isCancelled else { return }
                 self.feedErrorMessage = error.localizedDescription
             }
+            guard self.isBrowsingUploader else { return }
             self.isRefreshingList = false
             self.loadTask = nil
         }
@@ -586,7 +605,20 @@ final class WallhavenFeedStore {
         detailCache = cached
     }
 
+    private static let maxDetailCacheEntries = 500
+
     private func saveDetailCache() {
+        // Prune oldest entries if over the limit before saving.
+        if detailCache.count > Self.maxDetailCacheEntries {
+            let sorted = detailCache.sorted { lhs, rhs in
+                let lhsHasDate = lhs.value.createdAt != nil
+                let rhsHasDate = rhs.value.createdAt != nil
+                if lhsHasDate != rhsHasDate { return lhsHasDate }
+                return (lhs.value.createdAt ?? Date.distantPast) > (rhs.value.createdAt ?? Date.distantPast)
+            }
+            let kept = sorted.prefix(Self.maxDetailCacheEntries).map { ($0.key, $0.value) }
+            detailCache = Dictionary(uniqueKeysWithValues: kept)
+        }
         guard let url = Self.detailCacheFileURL,
               let data = try? JSONEncoder().encode(detailCache) else { return }
         try? data.write(to: url, options: .atomicWrite)

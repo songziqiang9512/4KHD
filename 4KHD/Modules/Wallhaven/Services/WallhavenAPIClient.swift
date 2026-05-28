@@ -31,6 +31,9 @@ struct WallhavenAPIClient {
         decoder = JSONDecoder()
     }
 
+    private static let maxRetries = 2
+    private static let retryDelay: UInt64 = 2_000_000_000 // 2 seconds
+
     func search(parameters: WallhavenSearchParameters, apiKey: String?) async throws -> WallhavenPage {
         var components = URLComponents(url: baseURL.appendingPathComponent("search"), resolvingAgainstBaseURL: false)
         var queryItems: [URLQueryItem] = [
@@ -115,25 +118,33 @@ struct WallhavenAPIClient {
     }
 
     private func request<Response: Decodable>(url: URL, apiKey: String?) async throws -> Response {
-        let request = WallhavenRequestFactory.makeAPIRequest(url: url, apiKey: apiKey)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse {
-            switch httpResponse.statusCode {
-            case 200..<300:
-                break
-            case 401:
-                throw WallhavenAPIError.unauthorized
-            case 429:
-                throw WallhavenAPIError.rateLimited
-            default:
-                throw WallhavenAPIError.badStatus(httpResponse.statusCode)
+        var lastError: Error?
+        for attempt in 0..<Self.maxRetries {
+            if attempt > 0 {
+                try await Task.sleep(nanoseconds: Self.retryDelay)
+            }
+            let urlRequest = WallhavenRequestFactory.makeAPIRequest(url: url, apiKey: apiKey)
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            if let httpResponse = response as? HTTPURLResponse {
+                switch httpResponse.statusCode {
+                case 200..<300:
+                    break
+                case 401:
+                    throw WallhavenAPIError.unauthorized
+                case 429:
+                    lastError = WallhavenAPIError.rateLimited
+                    continue
+                default:
+                    throw WallhavenAPIError.badStatus(httpResponse.statusCode)
+                }
+            }
+            do {
+                return try decoder.decode(Response.self, from: data)
+            } catch {
+                throw WallhavenAPIError.decodingFailed
             }
         }
-        do {
-            return try decoder.decode(Response.self, from: data)
-        } catch {
-            throw WallhavenAPIError.decodingFailed
-        }
+        throw lastError ?? WallhavenAPIError.rateLimited
     }
 }
 

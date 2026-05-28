@@ -34,14 +34,21 @@ enum WallhavenUploaderResolver {
         let ids = extractWallpaperIDs(from: html)
         guard !ids.isEmpty else { return [] }
 
-        // Resolve details for each ID (limit to first 24 to avoid too many requests).
-        var results: [Wallpaper] = []
-        for id in ids.prefix(24) {
-            if let wallpaper = try? await apiClient.wallpaper(id: id, apiKey: apiKey) {
-                results.append(wallpaper)
+        // Resolve details in parallel (URLSession limits per-host concurrency to 6).
+        let targetIDs = Array(ids.prefix(24))
+        guard !targetIDs.isEmpty else { return [] }
+        return await withTaskGroup(of: Wallpaper?.self) { group in
+            for id in targetIDs {
+                group.addTask {
+                    try? await apiClient.wallpaper(id: id, apiKey: apiKey)
+                }
             }
+            var results: [Wallpaper] = []
+            for await result in group {
+                if let wallpaper = result { results.append(wallpaper) }
+            }
+            return results
         }
-        return results
     }
 
     // MARK: - HTML scraping

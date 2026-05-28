@@ -198,7 +198,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         isObserving = true
         withObservationTracking {
             _ = library.selectedWallpaper?.id
-            _ = library.wallpapers.count
+            _ = library.wallpapers
             _ = library.resolvedWallpaper?.id
             _ = library.isResolvingDetail
             _ = detailInteraction.resetToken
