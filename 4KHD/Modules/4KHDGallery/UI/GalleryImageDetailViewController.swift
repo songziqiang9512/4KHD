@@ -252,7 +252,10 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         previousButton.isHidden = false
         nextButton.isHidden = false
         previousButton.isEnabled = library.selectedImageIndex > 0
-        nextButton.isEnabled = library.selectedImageIndex < max(item.imageCount - 1, 0)
+        nextButton.isEnabled = library.selectedImageIndex < max(
+            item.imageCount > 0 ? item.imageCount - 1 : library.loadedImageSlots.count,
+            0
+        )
         counterChrome.isHidden = false
 
         if currentItemID != item.id {

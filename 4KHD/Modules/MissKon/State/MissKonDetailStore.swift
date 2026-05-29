@@ -57,6 +57,16 @@ final class MissKonDetailStore {
         knownPageURLs = item.pageURLs
         guard !knownPageURLs.isEmpty else { return }
 
+        // When imageCount==0 we can't trust pageCount, so seed a safe minimum.
+        if item.imageCount == 0, knownPageURLs.count == 1 {
+            let base = knownPageURLs[0].absoluteString
+            let baseWithSlash = base.hasSuffix("/") ? base : base + "/"
+            for pageNum in 2...8 {
+                guard let u = URL(string: "\(baseWithSlash)\(pageNum)/") else { break }
+                knownPageURLs.append(u)
+            }
+        }
+
         // Generate placeholder slots based on imageCount, falling back to page estimate.
         let estimatedCount = item.imageCount > 0 ? item.imageCount : knownPageURLs.count * 12
         var slots: [MissKonImageSlot] = []
@@ -148,6 +158,19 @@ final class MissKonDetailStore {
                 else { return }
                 self.resolvedPages[pageURL] = page
                 // Merge discovered page URLs into knownPageURLs.
+                // If a higher page number is found, generate all intermediate pages too.
+                let newMax = page.pageURLs.compactMap { $0.trailingPageNumber }.max() ?? 0
+                let oldMax = self.knownPageURLs.compactMap { $0.trailingPageNumber }.max() ?? 0
+                if newMax > oldMax, let baseURL = self.knownPageURLs.first {
+                    let base = baseURL.deletingLastPathComponent().absoluteString
+                    let baseWithSlash = base.hasSuffix("/") ? base : base + "/"
+                    for pageNum in (oldMax + 1)...newMax {
+                        if let u = URL(string: "\(baseWithSlash)\(pageNum)/"),
+                           !self.knownPageURLs.contains(u) {
+                            self.knownPageURLs.append(u)
+                        }
+                    }
+                }
                 for newURL in page.pageURLs where !self.knownPageURLs.contains(newURL) {
                     self.knownPageURLs.append(newURL)
                 }
