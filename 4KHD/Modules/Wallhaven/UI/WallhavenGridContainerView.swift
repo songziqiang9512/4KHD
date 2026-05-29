@@ -76,7 +76,9 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         canLoadMore: Bool
     ) {
         let previousItemIDs = lastAppliedIDs
-        let contentChanged = wallpapers.map(\.id) != previousItemIDs || showsFooter != lastShowsFooter
+        let previousShowsFooter = lastShowsFooter
+        let nextItemIDs = wallpapers.map(\.id)
+        let contentChanged = nextItemIDs != previousItemIDs || showsFooter != previousShowsFooter
         self.wallpapers = wallpapers
         self.selectedWallpaperID = selectedWallpaperID
         self.searchQuery = searchQuery
@@ -88,13 +90,18 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
 
-        if updateItemSize() || contentChanged {
-            lastAppliedIDs = wallpapers.map(\.id)
+        let itemSizeChanged = updateItemSize()
+        if contentChanged {
+            lastAppliedIDs = nextItemIDs
             lastShowsFooter = showsFooter
-            performWithoutAnimation {
-                gridLayout.invalidateLayout()
-                collectionView.reloadData()
-            }
+            applyContentChange(
+                previousItemIDs: previousItemIDs,
+                previousShowsFooter: previousShowsFooter,
+                nextItemIDs: nextItemIDs,
+                showsFooter: showsFooter
+            )
+        } else if itemSizeChanged {
+            refreshVisibleSelection()
         } else {
             refreshVisibleItems()
         }
@@ -103,11 +110,43 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
 
     private func refreshVisibleItems() {
         for indexPath in collectionView.indexPathsForVisibleItems() {
+            if indexPath.item >= wallpapers.count {
+                guard let footer = collectionView.item(at: indexPath) as? WallhavenGridFooterItem else { continue }
+                footer.configure(isRefreshing: isRefreshing, errorMessage: errorMessage, canLoadMore: canLoadMore, hasItems: !wallpapers.isEmpty)
+                continue
+            }
             guard indexPath.item < wallpapers.count,
                   let cell = collectionView.item(at: indexPath) as? WallhavenGridItemView else { continue }
             let wallpaper = wallpapers[indexPath.item]
             cell.configure(wallpaper: wallpaper, isSelected: wallpaper.id == selectedWallpaperID, searchQuery: searchQuery) { [weak self] ratio in
                 self?.updateAspectRatio(ratio, for: wallpaper.id)
+            }
+        }
+    }
+
+    private func applyContentChange(
+        previousItemIDs: [Wallpaper.ID],
+        previousShowsFooter: Bool,
+        nextItemIDs: [Wallpaper.ID],
+        showsFooter: Bool
+    ) {
+        let isAppendOnly = nextItemIDs.count > previousItemIDs.count
+            && previousShowsFooter == showsFooter
+            && Array(nextItemIDs.prefix(previousItemIDs.count)) == previousItemIDs
+
+        guard isAppendOnly else {
+            performWithoutAnimation {
+                gridLayout.invalidateLayout()
+                collectionView.reloadData()
+            }
+            return
+        }
+
+        let oldItemCount = previousItemIDs.count
+        performWithoutAnimation {
+            collectionView.performBatchUpdates {
+                let indexPaths = Set((oldItemCount..<nextItemIDs.count).map { IndexPath(item: $0, section: 0) })
+                collectionView.insertItems(at: indexPaths)
             }
         }
     }

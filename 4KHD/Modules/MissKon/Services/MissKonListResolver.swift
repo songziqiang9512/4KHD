@@ -5,6 +5,15 @@ struct MissKonListPage {
     let nextPageURL: URL?
 }
 
+enum MissKonListResolverError: Error, Equatable {
+    case httpStatus(Int)
+
+    var isPageNotFound: Bool {
+        if case .httpStatus(404) = self { return true }
+        return false
+    }
+}
+
 enum MissKonListResolver {
     private static let requestCoalescer = MissKonHTMLRequestCoalescer()
     private static let articleRegex = regex(#"<article\s+class=["'][^"']*item-list[^"']*["'][\s\S]*?</article>"#)
@@ -50,7 +59,7 @@ enum MissKonListResolver {
             let request = MissKonRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
-                throw URLError(.badServerResponse)
+                throw MissKonListResolverError.httpStatus(httpResponse.statusCode)
             }
             guard let html = String(data: data, encoding: .utf8) else {
                 throw URLError(.cannotDecodeContentData)
@@ -91,7 +100,7 @@ enum MissKonListResolver {
 
     private static func nextPageURL(in html: String, baseURL: URL) -> URL? {
         let currentText = firstMatch(paginationCurrentRegex, in: html)
-        let currentPage = currentText.flatMap(Int.init) ?? 1
+        let currentPage = currentText.flatMap(Int.init) ?? pageNumber(from: baseURL) ?? 1
 
         // Try explicit next link first
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
@@ -111,24 +120,29 @@ enum MissKonListResolver {
         // Some page templates (top30 etc.) don't render pagination HTML but still
         // support WordPress pagination via /page/N/ URLs. Construct next page URL
         // when the current page has enough items to suggest more pages exist.
-        // Require strictly more than a full page of items to avoid guessing past
-        // the last page when the total is an exact multiple of the page size.
+        // MissKon list pages currently render 20 real article cards per full page.
+        // Be conservative so partial last pages don't generate dead /page/N/ URLs.
         let articleCount = articleHTML(in: html).count
-        guard articleCount > 12 else { return nil }
+        guard articleCount >= 20 else { return nil }
 
-        // When already on a constructed /page/N/ URL beyond the first page,
-        // be conservative: only advance if the current page was full.
-        if let pageStrRange = baseURL.absoluteString.range(of: "/page/\(currentPage)", options: .backwards) {
-            let remainder = baseURL.absoluteString[pageStrRange.upperBound...]
-            let trailingSlash = remainder.hasPrefix("/") ? "/" : ""
-            let newURLString = baseURL.absoluteString.replacingCharacters(
-                in: pageStrRange.lowerBound..<baseURL.absoluteString.endIndex,
-                with: "/page/\(currentPage + 1)\(trailingSlash)"
-            )
-            return URL(string: newURLString)
+        return constructedPageURL(from: baseURL, nextPage: currentPage + 1)
+    }
+
+    private static func pageNumber(from url: URL) -> Int? {
+        let parts = url.path.split(separator: "/")
+        guard let pageIndex = parts.firstIndex(of: "page") else { return nil }
+        let numberIndex = parts.index(after: pageIndex)
+        guard parts.indices.contains(numberIndex) else { return nil }
+        return Int(parts[numberIndex])
+    }
+
+    private static func constructedPageURL(from baseURL: URL, nextPage: Int) -> URL? {
+        var urlString = baseURL.absoluteString
+        if let pageRange = urlString.range(of: #"/page/[0-9]+/?$"#, options: .regularExpression) {
+            return URL(string: urlString.replacingCharacters(in: pageRange, with: "/page/\(nextPage)/"))
         }
-
-        return URL(string: "\(baseURL.absoluteString)page/\(currentPage + 1)/")
+        if !urlString.hasSuffix("/") { urlString += "/" }
+        return URL(string: "\(urlString)page/\(nextPage)/")
     }
 
     private static func tagsFromHTML(_ html: String) -> [String] {

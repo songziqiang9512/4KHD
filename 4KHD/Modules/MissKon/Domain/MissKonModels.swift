@@ -5,6 +5,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     case top30
     case cosplay
     case aiGenerated
+    case otherxxx
+    case xiaoyu
     case privatePhotoshoot
     case xiuren
     case huayang
@@ -17,7 +19,9 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .latest: "最新"
         case .top30: "热门"
         case .cosplay: "Cosplay"
-        case .aiGenerated: "AI 生成"
+        case .aiGenerated: "AI 增强"
+        case .otherxxx: "OtherXXX"
+        case .xiaoyu: "XiaoYu"
         case .privatePhotoshoot: "私房摄影"
         case .xiuren: "秀人"
         case .huayang: "花漾"
@@ -31,6 +35,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .top30: "flame"
         case .cosplay: "theatermasks"
         case .aiGenerated: "cpu"
+        case .otherxxx: "rectangle.stack"
+        case .xiaoyu: "person.crop.square"
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
         case .huayang: "person.crop.rectangle.fill"
@@ -44,6 +50,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .top30: URL(string: "https://misskon.com/top30/")!
         case .cosplay: URL(string: "https://misskon.com/tag/cosplay/")!
         case .aiGenerated: URL(string: "https://misskon.com/tag/ai-enhanced/")!
+        case .otherxxx: URL(string: "https://misskon.com/tag/otherxxx/")!
+        case .xiaoyu: URL(string: "https://misskon.com/tag/xiaoyu/")!
         case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")!
         case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")!
         case .huayang: URL(string: "https://misskon.com/tag/huayang/")!

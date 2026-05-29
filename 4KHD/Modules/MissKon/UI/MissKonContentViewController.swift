@@ -16,6 +16,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     private var isApplyingSelection = false
     private var lastAppliedVisibleIDs: [MissKonItem.ID] = []
     private var lastShowsFooter = false
+    private var lastListSearchQuery: String?
+    private var lastListFooterState = ListFooterState()
     private var pendingScrollItemID: MissKonItem.ID?
     private var pendingScrollOffset: CGFloat?
     private var lastSection: MissKonSection?
@@ -113,6 +115,13 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             setActiveView(tableScrollView)
             let currentShowsFooter = shouldShowFooter
             let currentIDs = library.visibleItems.map(\.id)
+            let currentSearchQuery = library.activeSearchQuery
+            let currentFooterState = ListFooterState(
+                isRefreshing: library.isRefreshingList,
+                errorMessage: library.feedErrorMessage,
+                canLoadMore: library.canLoadMoreList,
+                showsFooter: currentShowsFooter
+            )
             if canApplyAppendUpdate(from: lastAppliedVisibleIDs, to: currentIDs),
                currentShowsFooter == lastShowsFooter {
                 let insertedRange = lastAppliedVisibleIDs.count..<currentIDs.count
@@ -120,14 +129,18 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 NSView.performWithoutAnimation {
                     tableView.insertRows(at: IndexSet(integersIn: insertedRange), withAnimation: [])
                 }
-                reloadVisibleListRows()
+                reloadFooterRowIfVisible()
             } else if currentIDs != lastAppliedVisibleIDs || currentShowsFooter != lastShowsFooter {
                 lastAppliedVisibleIDs = currentIDs
                 lastShowsFooter = currentShowsFooter
                 NSView.performWithoutAnimation { tableView.reloadData() }
-            } else {
+            } else if currentSearchQuery != lastListSearchQuery {
                 reloadVisibleListRows()
+            } else if currentFooterState != lastListFooterState {
+                reloadFooterRowIfVisible()
             }
+            lastListSearchQuery = currentSearchQuery
+            lastListFooterState = currentFooterState
             syncTableSelection()
             if let pendingScrollItemID,
                let row = library.visibleItems.firstIndex(where: { $0.id == pendingScrollItemID }) {
@@ -178,6 +191,15 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         guard rowRange.length > 0 else { return }
         let columnIndexes = IndexSet(integer: 0)
         tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: columnIndexes)
+    }
+
+    private func reloadFooterRowIfVisible() {
+        guard shouldShowFooter else { return }
+        let footerRow = library.visibleItems.count
+        guard footerRow < tableView.numberOfRows else { return }
+        let visibleRows = tableView.rows(in: tableView.visibleRect)
+        guard NSLocationInRange(footerRow, visibleRows) else { return }
+        tableView.reloadData(forRowIndexes: IndexSet(integer: footerRow), columnIndexes: IndexSet(integer: 0))
     }
 
     private func canApplyAppendUpdate(from oldIDs: [MissKonItem.ID], to newIDs: [MissKonItem.ID]) -> Bool {
@@ -376,4 +398,11 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 final class MissKonContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
     override func accessibilityLabel() -> String? { "MissKon List" }
+}
+
+private struct ListFooterState: Equatable {
+    var isRefreshing = false
+    var errorMessage: String?
+    var canLoadMore = false
+    var showsFooter = false
 }

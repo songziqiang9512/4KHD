@@ -98,10 +98,18 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         switch preferences.layout {
         case .list:
             setActiveView(tableScrollView)
+            let currentShowsFooter = shouldShowFooter
             let currentIDs = library.wallpapers.map(\.id)
-            if currentIDs != lastAppliedVisibleIDs || shouldShowFooter != lastShowsFooter {
+            if canApplyAppendUpdate(from: lastAppliedVisibleIDs, to: currentIDs),
+               currentShowsFooter == lastShowsFooter {
+                let insertedRange = lastAppliedVisibleIDs.count..<currentIDs.count
                 lastAppliedVisibleIDs = currentIDs
-                lastShowsFooter = shouldShowFooter
+                NSView.performWithoutAnimation {
+                    tableView.insertRows(at: IndexSet(integersIn: insertedRange), withAnimation: [])
+                }
+            } else if currentIDs != lastAppliedVisibleIDs || currentShowsFooter != lastShowsFooter {
+                lastAppliedVisibleIDs = currentIDs
+                lastShowsFooter = currentShowsFooter
                 NSView.performWithoutAnimation { tableView.reloadData() }
             } else {
                 reloadVisibleListRows()
@@ -139,6 +147,11 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         let rowRange = NSRange(location: visibleRows.location, length: min(visibleRows.length, library.wallpapers.count - visibleRows.location))
         guard rowRange.length > 0 else { return }
         tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: IndexSet(integer: 0))
+    }
+
+    private func canApplyAppendUpdate(from oldIDs: [Wallpaper.ID], to newIDs: [Wallpaper.ID]) -> Bool {
+        guard !oldIDs.isEmpty, newIDs.count > oldIDs.count else { return false }
+        return Array(newIDs.prefix(oldIDs.count)) == oldIDs
     }
 
     private func setActiveView(_ nextView: NSView) {

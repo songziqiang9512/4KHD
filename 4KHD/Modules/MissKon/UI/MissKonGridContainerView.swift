@@ -78,7 +78,11 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         canLoadMore: Bool
     ) {
         let previousItemIDs = lastAppliedIDs
-        let contentChanged = items.map(\.id) != previousItemIDs || showsFooter != lastShowsFooter
+        let previousSelectedItemID = self.selectedItemID
+        let previousFooterState = (self.isRefreshing, self.errorMessage, self.canLoadMore)
+        let previousSearchQuery = self.searchQuery
+        let nextItemIDs = items.map(\.id)
+        let contentChanged = nextItemIDs != previousItemIDs || showsFooter != lastShowsFooter
         self.items = items
         self.previousSelectedItemID = self.selectedItemID
         self.selectedItemID = selectedItemID
@@ -94,19 +98,26 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let sizeChanged = updateItemSize()
         if !sizeChanged,
            showsFooter == lastShowsFooter,
-           canApplyAppendUpdate(from: previousItemIDs, to: items.map(\.id)) {
+           canApplyAppendUpdate(from: previousItemIDs, to: nextItemIDs) {
             let insertedRange = previousItemIDs.count..<items.count
-            lastAppliedIDs = items.map(\.id)
+            lastAppliedIDs = nextItemIDs
             performWithoutAnimation {
                 collectionView.insertItems(at: Set(insertedRange.map { IndexPath(item: $0, section: 0) }))
             }
-            refreshVisibleItems()
+            reloadFooterItem()
         } else if sizeChanged || contentChanged {
-            lastAppliedIDs = items.map(\.id)
+            lastAppliedIDs = nextItemIDs
             lastShowsFooter = showsFooter
             performWithoutAnimation { collectionView.reloadData() }
         } else {
-            refreshVisibleItems()
+            let footerChanged = previousFooterState != (isRefreshing, errorMessage, canLoadMore)
+            if footerChanged {
+                reloadFooterItem()
+            } else if previousSearchQuery != searchQuery {
+                refreshVisibleItems()
+            } else if previousSelectedItemID != selectedItemID {
+                refreshVisibleSelection()
+            }
         }
         syncSelection()
     }
@@ -129,6 +140,15 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private func canApplyAppendUpdate(from oldIDs: [MissKonItem.ID], to newIDs: [MissKonItem.ID]) -> Bool {
         guard !oldIDs.isEmpty, newIDs.count > oldIDs.count else { return false }
         return Array(newIDs.prefix(oldIDs.count)) == oldIDs
+    }
+
+    private func reloadFooterItem() {
+        guard showsFooter else { return }
+        let footerIndexPath = IndexPath(item: items.count, section: 0)
+        guard collectionView.indexPathsForVisibleItems().contains(footerIndexPath) else { return }
+        performWithoutAnimation {
+            collectionView.reloadItems(at: [footerIndexPath])
+        }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }

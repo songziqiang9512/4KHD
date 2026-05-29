@@ -492,8 +492,11 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         // would then jump to the restored values in viewDidAppear.
         if let widths = savedWidths, widths.count == 3 {
             splitView.layoutSubtreeIfNeeded()
+            isRestoringSplitViewState = true
+            defer { isRestoringSplitViewState = false }
             splitLayoutController.restoreSplitViewWidths(widths, isSidebarHidden: savedIsSidebarHidden)
             didRestoreSplitViewState = true
+            applyDetailPaneVisibility(appContext.detailPaneController.isPresented)
         }
 
         CookieBridge.shared.start()
@@ -541,7 +544,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             splitLayoutController.restoreDetailWidthForPresentedDetail(preferredWidths: lastPresentedSplitViewWidths)
         }
 
-        guard didRestoreSplitViewState else { return }
+        guard didRestoreSplitViewState, !isRestoringSplitViewState else { return }
         if isPresented {
             if !saveVisibleSplitViewStateIfNeeded() {
                 saveWindowStateToUserDefaults(includeHiddenDetailWidth: false)

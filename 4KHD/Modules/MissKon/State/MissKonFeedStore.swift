@@ -24,6 +24,8 @@ final class MissKonFeedStore {
     /// In-flight page URL to prevent duplicate load-more requests.
     private var inFlightPageURL: URL?
     private var inFlightSearchPageURL: URL?
+    private var pendingListLoadMore = false
+    private var pendingSearchLoadMore = false
 
     /// Per-section scroll offset for restoring position across section switches.
     var cachedScrollOffsets: [MissKonSection: CGFloat] = [:]
@@ -32,6 +34,8 @@ final class MissKonFeedStore {
     private var cachedItems: [MissKonSection: [MissKonItem]] = [:]
     private var cachedNextPageURLs: [MissKonSection: URL] = [:]
     private var cacheTimestamps: [MissKonSection: Date] = [:]
+
+    private static let fullPageItemCount = 20
 
     /// Auto-refresh cache if older than this interval.
     private static let cacheMaxAge: TimeInterval = 3600 // 1 hour
@@ -97,6 +101,9 @@ final class MissKonFeedStore {
             guard let section = MissKonSection(rawValue: key) else { continue }
             cacheTimestamps[section] = Date(timeIntervalSince1970: timestamp)
         }
+        if pruneStaleAIGeneratedNextPageIfNeeded() {
+            saveCacheIfNeeded()
+        }
     }
 
     private func saveCacheIfNeeded() {
@@ -116,6 +123,7 @@ final class MissKonFeedStore {
         }
         let requestSection = section
         isRefreshingList = true
+        pendingListLoadMore = false
         inFlightPageURL = nil
         loadTask?.cancel()
         loadTask = nil
@@ -156,6 +164,10 @@ final class MissKonFeedStore {
             if self.section == requestSection {
                 self.isRefreshingList = false
                 self.loadTask = nil
+                if self.pendingListLoadMore {
+                    self.pendingListLoadMore = false
+                    self.loadMoreListIfNeeded()
+                }
             }
         }
     }
@@ -165,7 +177,12 @@ final class MissKonFeedStore {
             loadMoreSearchIfNeeded()
             return
         }
-        guard !isRefreshingList, canLoadMoreList, let requestURL = nextPageURL else { return }
+        guard feedErrorMessage == nil else { return }
+        guard canLoadMoreList, let requestURL = nextPageURL else { return }
+        guard !isRefreshingList, loadTask == nil else {
+            pendingListLoadMore = true
+            return
+        }
         guard inFlightPageURL != requestURL else { return } // Already loading this page.
         inFlightPageURL = requestURL
         let requestSection = section
@@ -181,33 +198,47 @@ final class MissKonFeedStore {
                 let existingIDs = Set(existing.map(\.id))
                 let newItems = page.items.filter { !existingIDs.contains($0.id) }
                 existing.append(contentsOf: newItems)
+                let nextPageURL = newItems.isEmpty ? nil : page.nextPageURL
                 self.cachedItems[requestSection] = existing
-                self.cachedNextPageURLs[requestSection] = page.nextPageURL
+                self.cachedNextPageURLs[requestSection] = nextPageURL
                 self.cacheTimestamps[requestSection] = Date()
                 self.saveCacheIfNeeded()
                 if self.section == requestSection, self.activeSearchQuery == nil {
                     self.allItems = existing
                     self.visibleItems = existing
-                    self.nextPageURL = page.nextPageURL
-                    self.canLoadMoreList = page.nextPageURL != nil
+                    self.nextPageURL = nextPageURL
+                    self.canLoadMoreList = nextPageURL != nil
                     self.feedErrorMessage = nil
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 if self.section == requestSection {
-                    self.feedErrorMessage = error.localizedDescription
+                    if self.isTerminalLoadMoreError(error) {
+                        self.markNoMorePages(for: requestSection)
+                    } else {
+                        self.feedErrorMessage = error.localizedDescription
+                    }
                 }
             }
             if self.section == requestSection {
                 self.isRefreshingList = false
                 self.loadTask = nil
                 self.inFlightPageURL = nil
+                if self.pendingListLoadMore {
+                    self.pendingListLoadMore = false
+                    self.loadMoreListIfNeeded()
+                }
             }
         }
     }
 
     func loadMoreSearchIfNeeded() {
-        guard !isRefreshingList, canLoadMoreList, activeSearchQuery != nil else { return }
+        guard feedErrorMessage == nil else { return }
+        guard canLoadMoreList, activeSearchQuery != nil else { return }
+        guard !isRefreshingList, searchTask == nil, searchLoadTask == nil else {
+            pendingSearchLoadMore = true
+            return
+        }
         let requestQuery = activeSearchQuery
         guard let requestURL = nextSearchPageURL else { return }
         guard inFlightSearchPageURL != requestURL else { return }
@@ -224,21 +255,49 @@ final class MissKonFeedStore {
                 let newItems = page.items.filter { existingIDs.insert($0.id).inserted }
                 self.allItems.append(contentsOf: newItems)
                 self.visibleItems = self.allItems
-                self.nextSearchPageURL = page.nextPageURL
-                self.canLoadMoreList = page.nextPageURL != nil
+                let nextPageURL = newItems.isEmpty ? nil : page.nextPageURL
+                self.nextSearchPageURL = nextPageURL
+                self.canLoadMoreList = nextPageURL != nil
                 self.feedErrorMessage = nil
             } catch {
                 guard !Task.isCancelled else { return }
                 if self.activeSearchQuery == requestQuery {
-                    self.feedErrorMessage = error.localizedDescription
+                    if self.isTerminalLoadMoreError(error) {
+                        self.nextSearchPageURL = nil
+                        self.canLoadMoreList = false
+                        self.feedErrorMessage = nil
+                        self.pendingSearchLoadMore = false
+                    } else {
+                        self.feedErrorMessage = error.localizedDescription
+                    }
                 }
             }
             if self.activeSearchQuery == requestQuery {
                 self.isRefreshingList = false
                 self.searchLoadTask = nil
                 self.inFlightSearchPageURL = nil
+                if self.pendingSearchLoadMore {
+                    self.pendingSearchLoadMore = false
+                    self.loadMoreSearchIfNeeded()
+                }
             }
         }
+    }
+
+    private func markNoMorePages(for requestSection: MissKonSection) {
+        cachedNextPageURLs[requestSection] = nil
+        cacheTimestamps[requestSection] = Date()
+        saveCacheIfNeeded()
+        guard section == requestSection, activeSearchQuery == nil else { return }
+        nextPageURL = nil
+        canLoadMoreList = false
+        feedErrorMessage = nil
+        pendingListLoadMore = false
+    }
+
+    private func isTerminalLoadMoreError(_ error: Error) -> Bool {
+        guard let resolverError = error as? MissKonListResolverError else { return false }
+        return resolverError.isPageNotFound
     }
 
     func setSearchText(_ text: String) {
@@ -265,6 +324,7 @@ final class MissKonFeedStore {
         feedErrorMessage = nil
         nextSearchPageURL = nil
         inFlightSearchPageURL = nil
+        pendingSearchLoadMore = false
         loadTask?.cancel()
         loadTask = nil
         searchTask?.cancel()
@@ -309,6 +369,8 @@ final class MissKonFeedStore {
         nextSearchPageURL = nil
         inFlightPageURL = nil
         inFlightSearchPageURL = nil
+        pendingListLoadMore = false
+        pendingSearchLoadMore = false
         canLoadMoreList = false
         isRefreshingList = false
         restoreSectionCache()
@@ -339,6 +401,8 @@ final class MissKonFeedStore {
         isRefreshingList = false
         inFlightPageURL = nil
         inFlightSearchPageURL = nil
+        pendingListLoadMore = false
+        pendingSearchLoadMore = false
         activeSearchQuery = nil
         searchText = ""
         nextSearchPageURL = nil
@@ -393,6 +457,32 @@ final class MissKonFeedStore {
             canLoadMoreList = false
             refreshFromNetwork()
         }
+    }
+
+    private func pruneStaleAIGeneratedNextPageIfNeeded() -> Bool {
+        let section = MissKonSection.aiGenerated
+        guard let items = cachedItems[section],
+              !items.isEmpty,
+              items.count % Self.fullPageItemCount != 0,
+              let nextPageURL = cachedNextPageURLs[section],
+              pageNumber(from: nextPageURL) == cachedPageCount(for: items.count) + 1 else {
+            return false
+        }
+        cachedNextPageURLs[section] = nil
+        cacheTimestamps[section] = Date()
+        return true
+    }
+
+    private func cachedPageCount(for itemCount: Int) -> Int {
+        max(1, (itemCount + Self.fullPageItemCount - 1) / Self.fullPageItemCount)
+    }
+
+    private func pageNumber(from url: URL) -> Int? {
+        let parts = url.path.split(separator: "/")
+        guard let pageIndex = parts.firstIndex(of: "page") else { return nil }
+        let numberIndex = parts.index(after: pageIndex)
+        guard parts.indices.contains(numberIndex) else { return nil }
+        return Int(parts[numberIndex])
     }
 }
 

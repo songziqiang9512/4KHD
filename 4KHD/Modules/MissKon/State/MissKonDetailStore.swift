@@ -236,7 +236,7 @@ final class MissKonDetailStore {
 
     /// Replace all slots for `pageURL` with `newSlots` (empty = remove), then reindex + repair selection.
     private func replaceSlots(for pageURL: URL, with pageSlots: [MissKonImageSlot]) {
-        var slots = imageSlots
+        let slots = imageSlots
         let selectedSlot = selectedSlotID.flatMap { id in slots.first(where: { $0.id == id }) }
         let selectedIndex = selectedSlot.flatMap { s in slots.firstIndex(where: { $0.id == s.id }) }
 

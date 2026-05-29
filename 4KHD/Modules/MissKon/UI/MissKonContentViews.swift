@@ -187,6 +187,7 @@ final class MissKonGridItemView: NSCollectionViewItem {
     private let cardView = WorkspaceThumbnailGridCardView()
     private var imageTask: ImageTask?
     private var representedID: MissKonItem.ID?
+    private var currentCoverURL: URL?
 
     override func loadView() {
         view = NSView()
@@ -207,14 +208,21 @@ final class MissKonGridItemView: NSCollectionViewItem {
         imageTask?.cancel()
         imageTask = nil
         representedID = nil
+        currentCoverURL = nil
         cardView.resetForReuse()
     }
 
     func configure(item: MissKonItem, isSelected: Bool, searchQuery: String? = nil, onAspectRatio: @escaping (CGFloat) -> Void) {
+        let idChanged = representedID != item.id
+        let urlChanged = currentCoverURL != item.coverURL
         representedID = item.id
         cardView.setText(title: item.title, metadata: item.imageCount > 0 ? "\(item.imageCount) 张图片" : "多张图片", highlightQuery: searchQuery)
         cardView.applySelectionState(isSelected)
-        loadCover(for: item, onAspectRatio: onAspectRatio)
+        if idChanged || urlChanged {
+            loadCover(for: item, onAspectRatio: onAspectRatio)
+        } else if let ratio = item.coverAspectRatio.map({ CGFloat($0) }), ratio > 0 {
+            onAspectRatio(ratio)
+        }
     }
 
     func applySelectionState(_ isSelected: Bool) {
@@ -232,6 +240,7 @@ final class MissKonGridItemView: NSCollectionViewItem {
     private func loadCover(for item: MissKonItem, onAspectRatio: @escaping (CGFloat) -> Void) {
         imageTask?.cancel()
         cardView.setImage(nil)
+        currentCoverURL = item.coverURL
         guard let coverURL = item.coverURL else {
             cardView.setPlaceholder("暂无缩略图", isVisible: true)
             return
