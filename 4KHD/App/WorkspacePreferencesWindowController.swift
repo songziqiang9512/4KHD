@@ -3,8 +3,8 @@ import AppKit
 @MainActor
 final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarDelegate {
     private enum Pane: String, CaseIterable {
-        case content = "Content"
-        case storage = "Storage"
+        case content = "内容"
+        case storage = "存储"
 
         var identifier: NSToolbarItem.Identifier {
             NSToolbarItem.Identifier("WorkspacePreferences.\(rawValue)")
@@ -33,7 +33,7 @@ final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarD
         self.storageViewController = storageViewController
 
         let window = NSWindow(contentViewController: contentPaneViewController)
-        window.title = "Settings"
+        window.title = "设置"
         window.styleMask = [.titled, .closable]
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false

@@ -12,14 +12,14 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
     private let statusLabel = NSTextField(labelWithString: "")
     private var clearTask: Task<Void, Never>?
 
-    let paneContentSize = NSSize(width: 430, height: 130)
+    let paneContentSize = NSSize(width: 430, height: 160)
 
     override func loadView() {
         let rootView = NSView(frame: NSRect(origin: .zero, size: paneContentSize))
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .leading
-        stackView.spacing = 12
+        stackView.spacing = 14
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
         rootView.addSubview(stackView)
@@ -39,8 +39,13 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
             cacheLimitPopup.lastItem?.representedObject = limit
         }
 
+        let descLabel = NSTextField(labelWithString: "包含图片缓存、详情页缓存、模块缓存及临时文件")
+        descLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        descLabel.textColor = .secondaryLabelColor
+
         clearCacheButton.target = self
         clearCacheButton.action = #selector(clearCache(_:))
+        clearCacheButton.title = "清除所有缓存"
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
 
@@ -49,7 +54,8 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         buttonRow.alignment = .centerY
         buttonRow.spacing = 12
 
-        stackView.addArrangedSubview(row(label: "在线缓存容量", control: cacheLimitPopup))
+        stackView.addArrangedSubview(row(label: "缓存上限", control: cacheLimitPopup))
+        stackView.addArrangedSubview(descLabel)
         stackView.addArrangedSubview(buttonRow)
         view = rootView
         refresh()
@@ -73,10 +79,23 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
             // Nuke image/data caches + URL cache
             await RemoteImagePipeline.shared.clearAllCaches()
 
-            // MissKon feed cache
+            // Detail page cache (Gallery)
+            DetailPageImageCache.shared.flush()
             if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                let detailPageDir = appSupport.appendingPathComponent("4KHD/DetailPageCache", isDirectory: true)
+                try? FileManager.default.removeItem(at: detailPageDir)
+
+                // MissKon feed cache
                 let missKonDir = appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
                 try? FileManager.default.removeItem(at: missKonDir)
+
+                // Wallhaven detail cache
+                let wallhavenDir = appSupport.appendingPathComponent("4KHD/Wallhaven", isDirectory: true)
+                try? FileManager.default.removeItem(at: wallhavenDir)
+
+                // Local image thumbnail cache
+                let localThumbDir = appSupport.appendingPathComponent("4KHD/LocalImageThumbnails", isDirectory: true)
+                try? FileManager.default.removeItem(at: localThumbDir)
             }
 
             // Wallhaven temp downloads

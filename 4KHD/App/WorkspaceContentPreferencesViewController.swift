@@ -42,13 +42,13 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         ])
 
         configurePopups()
-        stackView.addArrangedSubview(sectionLabel("Online Gallery"))
-        stackView.addArrangedSubview(row(label: "Layout", control: galleryLayoutPopup))
-        stackView.addArrangedSubview(sectionLabel("Local Library"))
-        stackView.addArrangedSubview(row(label: "Layout", control: localLayoutPopup))
-        stackView.addArrangedSubview(row(label: "Sort by", control: localSortFieldPopup))
-        stackView.addArrangedSubview(row(label: "Direction", control: localSortDirectionPopup))
-        stackView.addArrangedSubview(sectionLabel("Sidebar"))
+        stackView.addArrangedSubview(sectionLabel("在线图库"))
+        stackView.addArrangedSubview(row(label: "布局", control: galleryLayoutPopup))
+        stackView.addArrangedSubview(sectionLabel("本地图库"))
+        stackView.addArrangedSubview(row(label: "布局", control: localLayoutPopup))
+        stackView.addArrangedSubview(row(label: "排序", control: localSortFieldPopup))
+        stackView.addArrangedSubview(row(label: "方向", control: localSortDirectionPopup))
+        stackView.addArrangedSubview(sectionLabel("侧边栏"))
         showAdvancedModulesCheckbox.target = self
         showAdvancedModulesCheckbox.action = #selector(toggleAdvancedModules(_:))
         stackView.addArrangedSubview(showAdvancedModulesCheckbox)
@@ -100,16 +100,16 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         configure(
             galleryLayoutPopup,
             items: [
-                ("List", GalleryContentLayout.list),
-                ("Grid", GalleryContentLayout.grid)
+                ("列表", GalleryContentLayout.list),
+                ("网格", GalleryContentLayout.grid)
             ],
             action: #selector(galleryLayoutChanged(_:))
         )
         configure(
             localLayoutPopup,
             items: [
-                ("List", LocalContentLayout.list),
-                ("Grid", LocalContentLayout.grid)
+                ("列表", LocalContentLayout.list),
+                ("网格", LocalContentLayout.grid)
             ],
             action: #selector(localLayoutChanged(_:))
         )
