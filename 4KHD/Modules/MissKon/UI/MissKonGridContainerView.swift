@@ -91,7 +91,17 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
 
-        if updateItemSize() || contentChanged {
+        let sizeChanged = updateItemSize()
+        if !sizeChanged,
+           showsFooter == lastShowsFooter,
+           canApplyAppendUpdate(from: previousItemIDs, to: items.map(\.id)) {
+            let insertedRange = previousItemIDs.count..<items.count
+            lastAppliedIDs = items.map(\.id)
+            performWithoutAnimation {
+                collectionView.insertItems(at: Set(insertedRange.map { IndexPath(item: $0, section: 0) }))
+            }
+            refreshVisibleItems()
+        } else if sizeChanged || contentChanged {
             lastAppliedIDs = items.map(\.id)
             lastShowsFooter = showsFooter
             performWithoutAnimation { collectionView.reloadData() }
@@ -103,13 +113,22 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     private func refreshVisibleItems() {
         for indexPath in collectionView.indexPathsForVisibleItems() {
-            guard indexPath.item < items.count,
-                  let cell = collectionView.item(at: indexPath) as? MissKonGridItemView else { continue }
+            if indexPath.item >= items.count {
+                guard let footer = collectionView.item(at: indexPath) as? MissKonGridFooterItem else { continue }
+                footer.configure(isRefreshing: isRefreshing, errorMessage: errorMessage, canLoadMore: canLoadMore, hasItems: !items.isEmpty)
+                continue
+            }
+            guard let cell = collectionView.item(at: indexPath) as? MissKonGridItemView else { continue }
             let item = items[indexPath.item]
             cell.configure(item: item, isSelected: item.id == selectedItemID, searchQuery: searchQuery) { [weak self] ratio in
                 self?.updateAspectRatio(ratio, for: item.id)
             }
         }
+    }
+
+    private func canApplyAppendUpdate(from oldIDs: [MissKonItem.ID], to newIDs: [MissKonItem.ID]) -> Bool {
+        guard !oldIDs.isEmpty, newIDs.count > oldIDs.count else { return false }
+        return Array(newIDs.prefix(oldIDs.count)) == oldIDs
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }

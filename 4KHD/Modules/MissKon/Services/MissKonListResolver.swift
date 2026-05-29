@@ -15,7 +15,7 @@ enum MissKonListResolver {
     private static let coverHeightRegex = regex(#"<img[^>]+height=["']([0-9]+)["']"#)
     private static let imageCountRegex = regex(#"\((\d+)\s*(?:photos|pics|images|张|p)\)"#)
     private static let paginationCurrentRegex = regex(#"<span\s+class=["'][^"']*current[^"']*["'][^>]*>\s*(\d+)\s*</span>"#)
-    private static let paginationNextRegex = regex(#"<a[^>]+class=["'][^"']*(?:page|next)["'][^"']*["'][^>]+href=["']([^"']+)["']"#)
+    private static let paginationNextRegex = regex(#"<a(?=[^>]*class=["'][^"']*(?:page|next)[^"']*["'])[^>]*href=["']([^"']+)["'][^>]*>"#)
     private static let tagRegex = regex(#"<a[^>]+href=["']https?://misskon\.com/tag/([^/"']+)["'][^>]*>"#)
 
     static func resolveSearch(query: String) async throws -> MissKonListPage {

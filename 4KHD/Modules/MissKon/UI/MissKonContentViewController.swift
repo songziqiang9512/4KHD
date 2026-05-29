@@ -113,7 +113,15 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             setActiveView(tableScrollView)
             let currentShowsFooter = shouldShowFooter
             let currentIDs = library.visibleItems.map(\.id)
-            if currentIDs != lastAppliedVisibleIDs || currentShowsFooter != lastShowsFooter {
+            if canApplyAppendUpdate(from: lastAppliedVisibleIDs, to: currentIDs),
+               currentShowsFooter == lastShowsFooter {
+                let insertedRange = lastAppliedVisibleIDs.count..<currentIDs.count
+                lastAppliedVisibleIDs = currentIDs
+                NSView.performWithoutAnimation {
+                    tableView.insertRows(at: IndexSet(integersIn: insertedRange), withAnimation: [])
+                }
+                reloadVisibleListRows()
+            } else if currentIDs != lastAppliedVisibleIDs || currentShowsFooter != lastShowsFooter {
                 lastAppliedVisibleIDs = currentIDs
                 lastShowsFooter = currentShowsFooter
                 NSView.performWithoutAnimation { tableView.reloadData() }
@@ -163,10 +171,18 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
     private func reloadVisibleListRows() {
         let visibleRows = tableView.rows(in: tableView.visibleRect)
-        let rowRange = NSRange(location: visibleRows.location, length: min(visibleRows.length, library.visibleItems.count - visibleRows.location))
+        let totalRows = tableView.numberOfRows
+        guard visibleRows.location < totalRows else { return }
+        let upperBound = min(visibleRows.location + visibleRows.length, totalRows)
+        let rowRange = NSRange(location: visibleRows.location, length: upperBound - visibleRows.location)
         guard rowRange.length > 0 else { return }
         let columnIndexes = IndexSet(integer: 0)
         tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: columnIndexes)
+    }
+
+    private func canApplyAppendUpdate(from oldIDs: [MissKonItem.ID], to newIDs: [MissKonItem.ID]) -> Bool {
+        guard !oldIDs.isEmpty, newIDs.count > oldIDs.count else { return false }
+        return Array(newIDs.prefix(oldIDs.count)) == oldIDs
     }
 
     private func setActiveView(_ nextView: NSView) {
