@@ -54,6 +54,7 @@ final class RemoteImagePipeline {
 
     private let pipeline: ImagePipeline
     private let detailPrefetcher: ImagePrefetcher
+    private let thumbnailPrefetcher: ImagePrefetcher
     private let urlCache: URLCache
     private let dataCache: DataCache?
 
@@ -85,6 +86,12 @@ final class RemoteImagePipeline {
             maxConcurrentRequestCount: 3
         )
         self.detailPrefetcher.priority = .low
+        self.thumbnailPrefetcher = ImagePrefetcher(
+            pipeline: pipeline,
+            destination: .memoryCache,
+            maxConcurrentRequestCount: 2
+        )
+        self.thumbnailPrefetcher.priority = .veryLow
     }
 
     func applyCacheLimit(_ limit: OnlineCacheLimit) {
@@ -133,6 +140,10 @@ final class RemoteImagePipeline {
         }
     }
 
+    func cachedImage(with request: ImageRequest) -> NSImage? {
+        pipeline.cachedImage(for: request)?.image
+    }
+
     func loadData(with request: ImageRequest, completion: @escaping (Data?) -> Void) -> ImageTask {
         pipeline.loadData(with: request) { result in
             switch result {
@@ -149,6 +160,11 @@ final class RemoteImagePipeline {
         guard !remoteURLs.isEmpty else { return }
         let requests = remoteURLs.map { request(for: $0, priority: .low) }
         detailPrefetcher.startPrefetching(with: requests)
+    }
+
+    func prefetchThumbnailImages(with requests: [ImageRequest]) {
+        guard !requests.isEmpty else { return }
+        thumbnailPrefetcher.startPrefetching(with: requests)
     }
 
     func stopDetailPrefetching() {

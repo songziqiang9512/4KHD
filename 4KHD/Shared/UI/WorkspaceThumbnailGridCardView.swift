@@ -148,15 +148,19 @@ final class WorkspaceThumbnailGridCardView: NSView {
         imageView.contentMode = mode
     }
 
-    func setImage(_ image: NSImage?) {
+    func setImage(_ image: NSImage?, animated: Bool = true) {
         if let image {
             imageView.image = image
             placeholderLabel.isHidden = true
-            imageView.alphaValue = 0
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.12
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                imageView.animator().alphaValue = 1
+            if animated {
+                imageView.alphaValue = 0
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.12
+                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    imageView.animator().alphaValue = 1
+                }
+            } else {
+                imageView.alphaValue = 1
             }
         } else {
             imageView.image = placeholderImage

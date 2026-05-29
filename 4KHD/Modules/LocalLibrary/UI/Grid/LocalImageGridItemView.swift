@@ -44,7 +44,7 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         cardView.applySelectionState(isSelected)
         cardView.setMissingVisible(!fileExists)
         cardView.setPlaceholder(fileExists ? "加载中..." : "原文件不存在", isVisible: true)
-        cardView.setImage(cachedThumbnail)
+        cardView.setImage(cachedThumbnail, animated: cachedThumbnail == nil)
 
         guard fileExists, cachedThumbnail == nil else { return }
 

@@ -245,13 +245,21 @@ final class MissKonGridItemView: NSCollectionViewItem {
             cardView.setPlaceholder("暂无缩略图", isVisible: true)
             return
         }
-        cardView.setPlaceholder("加载中...", isVisible: true)
         let request = RemoteImagePipeline.shared.request(
             for: coverURL,
-            priority: .low,
+            priority: .normal,
             maxPixelSize: 512,
             configureURLRequest: MissKonRequestFactory.configureImageRequest
         )
+        if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
+            cardView.setImage(cached, animated: false)
+            if cached.size.width > 0, cached.size.height > 0 {
+                onAspectRatio(cached.size.width / cached.size.height)
+            }
+            return
+        }
+
+        cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
             Task { @MainActor [weak self] in
                 guard let self, self.representedID == item.id else { return }

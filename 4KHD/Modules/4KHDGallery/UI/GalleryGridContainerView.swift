@@ -31,6 +31,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var lastShowsFooter = false
     private var lastLayoutWidth: CGFloat = 0
     private var aspectRatiosByItemID: [GalleryItem.ID: CGFloat] = [:]
+    private let thumbnailPrefetchController = WorkspaceThumbnailPrefetchController<GalleryItem.ID>()
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "GalleryGridAspectRatioLayout",
         interval: 0.03,
@@ -56,6 +57,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     override func layout() {
         super.layout()
         updateItemSize()
+        scheduleThumbnailPrefetch()
     }
 
     func focus() {
@@ -116,12 +118,14 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         if contentChanged {
             lastAppliedItemIDs = nextItemIDs
             lastShowsFooter = showsFooter
+            thumbnailPrefetchController.reset()
             applyContentChange(
                 previousItemIDs: previousItemIDs,
                 previousShowsFooter: previousShowsFooter,
                 nextItemIDs: nextItemIDs,
                 showsFooter: showsFooter
             )
+            prefetchInitialThumbnails()
         } else {
             let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
             let footerChanged = previousFooterState != (isRefreshing, errorMessage, canLoadMore)
@@ -134,6 +138,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             }
         }
         syncSelection()
+        scheduleThumbnailPrefetch()
     }
 
     /// Lightweight update that only re-evaluates badge/footer/selection state without touching item layout.
@@ -269,6 +274,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateItemSize()
+                self?.scheduleThumbnailPrefetch()
             }
         }
 
@@ -361,6 +367,40 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
                 self?.collectionView.collectionViewLayout?.invalidateLayout()
             }
         }
+    }
+
+    private func prefetchInitialThumbnails() {
+        thumbnailPrefetchController.prefetchInitial(
+            itemCount: items.count,
+            itemID: { [weak self] index in self?.itemID(at: index) },
+            request: { [weak self] index in self?.thumbnailRequest(at: index) }
+        )
+    }
+
+    private func scheduleThumbnailPrefetch() {
+        thumbnailPrefetchController.schedule(
+            scrollView: scrollView,
+            layout: gridLayout,
+            itemCount: items.count,
+            itemID: { [weak self] index in self?.itemID(at: index) },
+            request: { [weak self] index in self?.thumbnailRequest(at: index) }
+        )
+    }
+
+    private func itemID(at index: Int) -> GalleryItem.ID? {
+        guard items.indices.contains(index) else { return nil }
+        return items[index].id
+    }
+
+    private func thumbnailRequest(at index: Int) -> ImageRequest? {
+        guard items.indices.contains(index),
+              let coverURL = items[index].coverURL else { return nil }
+        return RemoteImagePipeline.shared.request(
+            for: coverURL,
+            priority: .veryLow,
+            maxPixelSize: 512,
+            configureURLRequest: GalleryRequestFactory.configureImageRequest
+        )
     }
 
     private func applyContentChange(
@@ -598,6 +638,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
     private let cardView = WorkspaceThumbnailGridCardView()
     private var imageTask: ImageTask?
     private var representedID: GalleryItem.ID?
+    private var currentCoverURL: URL?
 
     override func loadView() {
         view = NSView()
@@ -611,6 +652,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
         imageTask?.cancel()
         imageTask = nil
         representedID = nil
+        currentCoverURL = nil
         cardView.resetForReuse()
     }
 
@@ -622,6 +664,8 @@ final class GalleryGridItemView: NSCollectionViewItem {
         isCached: Bool,
         onImageAspectRatioResolved: @escaping (CGFloat) -> Void
     ) {
+        let idChanged = representedID != item.id
+        let urlChanged = currentCoverURL != item.coverURL
         representedID = item.id
         cardView.setText(
             title: item.title,
@@ -629,7 +673,11 @@ final class GalleryGridItemView: NSCollectionViewItem {
             highlightQuery: searchQuery
         )
         applySelectionState(isSelected)
-        loadCover(for: item, onImageAspectRatioResolved: onImageAspectRatioResolved)
+        if idChanged || urlChanged {
+            loadCover(for: item, onImageAspectRatioResolved: onImageAspectRatioResolved)
+        } else if let ratio = item.coverAspectRatio.map({ CGFloat($0) }), ratio > 0 {
+            onImageAspectRatioResolved(ratio)
+        }
     }
 
     func applySelectionState(_ isSelected: Bool) {
@@ -662,18 +710,27 @@ final class GalleryGridItemView: NSCollectionViewItem {
         imageTask?.cancel()
         cardView.setImage(nil)
         cardView.setMissingVisible(false)
+        currentCoverURL = item.coverURL
         guard let coverURL = item.coverURL else {
             cardView.setPlaceholder("暂无缩略图", isVisible: true)
             return
         }
 
-        cardView.setPlaceholder("加载中...", isVisible: true)
         let request = RemoteImagePipeline.shared.request(
             for: coverURL,
-            priority: .low,
+            priority: .normal,
             maxPixelSize: 512,
             configureURLRequest: GalleryRequestFactory.configureImageRequest
         )
+        if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
+            cardView.setImage(cached, animated: false)
+            if cached.size.width > 0, cached.size.height > 0 {
+                onImageAspectRatioResolved(cached.size.width / cached.size.height)
+            }
+            return
+        }
+
+        cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
             Task { @MainActor [weak self] in
                 guard let self, self.representedID == item.id else { return }

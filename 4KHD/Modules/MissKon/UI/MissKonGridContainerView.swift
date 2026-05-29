@@ -30,6 +30,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private var lastShowsFooter = false
     private var lastLayoutWidth: CGFloat = 0
     private var aspectRatiosByItemID: [MissKonItem.ID: CGFloat] = [:]
+    private let thumbnailPrefetchController = WorkspaceThumbnailPrefetchController<MissKonItem.ID>()
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "MissKonGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
@@ -49,6 +50,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     override func layout() {
         super.layout()
         updateItemSize()
+        scheduleThumbnailPrefetch()
     }
 
     func focus() { window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView) }
@@ -105,10 +107,17 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
                 collectionView.insertItems(at: Set(insertedRange.map { IndexPath(item: $0, section: 0) }))
             }
             reloadFooterItem()
+            prefetchInitialThumbnails()
         } else if sizeChanged || contentChanged {
             lastAppliedIDs = nextItemIDs
             lastShowsFooter = showsFooter
+            if contentChanged {
+                thumbnailPrefetchController.reset()
+            }
             performWithoutAnimation { collectionView.reloadData() }
+            if contentChanged {
+                prefetchInitialThumbnails()
+            }
         } else {
             let footerChanged = previousFooterState != (isRefreshing, errorMessage, canLoadMore)
             if footerChanged {
@@ -120,6 +129,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             }
         }
         syncSelection()
+        scheduleThumbnailPrefetch()
     }
 
     private func refreshVisibleItems() {
@@ -208,7 +218,10 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.updateItemSize() }
+            Task { @MainActor [weak self] in
+                self?.updateItemSize()
+                self?.scheduleThumbnailPrefetch()
+            }
         }
 
         gridLayout.columnSpacing = 8
@@ -281,6 +294,40 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         aspectRatioLayoutQueue.add(id: "invalidate") { [weak self] in
             self?.performWithoutAnimation { self?.collectionView.collectionViewLayout?.invalidateLayout() }
         }
+    }
+
+    private func prefetchInitialThumbnails() {
+        thumbnailPrefetchController.prefetchInitial(
+            itemCount: items.count,
+            itemID: { [weak self] index in self?.itemID(at: index) },
+            request: { [weak self] index in self?.thumbnailRequest(at: index) }
+        )
+    }
+
+    private func scheduleThumbnailPrefetch() {
+        thumbnailPrefetchController.schedule(
+            scrollView: scrollView,
+            layout: gridLayout,
+            itemCount: items.count,
+            itemID: { [weak self] index in self?.itemID(at: index) },
+            request: { [weak self] index in self?.thumbnailRequest(at: index) }
+        )
+    }
+
+    private func itemID(at index: Int) -> MissKonItem.ID? {
+        guard items.indices.contains(index) else { return nil }
+        return items[index].id
+    }
+
+    private func thumbnailRequest(at index: Int) -> ImageRequest? {
+        guard items.indices.contains(index),
+              let coverURL = items[index].coverURL else { return nil }
+        return RemoteImagePipeline.shared.request(
+            for: coverURL,
+            priority: .veryLow,
+            maxPixelSize: 512,
+            configureURLRequest: MissKonRequestFactory.configureImageRequest
+        )
     }
 
     private func syncSelection() {

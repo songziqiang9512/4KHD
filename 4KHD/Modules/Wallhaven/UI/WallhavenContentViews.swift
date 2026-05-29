@@ -220,13 +220,21 @@ final class WallhavenGridItemView: NSCollectionViewItem {
             cardView.setPlaceholder("无缩略图", isVisible: true)
             return
         }
-        cardView.setPlaceholder("加载中...", isVisible: true)
         let request = RemoteImagePipeline.shared.request(
             for: thumbURL,
-            priority: .low,
+            priority: .normal,
             maxPixelSize: 512,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest
         )
+        if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
+            cardView.setImage(cached, animated: false)
+            if wallpaper.aspectRatio == nil, cached.size.width > 0, cached.size.height > 0 {
+                onAspectRatio(cached.size.width / cached.size.height)
+            }
+            return
+        }
+
+        cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
             Task { @MainActor [weak self] in
                 guard let self, self.representedID == wallpaper.id else { return }

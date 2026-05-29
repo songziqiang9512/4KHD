@@ -28,6 +28,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private var lastShowsFooter = false
     private var lastLayoutWidth: CGFloat = 0
     private var aspectRatiosByItemID: [Wallpaper.ID: CGFloat] = [:]
+    private let thumbnailPrefetchController = WorkspaceThumbnailPrefetchController<Wallpaper.ID>()
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "WallhavenGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
@@ -47,6 +48,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     override func layout() {
         super.layout()
         updateItemSize()
+        scheduleThumbnailPrefetch()
     }
 
     func focus() { window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView) }
@@ -94,18 +96,21 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         if contentChanged {
             lastAppliedIDs = nextItemIDs
             lastShowsFooter = showsFooter
+            thumbnailPrefetchController.reset()
             applyContentChange(
                 previousItemIDs: previousItemIDs,
                 previousShowsFooter: previousShowsFooter,
                 nextItemIDs: nextItemIDs,
                 showsFooter: showsFooter
             )
+            prefetchInitialThumbnails()
         } else if itemSizeChanged {
             refreshVisibleSelection()
         } else {
             refreshVisibleItems()
         }
         syncSelection()
+        scheduleThumbnailPrefetch()
     }
 
     private func refreshVisibleItems() {
@@ -207,7 +212,10 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.updateItemSize() }
+            Task { @MainActor [weak self] in
+                self?.updateItemSize()
+                self?.scheduleThumbnailPrefetch()
+            }
         }
 
         gridLayout.columnSpacing = 8
@@ -286,6 +294,40 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         aspectRatioLayoutQueue.add(id: "invalidate") { [weak self] in
             self?.performWithoutAnimation { self?.collectionView.collectionViewLayout?.invalidateLayout() }
         }
+    }
+
+    private func prefetchInitialThumbnails() {
+        thumbnailPrefetchController.prefetchInitial(
+            itemCount: wallpapers.count,
+            itemID: { [weak self] index in self?.wallpaperID(at: index) },
+            request: { [weak self] index in self?.thumbnailRequest(at: index) }
+        )
+    }
+
+    private func scheduleThumbnailPrefetch() {
+        thumbnailPrefetchController.schedule(
+            scrollView: scrollView,
+            layout: gridLayout,
+            itemCount: wallpapers.count,
+            itemID: { [weak self] index in self?.wallpaperID(at: index) },
+            request: { [weak self] index in self?.thumbnailRequest(at: index) }
+        )
+    }
+
+    private func wallpaperID(at index: Int) -> Wallpaper.ID? {
+        guard wallpapers.indices.contains(index) else { return nil }
+        return wallpapers[index].id
+    }
+
+    private func thumbnailRequest(at index: Int) -> ImageRequest? {
+        guard wallpapers.indices.contains(index),
+              let thumbURL = wallpapers[index].thumbnailUrl else { return nil }
+        return RemoteImagePipeline.shared.request(
+            for: thumbURL,
+            priority: .veryLow,
+            maxPixelSize: 512,
+            configureURLRequest: WallhavenRequestFactory.configureImageRequest
+        )
     }
 
     private func syncSelection() {

@@ -470,7 +470,7 @@ final class LocalImageGridContainerView: NSView {
             self?.prefetchNearVisibleItems()
         }
         prefetchWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
     }
 
     private func prefetchNearVisibleItems() {
