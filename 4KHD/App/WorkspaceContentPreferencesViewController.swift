@@ -3,10 +3,7 @@ import AppKit
 @MainActor
 final class WorkspaceContentPreferencesViewController: NSViewController, WorkspacePreferencesPane {
     private let toolbarContext: WorkspaceToolbarContext
-    private let galleryLayoutPopup = NSPopUpButton()
-    private let missKonLayoutPopup = NSPopUpButton()
-    private let wallhavenLayoutPopup = NSPopUpButton()
-    private let localLayoutPopup = NSPopUpButton()
+    private let layoutPopup = NSPopUpButton()
     private let localSortFieldPopup = NSPopUpButton()
     private let localSortDirectionPopup = NSPopUpButton()
     private let showAdvancedModulesCheckbox: NSButton = {
@@ -15,7 +12,7 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         return checkbox
     }()
 
-    let paneContentSize = NSSize(width: 430, height: 280)
+    let paneContentSize = NSSize(width: 430, height: 220)
 
     init(toolbarContext: WorkspaceToolbarContext) {
         self.toolbarContext = toolbarContext
@@ -44,14 +41,9 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         ])
 
         configurePopups()
-        stackView.addArrangedSubview(sectionLabel("4KHD"))
-        stackView.addArrangedSubview(row(label: "布局", control: galleryLayoutPopup))
-        stackView.addArrangedSubview(sectionLabel("MissKon"))
-        stackView.addArrangedSubview(row(label: "布局", control: missKonLayoutPopup))
-        stackView.addArrangedSubview(sectionLabel("Wallhaven"))
-        stackView.addArrangedSubview(row(label: "布局", control: wallhavenLayoutPopup))
+        stackView.addArrangedSubview(sectionLabel("显示"))
+        stackView.addArrangedSubview(row(label: "布局", control: layoutPopup))
         stackView.addArrangedSubview(sectionLabel("本地图库"))
-        stackView.addArrangedSubview(row(label: "布局", control: localLayoutPopup))
         stackView.addArrangedSubview(row(label: "排序", control: localSortFieldPopup))
         stackView.addArrangedSubview(row(label: "方向", control: localSortDirectionPopup))
         stackView.addArrangedSubview(sectionLabel("侧边栏"))
@@ -66,40 +58,25 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
     func refresh() {
         guard isViewLoaded else { return }
         showAdvancedModulesCheckbox.state = SidebarModuleVisibility.showAdvancedModules ? .on : .off
+        // Read layout from any online module — they stay in sync.
         if case .gallery(let snapshot) = toolbarContext.snapshot(for: .fourKHDGallery) {
-            galleryLayoutPopup.selectItem(representedObject: snapshot.layout)
-        }
-        if case .missKon(let snapshot) = toolbarContext.snapshot(for: .missKon) {
-            missKonLayoutPopup.selectItem(representedObject: snapshot.layout)
-        }
-        if case .wallhaven(let snapshot) = toolbarContext.snapshot(for: .wallhaven) {
-            wallhavenLayoutPopup.selectItem(representedObject: snapshot.layout)
+            layoutPopup.selectItem(representedObject: snapshot.layout)
         }
         if case .local(let snapshot) = toolbarContext.snapshot(for: .localLibrary) {
-            localLayoutPopup.selectItem(representedObject: snapshot.layout)
             localSortFieldPopup.selectItem(representedObject: snapshot.sortField)
             localSortDirectionPopup.selectItem(representedObject: snapshot.sortDirection)
         }
     }
 
-    @objc private func galleryLayoutChanged(_ sender: NSPopUpButton) {
+    @objc private func layoutChanged(_ sender: NSPopUpButton) {
         guard let layout = sender.selectedItem?.representedObject as? GalleryContentLayout else { return }
+        let mkLayout: MissKonContentLayout = layout == .grid ? .grid : .list
+        let whLayout: WallhavenContentLayout = layout == .grid ? .grid : .list
+        let locLayout: LocalContentLayout = layout == .grid ? .grid : .list
         toolbarContext.setGalleryLayout(layout)
-    }
-
-    @objc private func missKonLayoutChanged(_ sender: NSPopUpButton) {
-        guard let layout = sender.selectedItem?.representedObject as? MissKonContentLayout else { return }
-        toolbarContext.setMissKonLayout(layout)
-    }
-
-    @objc private func wallhavenLayoutChanged(_ sender: NSPopUpButton) {
-        guard let layout = sender.selectedItem?.representedObject as? WallhavenContentLayout else { return }
-        toolbarContext.setWallhavenLayout(layout)
-    }
-
-    @objc private func localLayoutChanged(_ sender: NSPopUpButton) {
-        guard let layout = sender.selectedItem?.representedObject as? LocalContentLayout else { return }
-        toolbarContext.setLocalLayout(layout)
+        toolbarContext.setMissKonLayout(mkLayout)
+        toolbarContext.setWallhavenLayout(whLayout)
+        toolbarContext.setLocalLayout(locLayout)
     }
 
     @objc private func localSortFieldChanged(_ sender: NSPopUpButton) {
@@ -120,24 +97,9 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
 
     private func configurePopups() {
         configure(
-            galleryLayoutPopup,
+            layoutPopup,
             items: [("列表", GalleryContentLayout.list), ("网格", GalleryContentLayout.grid)],
-            action: #selector(galleryLayoutChanged(_:))
-        )
-        configure(
-            missKonLayoutPopup,
-            items: [("列表", MissKonContentLayout.list), ("网格", MissKonContentLayout.grid)],
-            action: #selector(missKonLayoutChanged(_:))
-        )
-        configure(
-            wallhavenLayoutPopup,
-            items: [("列表", WallhavenContentLayout.list), ("网格", WallhavenContentLayout.grid)],
-            action: #selector(wallhavenLayoutChanged(_:))
-        )
-        configure(
-            localLayoutPopup,
-            items: [("列表", LocalContentLayout.list), ("网格", LocalContentLayout.grid)],
-            action: #selector(localLayoutChanged(_:))
+            action: #selector(layoutChanged(_:))
         )
         configure(
             localSortFieldPopup,
