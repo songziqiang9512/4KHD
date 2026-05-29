@@ -6,31 +6,33 @@
 
 ## 功能
 
-### 在线图库 — 4KHD
+### 在线图库 — 4KHD Gallery
 - 浏览 4KHD 网站栏目（最新、推荐、Cosplay、写真、收藏）
 - 列表/网格双视图，封面缩略图 + 标题 + 元信息
-- 列表/网格切换保留当前浏览位置
-- 网格列数可调（工具栏 +/- 按钮，2~6 列）
-- 后台解析详情页提取原图地址，WKWebView JS 后备
-- Nuke 图片加载管线（缓存、优先级、请求去重）
+- 后台解析详情页提取原图地址
+- 搜索高亮、收藏集成、Inspector 信息展示
 
 ### 在线图库 — MissKon
 - 浏览 misskon.com 内容（最新、热门、Cosplay、AI 生成、私房摄影、秀人、花漾、收藏）
-- 列表/网格双视图，分页加载，按 section 内存缓存
-- 列表/网格切换保留当前浏览位置
-- 渐进式详情加载：首页立即解析展示，后台继续解析剩余页
-- 封面→大图过渡，相邻图片预加载（前后各 2 张）
-- 网格列数可调（工具栏 +/- 按钮，2~6 列）
-- 详情上/下张浮层导航按钮
-- 搜索高亮、收藏集成、Inspector 信息展示
-- 保存图片、重置缩放、键盘导航
+- 列表/网格双视图，分页加载，按 section 磁盘缓存
+- 渐进式详情加载：首页立即解析展示，后台按需加载后续页
+- 胶片条占位 + 按页序填充，失败页自动移除
+- 封面→大图过渡，相邻图片预加载
+- 搜索高亮+debounce、收藏集成、Inspector 信息展示
+
+### 在线图库 — Wallhaven
+- 浏览 wallhaven.cc 壁纸（分类/排序/比例/分辨率筛选）
+- 纯度门控（无 API Key 仅 SFW）
+- 上传者作品浏览（API @username 搜索 + HTML 抓取回退）
+- 详情缓存（内存+磁盘），预览→原图升级
+- 设为桌面壁纸、收藏集成
 
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
 - 上/下张键盘/浮层按钮导航，Escape/Tab/Enter 键盘支持
 - 窗内大图模式（自动隐藏工具栏和胶卷条）
-- 底部缩略图胶卷条，自动翻页加载
-- 保存原图到本地
+- 底部缩略图胶卷条（MissKon/Gallery）
+- 保存图片、重置缩放
 
 ### 本地图片
 - 目录导入、扫描、metadata 读取
@@ -40,9 +42,15 @@
 - 搜索匹配文件名和文件夹名，结果高亮
 
 ### 收藏
-- 收藏图集，持久保存详情页链接
-- 按作者分组展示
-- 已收藏图集永久缓存，未收藏缓存 7 天
+- 收藏图集/壁纸，持久保存
+- 按作者分组展示（Gallery）
+- 跨模块独立，通过 FavoritesStore 共享
+
+### 设置
+- 统一布局切换（列表/网格，同时控制所有模块）
+- 在线缓存容量选择（512MB-4GB/无限制）
+- 一键清除所有缓存（图片、详情页、模块数据、临时文件）
+- 侧边栏模块显示开关（4KHD/MissKon）
 
 ## 架构
 
@@ -54,6 +62,7 @@
   Modules/
     4KHDGallery/ — 4KHD.com 在线图库
     MissKon/    — misskon.com 在线图库
+    Wallhaven/  — wallhaven.cc 在线壁纸
     LocalLibrary/ — 本地图片
     Favorites/  — 收藏记录
 ```
@@ -94,8 +103,11 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 
 - Gallery 详情页解析结果：`~/Library/Application Support/4KHD/DetailPageCache/pages.json`
 - MissKon 列表缓存：`~/Library/Application Support/4KHD/MissKon/feed-cache.json`
-- 图片：Nuke 管线管理（384MB 内存缓存 + 1GB 磁盘缓存）
+- Wallhaven 详情缓存：`~/Library/Application Support/4KHD/Wallhaven/detail-cache.json`
+- 本地缩略图：`~/Library/Application Support/4KHD/LocalImageThumbnails/`
+- 图片：Nuke 管线管理（384MB 内存缓存 + 可配置磁盘缓存）
 - 收藏记录：UserDefaults 持久化
+- Wallhaven API Key：UserDefaults 存储
 
 ## 注意事项
 
