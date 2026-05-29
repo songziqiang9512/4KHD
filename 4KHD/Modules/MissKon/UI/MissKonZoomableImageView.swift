@@ -33,8 +33,21 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
             maxPixelSize: 4096,
             configureURLRequest: MissKonRequestFactory.configureImageRequest
         )
-        // Synchronous cache hit: display instantly, no placeholder flash.
-        if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
+        // Try 4096px cache; if miss, fall back to 512px (grid thumbnail resolution)
+        // so the cover image displays instantly from the feed-list cache.
+        let cached: NSImage?
+        if let img = RemoteImagePipeline.shared.cachedImage(with: request) {
+            cached = img
+        } else {
+            let thumbRequest = RemoteImagePipeline.shared.request(
+                for: url,
+                priority: .veryHigh,
+                maxPixelSize: 512,
+                configureURLRequest: MissKonRequestFactory.configureImageRequest
+            )
+            cached = RemoteImagePipeline.shared.cachedImage(with: thumbRequest)
+        }
+        if let cached {
             imageView.image = cached
             placeholderContainer.isHidden = true
             fitImage(resetMagnification: true)
