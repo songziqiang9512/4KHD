@@ -193,12 +193,13 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             return item
         case ItemID.localGridColumns:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            // minus = zoom out = more columns (increase); plus = zoom in = fewer columns (decrease)
             let increaseImage = NSImage(
-                systemSymbolName: "plus.magnifyingglass",
+                systemSymbolName: "minus.magnifyingglass",
                 accessibilityDescription: "增加列数"
             ) ?? NSImage()
             let decreaseImage = NSImage(
-                systemSymbolName: "minus.magnifyingglass",
+                systemSymbolName: "plus.magnifyingglass",
                 accessibilityDescription: "减少列数"
             ) ?? NSImage()
             let control = NSSegmentedControl(
