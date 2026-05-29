@@ -177,13 +177,12 @@ final class MissKonFeedStore {
             loadMoreSearchIfNeeded()
             return
         }
-        guard feedErrorMessage == nil else { return }
         guard canLoadMoreList, let requestURL = nextPageURL else { return }
         guard !isRefreshingList, loadTask == nil else {
             pendingListLoadMore = true
             return
         }
-        guard inFlightPageURL != requestURL else { return } // Already loading this page.
+        guard inFlightPageURL != requestURL else { return }
         inFlightPageURL = requestURL
         let requestSection = section
         isRefreshingList = true
@@ -198,16 +197,15 @@ final class MissKonFeedStore {
                 let existingIDs = Set(existing.map(\.id))
                 let newItems = page.items.filter { !existingIDs.contains($0.id) }
                 existing.append(contentsOf: newItems)
-                let nextPageURL = newItems.isEmpty ? nil : page.nextPageURL
                 self.cachedItems[requestSection] = existing
-                self.cachedNextPageURLs[requestSection] = nextPageURL
+                self.cachedNextPageURLs[requestSection] = page.nextPageURL
                 self.cacheTimestamps[requestSection] = Date()
                 self.saveCacheIfNeeded()
                 if self.section == requestSection, self.activeSearchQuery == nil {
                     self.allItems = existing
                     self.visibleItems = existing
-                    self.nextPageURL = nextPageURL
-                    self.canLoadMoreList = nextPageURL != nil
+                    self.nextPageURL = page.nextPageURL
+                    self.canLoadMoreList = page.nextPageURL != nil
                     self.feedErrorMessage = nil
                 }
             } catch {
@@ -233,7 +231,6 @@ final class MissKonFeedStore {
     }
 
     func loadMoreSearchIfNeeded() {
-        guard feedErrorMessage == nil else { return }
         guard canLoadMoreList, activeSearchQuery != nil else { return }
         guard !isRefreshingList, searchTask == nil, searchLoadTask == nil else {
             pendingSearchLoadMore = true
@@ -255,9 +252,8 @@ final class MissKonFeedStore {
                 let newItems = page.items.filter { existingIDs.insert($0.id).inserted }
                 self.allItems.append(contentsOf: newItems)
                 self.visibleItems = self.allItems
-                let nextPageURL = newItems.isEmpty ? nil : page.nextPageURL
-                self.nextSearchPageURL = nextPageURL
-                self.canLoadMoreList = nextPageURL != nil
+                self.nextSearchPageURL = page.nextPageURL
+                self.canLoadMoreList = page.nextPageURL != nil
                 self.feedErrorMessage = nil
             } catch {
                 guard !Task.isCancelled else { return }
