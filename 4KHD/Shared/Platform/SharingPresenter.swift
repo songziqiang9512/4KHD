@@ -10,6 +10,6 @@ enum SharingPresenter {
     ) {
         guard !items.isEmpty else { return }
         let picker = NSSharingServicePicker(items: items)
-        picker.show(relativeTo: rect ?? view.bounds, of: view, preferredEdge: preferredEdge)
+        picker.show(relativeTo: rect ?? .zero, of: view, preferredEdge: preferredEdge)
     }
 }
