@@ -439,9 +439,17 @@ final class MissKonFeedStore {
             if selectedItemID != previousID {
                 onSelectionChanged?(selectedItemID.flatMap { id in cached.first { $0.id == id } })
             }
-            // Auto-refresh if cache is older than the max age
-            if let timestamp = cacheTimestamps[self.section],
-               Date().timeIntervalSince(timestamp) > Self.cacheMaxAge {
+            // Auto-refresh if cache is stale or missing nextPageURL (pagination chain broken)
+            let needsRefresh: Bool
+            if cachedNextPageURLs[self.section] == nil {
+                needsRefresh = true
+            } else if let timestamp = cacheTimestamps[self.section],
+                      Date().timeIntervalSince(timestamp) > Self.cacheMaxAge {
+                needsRefresh = true
+            } else {
+                needsRefresh = false
+            }
+            if needsRefresh {
                 refreshFromNetwork()
             }
         } else {
