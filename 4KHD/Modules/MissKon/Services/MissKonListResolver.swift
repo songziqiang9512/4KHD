@@ -120,10 +120,10 @@ enum MissKonListResolver {
         // Some page templates (top30 etc.) don't render pagination HTML but still
         // support WordPress pagination via /page/N/ URLs. Construct next page URL
         // when the current page has enough items to suggest more pages exist.
-        // MissKon list pages currently render 20 real article cards per full page.
-        // Be conservative so partial last pages don't generate dead /page/N/ URLs.
+        // Require strictly more than 12 items to avoid guessing past the last page
+        // when the total is an exact multiple of the page size.
         let articleCount = articleHTML(in: html).count
-        guard articleCount >= 20 else { return nil }
+        guard articleCount > 12 else { return nil }
 
         return constructedPageURL(from: baseURL, nextPage: currentPage + 1)
     }
