@@ -314,6 +314,14 @@ final class WorkspaceToolbarContext {
         galleryPreferences.layout = layout
     }
 
+    func setMissKonLayout(_ layout: MissKonContentLayout) {
+        missKonPreferences.layout = layout
+    }
+
+    func setWallhavenLayout(_ layout: WallhavenContentLayout) {
+        wallhavenPreferences.layout = layout
+    }
+
     func setLocalLayout(_ layout: LocalContentLayout) {
         localPreferences.layout = layout
     }

@@ -4,6 +4,8 @@ import AppKit
 final class WorkspaceContentPreferencesViewController: NSViewController, WorkspacePreferencesPane {
     private let toolbarContext: WorkspaceToolbarContext
     private let galleryLayoutPopup = NSPopUpButton()
+    private let missKonLayoutPopup = NSPopUpButton()
+    private let wallhavenLayoutPopup = NSPopUpButton()
     private let localLayoutPopup = NSPopUpButton()
     private let localSortFieldPopup = NSPopUpButton()
     private let localSortDirectionPopup = NSPopUpButton()
@@ -13,7 +15,7 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         return checkbox
     }()
 
-    let paneContentSize = NSSize(width: 430, height: 200)
+    let paneContentSize = NSSize(width: 430, height: 280)
 
     init(toolbarContext: WorkspaceToolbarContext) {
         self.toolbarContext = toolbarContext
@@ -42,8 +44,12 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         ])
 
         configurePopups()
-        stackView.addArrangedSubview(sectionLabel("在线图库"))
+        stackView.addArrangedSubview(sectionLabel("4KHD"))
         stackView.addArrangedSubview(row(label: "布局", control: galleryLayoutPopup))
+        stackView.addArrangedSubview(sectionLabel("MissKon"))
+        stackView.addArrangedSubview(row(label: "布局", control: missKonLayoutPopup))
+        stackView.addArrangedSubview(sectionLabel("Wallhaven"))
+        stackView.addArrangedSubview(row(label: "布局", control: wallhavenLayoutPopup))
         stackView.addArrangedSubview(sectionLabel("本地图库"))
         stackView.addArrangedSubview(row(label: "布局", control: localLayoutPopup))
         stackView.addArrangedSubview(row(label: "排序", control: localSortFieldPopup))
@@ -63,6 +69,12 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
         if case .gallery(let snapshot) = toolbarContext.snapshot(for: .fourKHDGallery) {
             galleryLayoutPopup.selectItem(representedObject: snapshot.layout)
         }
+        if case .missKon(let snapshot) = toolbarContext.snapshot(for: .missKon) {
+            missKonLayoutPopup.selectItem(representedObject: snapshot.layout)
+        }
+        if case .wallhaven(let snapshot) = toolbarContext.snapshot(for: .wallhaven) {
+            wallhavenLayoutPopup.selectItem(representedObject: snapshot.layout)
+        }
         if case .local(let snapshot) = toolbarContext.snapshot(for: .localLibrary) {
             localLayoutPopup.selectItem(representedObject: snapshot.layout)
             localSortFieldPopup.selectItem(representedObject: snapshot.sortField)
@@ -73,6 +85,16 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
     @objc private func galleryLayoutChanged(_ sender: NSPopUpButton) {
         guard let layout = sender.selectedItem?.representedObject as? GalleryContentLayout else { return }
         toolbarContext.setGalleryLayout(layout)
+    }
+
+    @objc private func missKonLayoutChanged(_ sender: NSPopUpButton) {
+        guard let layout = sender.selectedItem?.representedObject as? MissKonContentLayout else { return }
+        toolbarContext.setMissKonLayout(layout)
+    }
+
+    @objc private func wallhavenLayoutChanged(_ sender: NSPopUpButton) {
+        guard let layout = sender.selectedItem?.representedObject as? WallhavenContentLayout else { return }
+        toolbarContext.setWallhavenLayout(layout)
     }
 
     @objc private func localLayoutChanged(_ sender: NSPopUpButton) {
@@ -99,18 +121,22 @@ final class WorkspaceContentPreferencesViewController: NSViewController, Workspa
     private func configurePopups() {
         configure(
             galleryLayoutPopup,
-            items: [
-                ("列表", GalleryContentLayout.list),
-                ("网格", GalleryContentLayout.grid)
-            ],
+            items: [("列表", GalleryContentLayout.list), ("网格", GalleryContentLayout.grid)],
             action: #selector(galleryLayoutChanged(_:))
         )
         configure(
+            missKonLayoutPopup,
+            items: [("列表", MissKonContentLayout.list), ("网格", MissKonContentLayout.grid)],
+            action: #selector(missKonLayoutChanged(_:))
+        )
+        configure(
+            wallhavenLayoutPopup,
+            items: [("列表", WallhavenContentLayout.list), ("网格", WallhavenContentLayout.grid)],
+            action: #selector(wallhavenLayoutChanged(_:))
+        )
+        configure(
             localLayoutPopup,
-            items: [
-                ("列表", LocalContentLayout.list),
-                ("网格", LocalContentLayout.grid)
-            ],
+            items: [("列表", LocalContentLayout.list), ("网格", LocalContentLayout.grid)],
             action: #selector(localLayoutChanged(_:))
         )
         configure(
