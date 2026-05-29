@@ -14,12 +14,12 @@ final class WorkspaceInspectorWindowController: NSWindowController, NSWindowDele
         inspectorViewController = WorkspaceInspectorViewController(appContext: appContext)
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 280),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 280),
             styleMask: [.titled, .closable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
-        panel.title = "Inspector"
+        panel.title = "信息"
         panel.contentViewController = inspectorViewController
         panel.contentMinSize = NSSize(width: 280, height: 220)
         panel.isFloatingPanel = true
@@ -42,6 +42,13 @@ final class WorkspaceInspectorWindowController: NSWindowController, NSWindowDele
     }
 
     override func showWindow(_ sender: Any?) {
+        if window?.isVisible != true, let mainWindow = NSApp.mainWindow {
+            let origin = NSPoint(
+                x: mainWindow.frame.midX - (window?.frame.width ?? 320) / 2,
+                y: mainWindow.frame.midY - (window?.frame.height ?? 280) / 2
+            )
+            window?.setFrameOrigin(origin)
+        }
         super.showWindow(sender)
         inspectorViewController.refresh()
         UserDefaults.standard.set(true, forKey: State.isOpenKey)
@@ -182,7 +189,9 @@ private final class WorkspaceInspectorViewController: NSViewController {
         visualEffectView.state = .active
 
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.maximumNumberOfLines = 3
+        titleLabel.preferredMaxLayoutWidth = 180
         moduleLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         moduleLabel.textColor = .secondaryLabelColor
 
@@ -225,8 +234,9 @@ private final class WorkspaceInspectorViewController: NSViewController {
 
         if let textField = value as? NSTextField {
             textField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            textField.lineBreakMode = .byTruncatingMiddle
-            textField.maximumNumberOfLines = label === pathLabel ? 2 : 1
+            textField.lineBreakMode = .byWordWrapping
+            textField.maximumNumberOfLines = 0
+            textField.preferredMaxLayoutWidth = 180
             textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             textField.isSelectable = true
         }

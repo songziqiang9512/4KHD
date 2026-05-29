@@ -507,9 +507,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func shareContent(_ sender: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
-        guard !items.isEmpty,
-              let anchorView = shareItem?.view ?? splitController?.view else { return }
-        SharingPresenter.show(items: items, of: anchorView, preferredEdge: .minY)
+        guard !items.isEmpty else { return }
+        let anchorView = shareItem?.view ?? splitController?.view
+        guard let anchorView else { return }
+        SharingPresenter.show(items: items, of: anchorView, preferredEdge: .maxY)
     }
 
     @objc private func selectLocalSortField(_ sender: NSMenuItem) {
