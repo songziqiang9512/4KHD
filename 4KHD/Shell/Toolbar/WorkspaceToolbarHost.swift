@@ -19,6 +19,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let detailPane = NSToolbarItem.Identifier("WorkspaceToolbar.detailPane")
         static let importFolder = NSToolbarItem.Identifier("WorkspaceToolbar.importFolder")
         static let wallhavenFilters = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenFilters")
+        static let onlineSave = NSToolbarItem.Identifier("WorkspaceToolbar.onlineSave")
+        static let onlineInfo = NSToolbarItem.Identifier("WorkspaceToolbar.onlineInfo")
         static let wallhavenSave = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenSave")
         static let wallhavenInfo = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenInfo")
         static let wallhavenBack = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenBack")
@@ -98,6 +100,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.share,
             ItemID.detailPane,
             ItemID.importFolder,
+            ItemID.onlineSave,
+            ItemID.onlineInfo,
             ItemID.wallhavenFilters,
             ItemID.wallhavenSave,
             ItemID.wallhavenInfo,
@@ -132,13 +136,18 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .wallhaven {
             identifiers.append(ItemID.favorite)
         }
+        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon {
+            identifiers.append(ItemID.onlineSave)
+            identifiers.append(ItemID.onlineInfo)
+        }
         if currentModuleID == .wallhaven {
             if appContext.wallhavenStore.activeSearchQuery != nil || appContext.wallhavenStore.isBrowsingUploader {
                 identifiers.append(ItemID.wallhavenBack)
             }
             identifiers.append(ItemID.wallhavenSave)
             identifiers.append(ItemID.wallhavenInfo)
-        } else {
+        }
+        if currentModuleID == .localLibrary {
             identifiers.append(ItemID.detailActions)
         }
         identifiers += [
@@ -337,6 +346,26 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             wallhavenFilterItem = item
             updateWallhavenFilterItem()
             return item
+        case ItemID.onlineSave:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(saveCurrentImage(_:))
+            item.label = "保存图片"
+            item.paletteLabel = "保存图片"
+            item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
+            item.toolTip = "保存图片"
+            item.visibilityPriority = .standard
+            return item
+        case ItemID.onlineInfo:
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.target = self
+            item.action = #selector(showCurrentInspector(_:))
+            item.label = "显示信息"
+            item.paletteLabel = "显示信息"
+            item.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
+            item.toolTip = "显示简介"
+            item.visibilityPriority = .standard
+            return item
         case ItemID.wallhavenSave:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.target = self
@@ -398,6 +427,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.share:
             canShareCurrentModule
+        case ItemID.onlineSave:
+            canSaveCurrentImage
+        case ItemID.onlineInfo:
+            true
         case ItemID.wallhavenSave:
             canSaveCurrentImage
         case ItemID.wallhavenInfo:
@@ -935,38 +968,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func makeDetailActionsMenu() -> NSMenu {
         let menu = NSMenu(title: "操作")
         switch currentModuleID {
-        case .fourKHDGallery:
-            let openItem = NSMenuItem(title: "打开原网页", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
-            openItem.target = self
-            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
-            menu.addItem(openItem)
-
-            let saveItem = NSMenuItem(title: "保存图片...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
-            saveItem.target = self
-            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
-            saveItem.isEnabled = canSaveCurrentImage
-            menu.addItem(saveItem)
-
-            let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
-            infoItem.target = self
-            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
-            menu.addItem(infoItem)
-        case .missKon:
-            let openItem = NSMenuItem(title: "打开原网页", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
-            openItem.target = self
-            openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
-            menu.addItem(openItem)
-
-            let saveItem = NSMenuItem(title: "保存图片...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
-            saveItem.target = self
-            saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
-            saveItem.isEnabled = canSaveCurrentImage
-            menu.addItem(saveItem)
-
-            let infoItem = NSMenuItem(title: "显示信息", action: #selector(showCurrentInspector(_:)), keyEquivalent: "")
-            infoItem.target = self
-            infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
-            menu.addItem(infoItem)
         case .wallhaven:
             let openItem = NSMenuItem(title: "在 Wallhaven 打开", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
             openItem.target = self
@@ -1004,6 +1005,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
+        case .fourKHDGallery, .missKon:
+            break
         }
         return menu
     }
