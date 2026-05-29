@@ -458,14 +458,11 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         imageTask?.cancel()
         guard loadedURL != url else { return }
         loadedURL = url
-        let shouldKeepCurrent = preservesCurrentImageUntilLoaded && imageView.image != nil
-        if !shouldKeepCurrent {
+        guard let url else {
             imageView.image = nil
-            placeholderLabel.stringValue = "加载中"
-            retryButton.isHidden = true
             placeholderContainer.isHidden = false
+            return
         }
-        guard let url else { return }
 
         let request = RemoteImagePipeline.shared.request(
             for: url,
@@ -473,6 +470,22 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
             maxPixelSize: 4096,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest
         )
+        // Synchronous cache hit: display instantly.
+        if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
+            imageView.image = cached
+            placeholderContainer.isHidden = true
+            fitImage(resetMagnification: true)
+            return
+        }
+
+        let shouldKeepCurrent = preservesCurrentImageUntilLoaded && imageView.image != nil
+        if !shouldKeepCurrent {
+            imageView.image = nil
+            placeholderLabel.stringValue = "加载中"
+            retryButton.isHidden = true
+            placeholderContainer.isHidden = false
+        }
+
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
             Task { @MainActor [weak self] in
                 guard let self, self.loadedURL == url else { return }
