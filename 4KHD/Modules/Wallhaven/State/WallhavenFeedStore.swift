@@ -1,9 +1,11 @@
 import Foundation
 import Observation
+import OSLog
 
 @MainActor
 @Observable
 final class WallhavenFeedStore {
+    private let logger = Logger(subsystem: "com.songziqiang.4khd", category: "WallhavenFeed")
     var section: WallhavenSection = .browse
 
     var wallpapers: [Wallpaper] = []
@@ -758,6 +760,7 @@ final class WallhavenFeedStore {
                 self.detailCache[full.id] = full
                 self.saveDetailCache()
             } catch {
+                logger.error("Failed to resolve wallpaper detail: \(error.localizedDescription)")
                 // Keep the list-item data; resolvedWallpaper stays as the original.
             }
             guard !Task.isCancelled,

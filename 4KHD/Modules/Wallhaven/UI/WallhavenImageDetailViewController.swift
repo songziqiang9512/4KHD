@@ -299,32 +299,34 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             uploaderChrome.isHidden = true
         }
 
-        // Load image — prefer fullImageUrl from detail; fall back to preview; never show blank.
-        let bestURL = displayWallpaper.fullImageUrl
-            ?? displayWallpaper.previewUrl
-            ?? wallpaper.previewUrl
-            ?? wallpaper.fullImageUrl
-        let isIncomplete = (displayWallpaper.width == nil && displayWallpaper.fullImageUrl == nil)
+        // Always show thumbnail first (cached from grid → instant display),
+        // then load full-res in background while the thumbnail stays visible.
+        let thumbnailURL = displayWallpaper.thumbnailUrl ?? wallpaper.thumbnailUrl
         let previewURL = displayWallpaper.previewUrl ?? wallpaper.previewUrl
+        let fullURL = displayWallpaper.fullImageUrl
+        let isIncomplete = (displayWallpaper.width == nil && displayWallpaper.fullImageUrl == nil)
+
         if currentWallpaperID != wallpaper.id {
             currentWallpaperID = wallpaper.id
             detailInteraction.saveMessage = ""
-            if isIncomplete, let preview = previewURL {
-                // Show preview immediately while /w/{id} resolves.
-                imageView.setImageURL(preview, preservesCurrentImageUntilLoaded: false)
-            } else if isIncomplete {
-                imageView.setImageURL(nil, preservesCurrentImageUntilLoaded: false)
-                imageView.showLoading("加载详情中...")
-            } else {
-                imageView.setImageURL(bestURL, preservesCurrentImageUntilLoaded: false)
+
+            // Show the card's own thumbnail/preview first — cached from grid, instant display.
+            let initialURL = thumbnailURL ?? previewURL
+            if let initial = initialURL {
+                imageView.setImageURL(initial)
             }
-        } else if currentImageURL != bestURL, !isIncomplete {
-            // Detail resolution completed: upgrade preview → fullImageUrl.
-            currentImageURL = bestURL
-            imageView.setImageURL(bestURL, preservesCurrentImageUntilLoaded: true)
-        }
-        if !isIncomplete {
-            currentImageURL = bestURL
+
+            // If full-res is already available, load it in background (thumbnail stays visible).
+            if let full = fullURL, !isIncomplete {
+                currentImageURL = full
+                imageView.setImageURL(full, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
+            } else {
+                currentImageURL = previewURL
+            }
+        } else if currentImageURL != fullURL, let full = fullURL, !isIncomplete {
+            // Detail resolution completed: upgrade to full-res in background.
+            currentImageURL = full
+            imageView.setImageURL(full, preservesCurrentImageUntilLoaded: true)
         }
 
         if detailInteraction.resetToken != resetTokenSeen {
@@ -470,8 +472,21 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
             maxPixelSize: 4096,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest
         )
-        // Synchronous cache hit: display instantly.
-        if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
+        // Try 4096px cache; if miss, fall back to 512px (grid thumbnail resolution)
+        // so the thumbnail displays instantly from the feed-list cache.
+        let cached: NSImage?
+        if let img = RemoteImagePipeline.shared.cachedImage(with: request) {
+            cached = img
+        } else {
+            let thumbRequest = RemoteImagePipeline.shared.request(
+                for: url,
+                priority: .veryHigh,
+                maxPixelSize: 512,
+                configureURLRequest: WallhavenRequestFactory.configureImageRequest
+            )
+            cached = RemoteImagePipeline.shared.cachedImage(with: thumbRequest)
+        }
+        if let cached {
             imageView.image = cached
             placeholderContainer.isHidden = true
             fitImage(resetMagnification: true)

@@ -1,6 +1,8 @@
 import Foundation
+import OSLog
 
 final class DetailPageImageCache {
+    private static let logger = Logger(subsystem: "com.songziqiang.4khd", category: "DetailPageCache")
     static let shared = DetailPageImageCache()
 
     private struct Entry: Codable {
@@ -179,6 +181,7 @@ final class DetailPageImageCache {
             let data = try JSONEncoder().encode(snapshot)
             try data.write(to: cacheURL, options: .atomic)
         } catch {
+            logger.error("Failed to save detail page cache: \(error.localizedDescription)")
         }
     }
 }

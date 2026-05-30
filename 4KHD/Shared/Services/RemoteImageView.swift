@@ -72,8 +72,8 @@ final class RemoteImagePipeline {
         } else {
             self.dataCache = nil
         }
-        configuration.dataCacheOptions.storedItems = [.originalImageData]
-        configuration.isDeduplicationEnabled = true
+        configuration.dataCachePolicy = .storeOriginalData
+        configuration.isTaskCoalescingEnabled = true
         configuration.isRateLimiterEnabled = true
         configuration.dataLoadingQueue.maxConcurrentOperationCount = 6
         configuration.imageDecodingQueue.maxConcurrentOperationCount = 2
@@ -141,7 +141,7 @@ final class RemoteImagePipeline {
     }
 
     func cachedImage(with request: ImageRequest) -> NSImage? {
-        pipeline.cachedImage(for: request)?.image
+        pipeline.cache.cachedImage(for: request)?.image
     }
 
     func loadData(with request: ImageRequest, completion: @escaping (Data?) -> Void) -> ImageTask {
