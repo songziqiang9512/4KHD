@@ -64,6 +64,7 @@ final class GalleryZoomableImageView: WorkspaceZoomableImageView {
         placeholderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         placeholderLabel.textColor = .secondaryLabelColor
         placeholderLabel.alignment = .center
+        placeholderLabel.drawsBackground = false
         retryButton.target = self
         retryButton.action = #selector(retry)
         retryButton.bezelStyle = .rounded

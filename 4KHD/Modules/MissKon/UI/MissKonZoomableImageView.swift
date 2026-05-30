@@ -101,6 +101,7 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
         placeholderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         placeholderLabel.textColor = .secondaryLabelColor
         placeholderLabel.alignment = .center
+        placeholderLabel.drawsBackground = false
 
         retryButton.bezelStyle = .rounded
         retryButton.font = .systemFont(ofSize: 14)

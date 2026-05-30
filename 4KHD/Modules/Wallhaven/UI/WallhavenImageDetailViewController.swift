@@ -526,6 +526,7 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         placeholderLabel.font = .systemFont(ofSize: 15, weight: .medium)
         placeholderLabel.textColor = .secondaryLabelColor
         placeholderLabel.alignment = .center
+        placeholderLabel.drawsBackground = false
 
         retryButton.bezelStyle = .rounded
         retryButton.isHidden = true
