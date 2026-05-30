@@ -3,7 +3,7 @@ import Foundation
 enum MissKonDetailResolver {
     private static let requestCoalescer = MissKonDetailHTMLRequestCoalescer()
     private static let pageLinkCurrentRegex = regex(#"<span\s+class=["'][^"']*post-page-numbers\s+current[^"']*["'][^>]*>\s*(\d+)\s*</span>"#)
-    private static let pageLinkAnchorRegex = regex(#"<a[^>]+class=["'][^"']*post-page-numbers[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>\s*(\d+)\s*</a>"#)
+    private static let pageLinkAnchorRegex = regex(#"<a(?=[^>]*class=["'][^"']*post-page-numbers[^"']*["'])[^>]*href=["']([^"']+)["'][^>]*>\s*(\d+)\s*</a>"#)
 
     static func resolve(pageURL: URL) async throws -> MissKonResolvedImagePage {
         let html = try await requestCoalescer.value(for: pageURL) {
@@ -57,7 +57,7 @@ enum MissKonDetailResolver {
         let nsEntryTail = entryTail as NSString
 
         // Find all page-link divs within the entry area (case-insensitive)
-        let pageLinkPattern = regex(#"<div\s+class=["']page-link["']"#)
+        let pageLinkPattern = regex(#"<div\s+class=["'][^"']*page-link[^"']*["']"#)
         let pageLinkMatches = pageLinkPattern.matches(
             in: entryTail,
             range: NSRange(location: 0, length: nsEntryTail.length)

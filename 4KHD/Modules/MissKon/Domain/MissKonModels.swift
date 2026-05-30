@@ -46,15 +46,15 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
 
     var siteURL: URL? {
         switch self {
-        case .latest: URL(string: "https://misskon.com/")!
-        case .top30: URL(string: "https://misskon.com/top30/")!
-        case .cosplay: URL(string: "https://misskon.com/tag/cosplay/")!
-        case .aiGenerated: URL(string: "https://misskon.com/tag/ai-enhanced/")!
-        case .otherxxx: URL(string: "https://misskon.com/tag/otherxxx/")!
-        case .xiaoyu: URL(string: "https://misskon.com/tag/xiaoyu/")!
-        case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")!
-        case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")!
-        case .huayang: URL(string: "https://misskon.com/tag/huayang/")!
+        case .latest: URL(string: "https://misskon.com/")
+        case .top30: URL(string: "https://misskon.com/top30/")
+        case .cosplay: URL(string: "https://misskon.com/tag/cosplay/")
+        case .aiGenerated: URL(string: "https://misskon.com/tag/ai-enhanced/")
+        case .otherxxx: URL(string: "https://misskon.com/tag/otherxxx/")
+        case .xiaoyu: URL(string: "https://misskon.com/tag/xiaoyu/")
+        case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")
+        case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")
+        case .huayang: URL(string: "https://misskon.com/tag/huayang/")
         case .favorites: nil
         }
     }

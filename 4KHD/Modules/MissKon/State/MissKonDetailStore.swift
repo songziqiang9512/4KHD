@@ -156,24 +156,8 @@ final class MissKonDetailStore {
                       self.currentItem?.id == itemID,
                       self.pageTasks[pageURL] != nil
                 else { return }
+                self.reconcileKnownPageURLs(with: page.pageURLs, requestedPageURL: pageURL)
                 self.resolvedPages[pageURL] = page
-                // Merge discovered page URLs into knownPageURLs.
-                // If a higher page number is found, generate all intermediate pages too.
-                let newMax = page.pageURLs.compactMap { $0.trailingPageNumber }.max() ?? 0
-                let oldMax = self.knownPageURLs.compactMap { $0.trailingPageNumber }.max() ?? 0
-                if newMax > oldMax, let baseURL = self.knownPageURLs.first {
-                    let base = baseURL.deletingLastPathComponent().absoluteString
-                    let baseWithSlash = base.hasSuffix("/") ? base : base + "/"
-                    for pageNum in (oldMax + 1)...newMax {
-                        if let u = URL(string: "\(baseWithSlash)\(pageNum)/"),
-                           !self.knownPageURLs.contains(u) {
-                            self.knownPageURLs.append(u)
-                        }
-                    }
-                }
-                for newURL in page.pageURLs where !self.knownPageURLs.contains(newURL) {
-                    self.knownPageURLs.append(newURL)
-                }
                 self.pageTasks[pageURL] = nil
                 self.mergeResolvedPage(page, pageURL: pageURL)
                 if prefetchNext > 0 {
@@ -219,6 +203,39 @@ final class MissKonDetailStore {
         }
     }
 
+    private func reconcileKnownPageURLs(with resolvedPageURLs: [URL], requestedPageURL: URL) {
+        guard !resolvedPageURLs.isEmpty else { return }
+        let normalized = orderedDetailPageURLs(resolvedPageURLs)
+        guard normalized.contains(requestedPageURL) else { return }
+
+        let resolvedSet = Set(normalized)
+        let removedPageURLs = knownPageURLs.filter { !resolvedSet.contains($0) }
+        guard !removedPageURLs.isEmpty || normalized != knownPageURLs else { return }
+
+        for pageURL in removedPageURLs {
+            pageTasks[pageURL]?.cancel()
+            pageTasks[pageURL] = nil
+            resolvedPages[pageURL] = nil
+            failedPageURLs.remove(pageURL)
+        }
+
+        knownPageURLs = normalized
+        pruneSlots(excluding: removedPageURLs)
+    }
+
+    private func orderedDetailPageURLs(_ pageURLs: [URL]) -> [URL] {
+        var seen = Set<URL>()
+        return pageURLs
+            .filter { seen.insert($0).inserted }
+            .sorted { lhs, rhs in
+                pageOrder(lhs) < pageOrder(rhs)
+            }
+    }
+
+    private func pageOrder(_ url: URL) -> Int {
+        url.trailingPageNumber ?? 1
+    }
+
     private func checkCompletion() {
         let allResolvedOrFailed = knownPageURLs.allSatisfy {
             resolvedPages.keys.contains($0) || failedPageURLs.contains($0)
@@ -255,6 +272,16 @@ final class MissKonDetailStore {
     /// Remove placeholder slots for a page that failed to resolve.
     private func removeSlots(forFailedPage pageURL: URL) {
         replaceSlots(for: pageURL, with: [])
+    }
+
+    private func pruneSlots(excluding removedPageURLs: [URL]) {
+        guard !removedPageURLs.isEmpty else { return }
+        let removedSet = Set(removedPageURLs)
+        var slots = imageSlots.filter { !removedSet.contains($0.pageURL) }
+        reindex(&slots)
+        imageSlots = slots
+        if let selectedSlotID, slots.contains(where: { $0.id == selectedSlotID }) { return }
+        selectedSlotID = slots.first?.id
     }
 
     /// Replace all slots for `pageURL` with `newSlots` (empty = remove), then reindex + repair selection.
