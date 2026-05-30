@@ -246,7 +246,8 @@ final class WorkspaceThumbnailGridCardView: NSView {
 
         placeholderLabel.alignment = .center
         placeholderLabel.textColor = .secondaryLabelColor
-        placeholderLabel.font = .systemFont(ofSize: 11)
+        placeholderLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        placeholderLabel.maximumNumberOfLines = 2
 
         hoverOutline.wantsLayer = true
         hoverOutline.layer?.cornerRadius = 11

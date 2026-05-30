@@ -63,6 +63,7 @@ final class GalleryZoomableImageView: WorkspaceZoomableImageView {
     private func setupGalleryOverlay() {
         placeholderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         placeholderLabel.textColor = .secondaryLabelColor
+        placeholderLabel.alignment = .center
         retryButton.target = self
         retryButton.action = #selector(retry)
         retryButton.bezelStyle = .rounded
