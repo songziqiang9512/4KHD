@@ -106,24 +106,35 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
     private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
         var heights = [CGFloat](repeating: metrics.sectionInset.top, count: metrics.columns)
-        // Sort cached items by indexPath order so they flow left-to-right, top-to-bottom
-        // using the standard shortest-column-first waterfall algorithm, regardless of
-        // column count changes. This avoids stacking/overlapping that would occur when
-        // trying to preserve old column assignments after a column count decrease.
+        let isFooterAtIndex = { (indexPath: IndexPath?) -> Bool in
+            guard let indexPath else { return false }
+            return self.itemCount > 0 && indexPath.item == self.itemCount - 1
+        }
         let sortedCache = cache.sorted { a, b in
             guard let ia = a.indexPath, let ib = b.indexPath else { return false }
             return ia < ib
         }
         for attrs in sortedCache {
             guard let indexPath = attrs.indexPath else { continue }
-            let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
-            let ratio = clampedAspectRatio(for: indexPath)
-            let height = metrics.columnWidth / ratio
-            let x = metrics.sectionInset.left + CGFloat(column) * (metrics.columnWidth + metrics.columnSpacing)
-            let y = heights[column]
-            guard x.isFinite, y.isFinite, height.isFinite, height > 0, y < maximumLayoutExtent else { continue }
-            attrs.frame = CGRect(x: x, y: y, width: metrics.columnWidth, height: height)
-            heights[column] += height + metrics.rowSpacing
+            if isFooterAtIndex(indexPath) {
+                let availableWidth = CGFloat(metrics.columns) * metrics.columnWidth
+                    + CGFloat(metrics.columns - 1) * metrics.columnSpacing
+                let maxY = heights.max() ?? metrics.sectionInset.top
+                let x = metrics.sectionInset.left
+                let y = maxY + metrics.rowSpacing
+                let height: CGFloat = 34
+                attrs.frame = CGRect(x: x, y: y, width: availableWidth, height: height)
+                for i in heights.indices { heights[i] = y + height + metrics.rowSpacing }
+            } else {
+                let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+                let ratio = clampedAspectRatio(for: indexPath)
+                let height = metrics.columnWidth / ratio
+                let x = metrics.sectionInset.left + CGFloat(column) * (metrics.columnWidth + metrics.columnSpacing)
+                let y = heights[column]
+                guard x.isFinite, y.isFinite, height.isFinite, height > 0, y < maximumLayoutExtent else { continue }
+                attrs.frame = CGRect(x: x, y: y, width: metrics.columnWidth, height: height)
+                heights[column] += height + metrics.rowSpacing
+            }
         }
         layoutMetrics = metrics
         didLayoutAllItems = nextItemIndex >= itemCount
@@ -203,30 +214,41 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
     private func appendNextItem(metrics: LayoutMetrics) {
         let indexPath = IndexPath(item: nextItemIndex, section: 0)
+        let isFooter = itemCount > 0 && nextItemIndex == itemCount - 1
         nextItemIndex += 1
 
-        let column = columnHeights.indices.min { columnHeights[$0] < columnHeights[$1] } ?? 0
-        let ratio = clampedAspectRatio(for: indexPath)
-        let height = metrics.columnWidth / ratio
-        let x = metrics.sectionInset.left + CGFloat(column) * (metrics.columnWidth + metrics.columnSpacing)
-        let y = columnHeights[column]
-        guard x.isFinite,
-              y.isFinite,
-              height.isFinite,
-              height > 0,
-              y < maximumLayoutExtent else {
-            return
+        let x: CGFloat
+        let y: CGFloat
+        let width: CGFloat
+        let height: CGFloat
+
+        if isFooter {
+            // Footer spans full content width, centered across all columns.
+            let availableWidth = CGFloat(metrics.columns) * metrics.columnWidth
+                + CGFloat(metrics.columns - 1) * metrics.columnSpacing
+            let maxY = columnHeights.max() ?? metrics.sectionInset.top
+            x = metrics.sectionInset.left
+            y = maxY + metrics.rowSpacing
+            width = availableWidth
+            height = 34 // Standard footer height.
+            // Align all columns to footer bottom.
+            for i in columnHeights.indices {
+                columnHeights[i] = y + height + metrics.rowSpacing
+            }
+        } else {
+            let column = columnHeights.indices.min { columnHeights[$0] < columnHeights[$1] } ?? 0
+            let ratio = clampedAspectRatio(for: indexPath)
+            width = metrics.columnWidth
+            height = metrics.columnWidth / ratio
+            x = metrics.sectionInset.left + CGFloat(column) * (metrics.columnWidth + metrics.columnSpacing)
+            y = columnHeights[column]
+            columnHeights[column] += height + metrics.rowSpacing
         }
+        guard x.isFinite, y.isFinite, height.isFinite, height > 0, y < maximumLayoutExtent else { return }
 
         let attributes = NSCollectionViewLayoutAttributes(forItemWith: indexPath)
-        attributes.frame = CGRect(
-            x: x,
-            y: y,
-            width: metrics.columnWidth,
-            height: height
-        )
+        attributes.frame = CGRect(x: x, y: y, width: width, height: height)
         cache.append(attributes)
-        columnHeights[column] += height + metrics.rowSpacing
         didLayoutAllItems = nextItemIndex >= itemCount
     }
 
