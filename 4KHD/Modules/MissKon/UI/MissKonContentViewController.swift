@@ -340,6 +340,18 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         let menu = NSMenu(title: "MissKonItemMenu")
         menu.autoenablesItems = false
 
+        let favItem = NSMenuItem(
+            title: library.isFavorite(item) ? "取消收藏" : "收藏",
+            action: #selector(toggleFavoriteFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        favItem.target = self
+        favItem.representedObject = item
+        favItem.image = NSImage(systemSymbolName: library.isFavorite(item) ? "bookmark.slash" : "bookmark", accessibilityDescription: nil)
+        menu.addItem(favItem)
+
+        menu.addItem(.separator())
+
         let openItem = NSMenuItem(title: "在浏览器中打开", action: #selector(openInBrowser(_:)), keyEquivalent: "")
         openItem.target = self
         openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
@@ -369,6 +381,12 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.detailURL.absoluteString, forType: .string)
+    }
+
+    @objc private func toggleFavoriteFromMenu(_ sender: NSMenuItem) {
+        guard let item = sender.representedObject as? MissKonItem else { return }
+        library.toggleFavorite(for: item)
+        reloadContent()
     }
 
     @objc private func shareItem(_ sender: NSMenuItem) {

@@ -20,8 +20,6 @@ final class MissKonContentPreferences {
         }
     }
 
-    var searchText = ""
-
     var gridColumnCount: Int {
         didSet {
             UserDefaults.standard.set(gridColumnCount, forKey: Self.gridColumnCountDefaultsKey)

@@ -18,8 +18,12 @@ enum MissKonDetailResolver {
             try await fetchHTML(pageURL)
         }
 
+        try Task.checkCancellation()
+
         let imageURLs = extractImageURLs(from: html)
         guard !imageURLs.isEmpty else { throw URLError(.cannotParseResponse) }
+
+        try Task.checkCancellation()
 
         let pageURLs = resolvePageURLs(from: html, baseURL: pageURL)
         let page = MissKonResolvedImagePage(pageURL: pageURL, imageURLs: imageURLs, pageURLs: pageURLs)
@@ -114,7 +118,7 @@ enum MissKonDetailResolver {
             .filter { !$0.hasPrefix("data:image/svg") }
         let allUrls = dataSrcUrls + srcUrls
         let urls = allUrls
-            .compactMap { $0.removingPercentEncoding }
+            .compactMap { $0.removingPercentEncoding ?? decodeHTML($0) }
             .compactMap(URL.init(string:))
             .filter { url in
                 let host = url.host?.lowercased() ?? ""
@@ -182,6 +186,14 @@ enum MissKonDetailResolver {
               match.numberOfRanges > 1,
               let matchRange = Range(match.range(at: 1), in: text) else { return nil }
         return String(text[matchRange])
+    }
+
+    /// Decodes common HTML entities in URL strings (mirrors `DetailPageHTMLResolver.decodeHTML`).
+    private nonisolated static func decodeHTML(_ value: String) -> String? {
+        value
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&#038;", with: "&")
+            .removingPercentEncoding ?? value
     }
 
     private static func allMatches(_ regex: NSRegularExpression, in text: String) -> [(url: String, page: String)] {

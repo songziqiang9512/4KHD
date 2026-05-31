@@ -71,19 +71,6 @@ enum MissKonListResolver {
     private static func parse(html: String, pageURL: URL, section: MissKonSection) -> MissKonListPage {
         let articles = articleHTML(in: html)
         let items = articles.compactMap { makeItem(from: $0, section: section) }
-        // When the page has no articles and no known structural markers,
-        // the site layout likely changed — surface a clear error.
-        if items.isEmpty, articles.isEmpty {
-            let hasKnownStructure = html.contains("class=\"item-list\"")
-                || html.contains("class=\"post-box-title\"")
-                || html.contains("<article")
-            if !hasKnownStructure, !html.isEmpty {
-                // Still return empty page but let the caller know via a marker;
-                // the feed store doesn't inspect errors from ListPage directly.
-                // We signal the issue by returning no nextPageURL, so the UI shows "已到末尾"
-                // rather than retrying indefinitely.
-            }
-        }
         return MissKonListPage(
             items: items,
             nextPageURL: items.isEmpty ? nil : nextPageURL(in: html, baseURL: pageURL)
