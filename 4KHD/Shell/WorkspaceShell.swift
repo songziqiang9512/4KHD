@@ -155,7 +155,13 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func setSidebarCollapsed(_ isCollapsed: Bool) {
+        sidebarItem.minimumThickness = isCollapsed ? 0 : WorkspaceSplitLayoutMetrics.minimumSidebarWidth
         sidebarItem.isCollapsed = isCollapsed
+    }
+
+    private func setContentCollapsedForImmersive(_ isCollapsed: Bool) {
+        contentItem.minimumThickness = isCollapsed ? 0 : WorkspaceSplitLayoutMetrics.minimumContentWidth
+        contentItem.isCollapsed = isCollapsed
     }
 
     @objc func toggleWorkspaceSidebar(_ sender: Any?) {
@@ -564,13 +570,13 @@ final class WorkspaceSplitViewController: NSSplitViewController {
                 isApplyingImmersiveLayout = true
             }
             setSidebarCollapsed(!immersive.peekRevealing)
-            contentItem.isCollapsed = !immersive.peekRevealing
+            setContentCollapsedForImmersive(!immersive.peekRevealing)
             detailItem.isCollapsed = false
         } else {
             guard isApplyingImmersiveLayout else { return }
             isApplyingImmersiveLayout = false
             setSidebarCollapsed(sidebarCollapsedBeforeImmersive)
-            contentItem.isCollapsed = contentCollapsedBeforeImmersive
+            setContentCollapsedForImmersive(contentCollapsedBeforeImmersive)
             applyDetailPaneVisibility(appContext.detailPaneController.isPresented)
         }
     }
