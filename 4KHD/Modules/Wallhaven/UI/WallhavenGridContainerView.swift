@@ -321,9 +321,9 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
 
     private func thumbnailRequest(at index: Int) -> ImageRequest? {
         guard wallpapers.indices.contains(index),
-              let thumbURL = wallpapers[index].thumbnailUrl else { return nil }
+              let coverURL = wallpapers[index].cardCoverUrl else { return nil }
         return RemoteImagePipeline.shared.request(
-            for: thumbURL,
+            for: coverURL,
             priority: .veryLow,
             maxPixelSize: 512,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest

@@ -21,7 +21,7 @@ final class WallhavenListRowView: NSTableCellView {
 
     func configure(wallpaper: Wallpaper, searchQuery: String? = nil) {
         coverView.mode = .aspectFit
-        coverView.setImage(url: wallpaper.thumbnailUrl ?? wallpaper.previewUrl, maxPixelSize: 180)
+        coverView.setImage(url: wallpaper.cardCoverUrl, maxPixelSize: 180)
         let displayName = formatDisplayName(wallpaper)
         if let query = searchQuery, !query.isEmpty {
             titleLabel.attributedStringValue = highlightedAttributedString(displayName, query: query)
@@ -179,9 +179,9 @@ final class WallhavenGridItemView: NSCollectionViewItem {
     }
 
     func configure(wallpaper: Wallpaper, isSelected: Bool, searchQuery: String? = nil, onAspectRatio: @escaping (CGFloat) -> Void) {
-        let thumbURL = wallpaper.thumbnailUrl
+        let coverURL = wallpaper.cardCoverUrl
         let idChanged = representedID != wallpaper.id
-        let urlChanged = currentThumbURL != thumbURL
+        let urlChanged = currentThumbURL != coverURL
         representedID = wallpaper.id
 
         let tagsText = wallpaper.tags.prefix(3).joined(separator: ", ")
@@ -215,13 +215,13 @@ final class WallhavenGridItemView: NSCollectionViewItem {
     private func loadCover(for wallpaper: Wallpaper, onAspectRatio: @escaping (CGFloat) -> Void) {
         imageTask?.cancel()
         cardView.setImage(nil)
-        currentThumbURL = wallpaper.thumbnailUrl
-        guard let thumbURL = wallpaper.thumbnailUrl else {
+        currentThumbURL = wallpaper.cardCoverUrl
+        guard let coverURL = wallpaper.cardCoverUrl else {
             cardView.setPlaceholder("无缩略图", isVisible: true)
             return
         }
         let request = RemoteImagePipeline.shared.request(
-            for: thumbURL,
+            for: coverURL,
             priority: .normal,
             maxPixelSize: 512,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest

@@ -36,6 +36,10 @@ struct Wallpaper: Identifiable, Codable, Hashable {
         return Double(width) / Double(height)
     }
 
+    var cardCoverUrl: URL? {
+        previewUrl ?? thumbnailUrl
+    }
+
     var formattedFileSize: String {
         guard let fileSize else { return "-" }
         return ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)

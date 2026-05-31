@@ -307,8 +307,8 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
         // Always show thumbnail first (cached from grid → instant display),
         // then load full-res in background while the thumbnail stays visible.
-        let thumbnailURL = displayWallpaper.thumbnailUrl ?? wallpaper.thumbnailUrl
         let previewURL = displayWallpaper.previewUrl ?? wallpaper.previewUrl
+        let coverURL = displayWallpaper.cardCoverUrl ?? wallpaper.cardCoverUrl
         let fullURL = displayWallpaper.fullImageUrl
         let isIncomplete = (displayWallpaper.width == nil && displayWallpaper.fullImageUrl == nil)
 
@@ -318,8 +318,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             detailInteraction.saveMessage = ""
 
             // Show the card's own thumbnail/preview first — cached from grid, instant display.
-            let initialURL = thumbnailURL ?? previewURL
-            if let initial = initialURL {
+            if let initial = coverURL {
                 imageView.setImageURL(initial)
             }
 
@@ -497,8 +496,8 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
             maxPixelSize: 4096,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest
         )
-        // Try 4096px cache; if miss, fall back to 512px (grid thumbnail resolution)
-        // so the thumbnail displays instantly from the feed-list cache.
+        // Try full/detail cache first; then fall back to grid/list thumbnail sizes
+        // so the existing cover can display immediately when opening detail.
         if let cached = cachedImage(for: url) {
             imageView.image = cached
             placeholderContainer.isHidden = true
@@ -600,12 +599,17 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         if let image = RemoteImagePipeline.shared.cachedImage(with: request) {
             return image
         }
-        let thumbRequest = RemoteImagePipeline.shared.request(
-            for: url,
-            priority: .veryHigh,
-            maxPixelSize: 512,
-            configureURLRequest: WallhavenRequestFactory.configureImageRequest
-        )
-        return RemoteImagePipeline.shared.cachedImage(with: thumbRequest)
+        for maxPixelSize in [CGFloat(512), CGFloat(180)] {
+            let thumbnailRequest = RemoteImagePipeline.shared.request(
+                for: url,
+                priority: .veryHigh,
+                maxPixelSize: maxPixelSize,
+                configureURLRequest: WallhavenRequestFactory.configureImageRequest
+            )
+            if let image = RemoteImagePipeline.shared.cachedImage(with: thumbnailRequest) {
+                return image
+            }
+        }
+        return nil
     }
 }
