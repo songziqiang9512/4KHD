@@ -74,7 +74,15 @@ final class WallhavenFeedStore {
     private var uploaderHasMore = true
 
     /// Saved state for back navigation from uploader view.
-    private var savedState: (wallpapers: [Wallpaper], page: Int, lastPage: Int, seed: String?, scrollItemID: Wallpaper.ID?, searchQuery: String?)?
+    private var savedState: (
+        wallpapers: [Wallpaper],
+        page: Int,
+        lastPage: Int,
+        seed: String?,
+        canLoadMore: Bool,
+        scrollItemID: Wallpaper.ID?,
+        searchQuery: String?
+    )?
 
     @ObservationIgnored var onSelectionChanged: ((Wallpaper?) -> Void)?
 
@@ -205,10 +213,6 @@ final class WallhavenFeedStore {
     }
 
     func refreshFromNetwork() {
-        if section == .favorites {
-            refreshFavorites()
-            return
-        }
         // Re-route to current mode so toolbar refresh / footer retry work correctly.
         if isBrowsingUploader, let username = uploaderUsername {
             uploaderPage = 1
@@ -266,6 +270,10 @@ final class WallhavenFeedStore {
             }
             return
         }
+        if section == .favorites {
+            refreshFavorites()
+            return
+        }
         if let query = activeSearchQuery, !query.isEmpty {
             submitSearch(query, force: true)
             return
@@ -321,11 +329,11 @@ final class WallhavenFeedStore {
     }
 
     func loadMoreIfNeeded() {
-        guard section != .favorites else { return }
         if isBrowsingUploader {
             loadMoreUploaderWorks()
             return
         }
+        guard section != .favorites else { return }
         if activeSearchQuery != nil {
             loadMoreSearchIfNeeded()
             return
@@ -542,6 +550,9 @@ final class WallhavenFeedStore {
     private func refreshFavorites() {
         isRefreshingList = true
         feedErrorMessage = nil
+        currentPage = 1
+        lastPage = 1
+        seed = nil
         let records = favoritesStore.favorites.filter { $0.sourceID == "wallhaven" }
         let items = WallhavenFavoritesBridge.wallpapers(from: records)
         wallpapers = items
@@ -558,23 +569,27 @@ final class WallhavenFeedStore {
 
     /// Call when favorites change externally, to refresh the list if currently viewing favorites.
     func refreshFavoritesIfNeeded() {
-        guard section == .favorites else { return }
+        guard section == .favorites, !isBrowsingUploader else { return }
         refreshFavorites()
     }
 
     // MARK: - Uploader browsing
 
     func showUploaderWorks(username: String) {
-        guard !isBrowsingUploader, uploaderUsername != username else { return }
-        // Save current state for back navigation.
-        savedState = (
-            wallpapers: wallpapers,
-            page: currentPage,
-            lastPage: lastPage,
-            seed: seed,
-            scrollItemID: selectedWallpaperID,
-            searchQuery: activeSearchQuery
-        )
+        guard !isBrowsingUploader || uploaderUsername != username else { return }
+        // Save current state for back navigation. When switching between uploaders,
+        // keep the original state so Back returns to where uploader browsing began.
+        if !isBrowsingUploader {
+            savedState = (
+                wallpapers: wallpapers,
+                page: currentPage,
+                lastPage: lastPage,
+                seed: seed,
+                canLoadMore: canLoadMoreList,
+                scrollItemID: selectedWallpaperID,
+                searchQuery: activeSearchQuery
+            )
+        }
         loadTask?.cancel()
         searchTask?.cancel()
         searchLoadTask?.cancel()
@@ -700,7 +715,7 @@ final class WallhavenFeedStore {
         if saved.searchQuery != nil {
             searchText = saved.searchQuery ?? ""
         }
-        canLoadMoreList = currentPage < lastPage
+        canLoadMoreList = saved.canLoadMore
         isRefreshingList = false
         feedErrorMessage = nil
         selectedWallpaperID = saved.scrollItemID
