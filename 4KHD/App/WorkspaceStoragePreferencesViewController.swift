@@ -80,7 +80,7 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
             await RemoteImagePipeline.shared.clearAllCaches()
 
             // Detail page cache (Gallery)
-            DetailPageImageCache.shared.flush()
+            await DetailPageImageCache.shared.flush()
             if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
                 let detailPageDir = appSupport.appendingPathComponent("4KHD/DetailPageCache", isDirectory: true)
                 try? FileManager.default.removeItem(at: detailPageDir)

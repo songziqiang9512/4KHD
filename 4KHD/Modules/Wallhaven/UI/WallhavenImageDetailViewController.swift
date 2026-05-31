@@ -49,6 +49,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
     private var isObserving = false
     private var currentWallpaperID: Wallpaper.ID?
     private var currentImageURL: URL?
+    private var loadingOriginalImageURL: URL?
     private var resetTokenSeen = UUID()
     private let reloadQueue = WorkspaceCoalescingQueue(name: "WallhavenDetail Reload", interval: 0.05, maxInterval: 0.1)
 
@@ -78,6 +79,11 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        imageView.onImageLoadCompleted = { [weak self] url, _ in
+            guard let self, self.loadingOriginalImageURL == url else { return }
+            self.loadingOriginalImageURL = nil
+            self.reloadDetail()
+        }
         reloadDetail()
         observeState()
     }
@@ -219,6 +225,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         guard shouldLoadDetailContent else {
             currentWallpaperID = nil
             currentImageURL = nil
+            loadingOriginalImageURL = nil
             imageView.setImageURL(nil)
             emptyLabel.isHidden = true
             previousButton.isHidden = true
@@ -234,6 +241,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         guard let wallpaper = library.selectedWallpaper else {
             currentWallpaperID = nil
             currentImageURL = nil
+            loadingOriginalImageURL = nil
             imageView.setImageURL(nil)
             imageView.isHidden = true
             emptyLabel.isHidden = false
@@ -287,8 +295,6 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
         sourceButton.title = "来源: Wallhaven"
         sourceButton.toolTip = displayWallpaper.sourcePageUrl.absoluteString
-        actionLabel.stringValue = detailStatusText
-        actionChrome.isHidden = detailStatusText.isEmpty
 
         // Uploader display
         if let uploader = displayWallpaper.uploader {
@@ -308,6 +314,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
         if currentWallpaperID != wallpaper.id {
             currentWallpaperID = wallpaper.id
+            loadingOriginalImageURL = nil
             detailInteraction.saveMessage = ""
 
             // Show the card's own thumbnail/preview first — cached from grid, instant display.
@@ -319,15 +326,19 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             // If full-res is already available, load it in background (thumbnail stays visible).
             if let full = fullURL, !isIncomplete {
                 currentImageURL = full
-                imageView.setImageURL(full, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
+                setDetailImageURL(full, isOriginal: true, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
             } else {
                 currentImageURL = previewURL
             }
         } else if currentImageURL != fullURL, let full = fullURL, !isIncomplete {
             // Detail resolution completed: upgrade to full-res in background.
             currentImageURL = full
-            imageView.setImageURL(full, preservesCurrentImageUntilLoaded: true)
+            setDetailImageURL(full, isOriginal: true, preservesCurrentImageUntilLoaded: true)
         }
+
+        let statusText = detailStatusText
+        actionLabel.stringValue = statusText
+        actionChrome.isHidden = statusText.isEmpty
 
         if detailInteraction.resetToken != resetTokenSeen {
             resetTokenSeen = detailInteraction.resetToken
@@ -340,6 +351,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
     }
 
     private var detailStatusText: String {
+        if loadingOriginalImageURL != nil { return "加载原图中..." }
         if library.isResolvingDetail { return "加载详情中..." }
         switch detailInteraction.saveMessage {
         case "保存中", "已保存", "保存失败":
@@ -347,6 +359,17 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         default:
             return ""
         }
+    }
+
+    private func setDetailImageURL(
+        _ url: URL,
+        isOriginal: Bool,
+        preservesCurrentImageUntilLoaded: Bool
+    ) {
+        if isOriginal && !imageView.hasCachedImage(for: url) {
+            loadingOriginalImageURL = url
+        }
+        imageView.setImageURL(url, preservesCurrentImageUntilLoaded: preservesCurrentImageUntilLoaded)
     }
 
     @objc private func previousWallpaper() {
@@ -444,6 +467,8 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
 @MainActor
 final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
+    var onImageLoadCompleted: ((URL, Bool) -> Void)?
+
     private let placeholderContainer = NSView()
     private let placeholderLabel = NSTextField(labelWithString: "加载中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
@@ -474,22 +499,11 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         )
         // Try 4096px cache; if miss, fall back to 512px (grid thumbnail resolution)
         // so the thumbnail displays instantly from the feed-list cache.
-        let cached: NSImage?
-        if let img = RemoteImagePipeline.shared.cachedImage(with: request) {
-            cached = img
-        } else {
-            let thumbRequest = RemoteImagePipeline.shared.request(
-                for: url,
-                priority: .veryHigh,
-                maxPixelSize: 512,
-                configureURLRequest: WallhavenRequestFactory.configureImageRequest
-            )
-            cached = RemoteImagePipeline.shared.cachedImage(with: thumbRequest)
-        }
-        if let cached {
+        if let cached = cachedImage(for: url) {
             imageView.image = cached
             placeholderContainer.isHidden = true
             fitImage(resetMagnification: true)
+            onImageLoadCompleted?(url, true)
             return
         }
 
@@ -510,14 +524,20 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
                         self.retryButton.isHidden = true
                         self.placeholderContainer.isHidden = false
                     }
+                    self.onImageLoadCompleted?(url, false)
                     return
                 }
                 self.placeholderContainer.isHidden = true
                 self.retryButton.isHidden = true
                 self.imageView.image = image
                 self.fitImage(resetMagnification: true)
+                self.onImageLoadCompleted?(url, true)
             }
         }
+    }
+
+    func hasCachedImage(for url: URL) -> Bool {
+        cachedImage(for: url) != nil
     }
 
     func showLoading(_ message: String) {
@@ -568,5 +588,24 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
             placeholderContainer.topAnchor.constraint(equalTo: topAnchor),
             placeholderContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+    }
+
+    private func cachedImage(for url: URL) -> NSImage? {
+        let request = RemoteImagePipeline.shared.request(
+            for: url,
+            priority: .veryHigh,
+            maxPixelSize: 4096,
+            configureURLRequest: WallhavenRequestFactory.configureImageRequest
+        )
+        if let image = RemoteImagePipeline.shared.cachedImage(with: request) {
+            return image
+        }
+        let thumbRequest = RemoteImagePipeline.shared.request(
+            for: url,
+            priority: .veryHigh,
+            maxPixelSize: 512,
+            configureURLRequest: WallhavenRequestFactory.configureImageRequest
+        )
+        return RemoteImagePipeline.shared.cachedImage(with: thumbRequest)
     }
 }

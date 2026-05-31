@@ -56,6 +56,13 @@ final class MissKonDetailStore {
         currentItem = item
         knownPageURLs = item.pageURLs
         guard !knownPageURLs.isEmpty else { return }
+        let cachedFirstPage = DetailPageImageCache.shared.page(for: knownPageURLs[0]).map {
+            MissKonResolvedImagePage(pageURL: $0.pageURL, imageURLs: $0.imageURLs, pageURLs: $0.pageURLs)
+        }
+        if let cachedFirstPage {
+            resolvedPages[cachedFirstPage.pageURL] = cachedFirstPage
+            reconcileKnownPageURLs(with: cachedFirstPage.pageURLs, requestedPageURL: cachedFirstPage.pageURL)
+        }
 
         // When imageCount==0 we can't trust pageCount, so seed a safe minimum.
         if item.imageCount == 0, knownPageURLs.count == 1 {
@@ -79,7 +86,7 @@ final class MissKonDetailStore {
                 displayIndex: globalIndex,
                 pageURL: pageURL,
                 pageImageIndex: imageInPage,
-                knownURL: globalIndex == 0 ? item.coverURL : nil
+                knownURL: cachedFirstPage?.imageURLs.element(at: globalIndex) ?? (globalIndex == 0 ? item.coverURL : nil)
             )
             slots.append(slot)
         }

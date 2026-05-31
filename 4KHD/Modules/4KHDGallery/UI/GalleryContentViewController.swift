@@ -83,6 +83,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableView.headerView = nil
         tableView.rowHeight = 96
         tableView.intercellSpacing = NSSize(width: 0, height: 3)
+        tableView.floatsGroupRows = false
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.backgroundColor = .controlBackgroundColor
         tableView.style = .plain

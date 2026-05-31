@@ -6,6 +6,14 @@ enum MissKonDetailResolver {
     private static let pageLinkAnchorRegex = regex(#"<a(?=[^>]*class=["'][^"']*post-page-numbers[^"']*["'])[^>]*href=["']([^"']+)["'][^>]*>\s*(\d+)\s*</a>"#)
 
     static func resolve(pageURL: URL) async throws -> MissKonResolvedImagePage {
+        if let cached = DetailPageImageCache.shared.page(for: pageURL) {
+            return MissKonResolvedImagePage(
+                pageURL: cached.pageURL,
+                imageURLs: cached.imageURLs,
+                pageURLs: cached.pageURLs
+            )
+        }
+
         let html = try await requestCoalescer.value(for: pageURL) {
             try await fetchHTML(pageURL)
         }
@@ -14,7 +22,9 @@ enum MissKonDetailResolver {
         guard !imageURLs.isEmpty else { throw URLError(.cannotParseResponse) }
 
         let pageURLs = resolvePageURLs(from: html, baseURL: pageURL)
-        return MissKonResolvedImagePage(pageURL: pageURL, imageURLs: imageURLs, pageURLs: pageURLs)
+        let page = MissKonResolvedImagePage(pageURL: pageURL, imageURLs: imageURLs, pageURLs: pageURLs)
+        DetailPageImageCache.shared.store(pageURL: page.pageURL, imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+        return page
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {

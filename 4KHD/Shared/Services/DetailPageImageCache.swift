@@ -1,6 +1,12 @@
 import Foundation
 import OSLog
 
+struct CachedDetailImagePage {
+    let pageURL: URL
+    let imageURLs: [URL]
+    let pageURLs: [URL]
+}
+
 final class DetailPageImageCache {
     private static let logger = Logger(subsystem: "com.songziqiang.4khd", category: "DetailPageCache")
     static let shared = DetailPageImageCache()
@@ -32,6 +38,12 @@ final class DetailPageImageCache {
     }
 
     func urls(for pageURL: URL) -> ResolvedImagePage? {
+        page(for: pageURL).map {
+            ResolvedImagePage(pageURL: $0.pageURL, imageURLs: $0.imageURLs, pageURLs: $0.pageURLs)
+        }
+    }
+
+    func page(for pageURL: URL) -> CachedDetailImagePage? {
         lock.lock()
         loadFromDiskIfNeededLocked()
         let key = pageURL.absoluteString
@@ -47,22 +59,26 @@ final class DetailPageImageCache {
             return nil
         }
         lock.unlock()
-        return ResolvedImagePage(pageURL: entry.pageURL, imageURLs: entry.imageURLs, pageURLs: entry.pageURLs)
+        return CachedDetailImagePage(pageURL: entry.pageURL, imageURLs: entry.imageURLs, pageURLs: entry.pageURLs)
     }
 
     func store(_ page: ResolvedImagePage) {
+        store(pageURL: page.pageURL, imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+    }
+
+    func store(pageURL: URL, imageURLs: [URL], pageURLs: [URL]) {
         lock.lock()
         loadFromDiskIfNeededLocked()
-        let key = page.pageURL.absoluteString
+        let key = pageURL.absoluteString
         let existing = storage[key]
         storage[key] = Entry(
-            pageURL: page.pageURL,
-            imageURLs: page.imageURLs,
-            pageURLs: page.pageURLs,
+            pageURL: pageURL,
+            imageURLs: imageURLs,
+            pageURLs: pageURLs,
             updatedAt: Date(),
             isPersistent: existing?.isPersistent ?? false
         )
-        cachedDetailPaths.insert(page.pageURL.normalizedDetailPathKey)
+        cachedDetailPaths.insert(pageURL.normalizedDetailPathKey)
         pruneEntriesLocked()
         scheduleSaveLocked()
         lock.unlock()
