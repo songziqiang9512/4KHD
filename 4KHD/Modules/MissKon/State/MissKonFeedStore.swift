@@ -102,12 +102,8 @@ final class MissKonFeedStore {
             cacheTimestamps[section] = Date(timeIntervalSince1970: timestamp)
         }
         if pruneStaleAIGeneratedNextPageIfNeeded() {
-            saveCacheIfNeeded()
+            saveCache()
         }
-    }
-
-    private func saveCacheIfNeeded() {
-        saveCache()
     }
 
     // MARK: - Network
@@ -141,7 +137,7 @@ final class MissKonFeedStore {
                 self.cachedItems[requestSection] = merged
                 self.cachedNextPageURLs[requestSection] = page.nextPageURL
                 self.cacheTimestamps[requestSection] = Date()
-                self.saveCacheIfNeeded()
+                self.saveCache()
                 if self.section == requestSection, self.activeSearchQuery == nil {
                     self.allItems = merged
                     self.visibleItems = merged
@@ -200,7 +196,7 @@ final class MissKonFeedStore {
                 self.cachedItems[requestSection] = existing
                 self.cachedNextPageURLs[requestSection] = page.nextPageURL
                 self.cacheTimestamps[requestSection] = Date()
-                self.saveCacheIfNeeded()
+                self.saveCache()
                 if self.section == requestSection, self.activeSearchQuery == nil {
                     self.allItems = existing
                     self.visibleItems = existing
@@ -283,7 +279,7 @@ final class MissKonFeedStore {
     private func markNoMorePages(for requestSection: MissKonSection) {
         cachedNextPageURLs[requestSection] = nil
         cacheTimestamps[requestSection] = Date()
-        saveCacheIfNeeded()
+        saveCache()
         guard section == requestSection, activeSearchQuery == nil else { return }
         nextPageURL = nil
         canLoadMoreList = false

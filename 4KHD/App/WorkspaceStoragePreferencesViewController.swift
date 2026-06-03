@@ -225,10 +225,14 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         return separator
     }
 
+    private static let backupDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        return f
+    }()
+
     private func defaultFavoritesBackupFileName() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return "4KHD-Favorites-\(formatter.string(from: Date())).json"
+        "4KHD-Favorites-\(Self.backupDateFormatter.string(from: Date())).json"
     }
 
     private func clearFavoritesStatusLater() {
