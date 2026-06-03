@@ -113,6 +113,11 @@ final class FourKHDGalleryStore {
         }
     }
 
+    func refreshFavoritesIfNeeded() {
+        guard feed.section == .favorites else { return }
+        feed.selectFirstItemIfNeeded(force: true)
+    }
+
     func isCached(_ item: GalleryItem) -> Bool {
         DetailPageImageCache.shared.containsCachedPage(forDetailURL: item.detailURL)
     }

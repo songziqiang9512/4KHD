@@ -5,6 +5,20 @@ import Foundation
 @MainActor
 @Observable
 final class FavoritesStore {
+    struct BackupFile: Codable {
+        let formatVersion: Int
+        let exportedAt: Date
+        let favorites: [FavoriteRecord]
+    }
+
+    struct ImportResult {
+        let addedCount: Int
+        let updatedCount: Int
+        let skippedCount: Int
+
+        var importedCount: Int { addedCount + updatedCount }
+    }
+
     private(set) var favorites: [FavoriteRecord] = []
 
     @ObservationIgnored private static let defaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
@@ -34,6 +48,53 @@ final class FavoritesStore {
         return true
     }
 
+    func exportFavorites(to fileURL: URL) throws {
+        let backup = BackupFile(
+            formatVersion: 1,
+            exportedAt: Date(),
+            favorites: favorites
+        )
+        let data = try Self.jsonEncoder.encode(backup)
+        try data.write(to: fileURL, options: .atomic)
+    }
+
+    @discardableResult
+    func importFavorites(from fileURL: URL) throws -> ImportResult {
+        let data = try Data(contentsOf: fileURL)
+        let importedFavorites = try Self.decodeBackupFavorites(from: data)
+
+        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: favorites.map { ($0.detailURL, $0) })
+        var orderedDetailURLs = favorites.map(\.detailURL)
+        var addedCount = 0
+        var updatedCount = 0
+        var skippedCount = 0
+
+        for favorite in importedFavorites {
+            guard Self.isValidFavorite(favorite) else {
+                skippedCount += 1
+                continue
+            }
+            if mergedByDetailURL[favorite.detailURL] == nil {
+                orderedDetailURLs.append(favorite.detailURL)
+                addedCount += 1
+            } else {
+                updatedCount += 1
+            }
+            mergedByDetailURL[favorite.detailURL] = favorite
+        }
+
+        favorites = orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
+        save()
+        markFavoriteCachesPersistent()
+        DetailPageImageCache.shared.prune()
+
+        return ImportResult(
+            addedCount: addedCount,
+            updatedCount: updatedCount,
+            skippedCount: skippedCount
+        )
+    }
+
     // MARK: - 持久化
 
     private func load() {
@@ -43,17 +104,47 @@ final class FavoritesStore {
             return
         }
         favorites = decoded
+        markFavoriteCachesPersistent()
+        DetailPageImageCache.shared.prune()
+    }
+
+    private func markFavoriteCachesPersistent() {
         // 把已收藏画廊的 detail cache 都标为 persistent。
         for favorite in favorites {
             if let detailURL = URL(string: favorite.detailURL) {
                 DetailPageImageCache.shared.setPersistent(true, forDetailURL: detailURL)
             }
         }
-        DetailPageImageCache.shared.prune()
     }
 
     private func save() {
         guard let data = try? JSONEncoder().encode(favorites) else { return }
         UserDefaults.standard.set(data, forKey: Self.defaultsKey)
+    }
+
+    private static var jsonEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    private static var jsonDecoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private static func decodeBackupFavorites(from data: Data) throws -> [FavoriteRecord] {
+        if let backup = try? jsonDecoder.decode(BackupFile.self, from: data) {
+            return backup.favorites
+        }
+        return try jsonDecoder.decode([FavoriteRecord].self, from: data)
+    }
+
+    private static func isValidFavorite(_ favorite: FavoriteRecord) -> Bool {
+        !favorite.id.isEmpty
+            && !favorite.sourceID.isEmpty
+            && URL(string: favorite.detailURL) != nil
     }
 }

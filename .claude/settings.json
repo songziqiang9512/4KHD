@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild:*)",
+      "Bash(curl -s -L:*)",
+      "Bash(curl -s -A:*)"
+    ]
+  }
+}

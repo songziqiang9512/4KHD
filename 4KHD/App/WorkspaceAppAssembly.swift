@@ -73,6 +73,7 @@ enum WorkspaceAppAssembly {
             missKonStore: missKonStore,
             wallhavenStore: wallhavenStore,
             localLibraryStore: localLibraryStore,
+            favoritesStore: favoritesStore,
             toolbarContext: toolbarContext,
             importRootFolderAction: importRootFolderAction
         )

@@ -10,6 +10,7 @@ final class WorkspaceAppContext {
     let missKonStore: MissKonGalleryStore
     let wallhavenStore: WallhavenGalleryStore
     let localLibraryStore: LocalLibraryStore
+    let favoritesStore: FavoritesStore
     let toolbarContext: WorkspaceToolbarContext
     @ObservationIgnored private let importRootFolderAction: () -> Void
 
@@ -21,6 +22,7 @@ final class WorkspaceAppContext {
         missKonStore: MissKonGalleryStore,
         wallhavenStore: WallhavenGalleryStore,
         localLibraryStore: LocalLibraryStore,
+        favoritesStore: FavoritesStore,
         toolbarContext: WorkspaceToolbarContext,
         importRootFolderAction: @escaping () -> Void
     ) {
@@ -31,6 +33,7 @@ final class WorkspaceAppContext {
         self.missKonStore = missKonStore
         self.wallhavenStore = wallhavenStore
         self.localLibraryStore = localLibraryStore
+        self.favoritesStore = favoritesStore
         self.toolbarContext = toolbarContext
         self.importRootFolderAction = importRootFolderAction
     }

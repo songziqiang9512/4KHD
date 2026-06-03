@@ -64,7 +64,7 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         guard let appContext else { return }
         if preferencesWindowController == nil {
             preferencesWindowController = WorkspacePreferencesWindowController(
-                toolbarContext: appContext.toolbarContext
+                appContext: appContext
             )
         }
         preferencesWindowController?.refresh()

@@ -24,11 +24,22 @@ final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarD
     private let storageViewController: WorkspaceStoragePreferencesViewController
     private var currentPane: Pane = .content
 
-    init(toolbarContext: WorkspaceToolbarContext) {
+    init(appContext: WorkspaceAppContext) {
         let contentPaneViewController = WorkspaceContentPreferencesViewController(
-            toolbarContext: toolbarContext
+            toolbarContext: appContext.toolbarContext
         )
-        let storageViewController = WorkspaceStoragePreferencesViewController()
+        let storageViewController = WorkspaceStoragePreferencesViewController(
+            favoritesStore: appContext.favoritesStore,
+            onFavoritesImported: {
+                if appContext.galleryStore.section == .favorites {
+                    appContext.galleryStore.refreshFavoritesIfNeeded()
+                }
+                if appContext.missKonStore.section == .favorites {
+                    appContext.missKonStore.feed.restoreSectionCache()
+                }
+                appContext.wallhavenStore.feed.refreshFavoritesIfNeeded()
+            }
+        )
         self.contentPaneViewController = contentPaneViewController
         self.storageViewController = storageViewController
 
