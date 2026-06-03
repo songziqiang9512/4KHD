@@ -23,6 +23,15 @@ final class FavoritesStore {
 
     @ObservationIgnored private static let defaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
 
+    /// File-based storage in Application Support — Apple recommends against
+    /// storing large collections in UserDefaults.
+    @ObservationIgnored private static var favoritesFileURL: URL? {
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let d = dir.appendingPathComponent("4KHD", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d.appendingPathComponent("favorites.json")
+    }
+
     init() {
         load()
     }
@@ -98,12 +107,20 @@ final class FavoritesStore {
     // MARK: - 持久化
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
-              let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: data) else {
+        // Prefer file-based storage; migrate legacy UserDefaults data on first access.
+        if let data = try? Data(contentsOf: Self.favoritesFileURL ?? URL(fileURLWithPath: "/dev/null")),
+           let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: data) {
+            favorites = decoded
+        } else if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
+                  let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: data) {
+            // Migrate from legacy UserDefaults storage to file-based storage.
+            favorites = decoded
+            save()
+            UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
+        } else {
             favorites = []
             return
         }
-        favorites = decoded
         markFavoriteCachesPersistent()
         DetailPageImageCache.shared.prune()
     }
@@ -118,8 +135,9 @@ final class FavoritesStore {
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(favorites) else { return }
-        UserDefaults.standard.set(data, forKey: Self.defaultsKey)
+        guard let fileURL = Self.favoritesFileURL,
+              let data = try? JSONEncoder().encode(favorites) else { return }
+        try? data.write(to: fileURL, options: .atomicWrite)
     }
 
     private static var jsonEncoder: JSONEncoder {

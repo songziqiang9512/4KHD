@@ -124,22 +124,55 @@ enum DetailPageHTMLResolver {
     }
 
     // Cached regexes to avoid recompilation on every call.
-    private nonisolated static let urlExtractionRegex = try! NSRegularExpression(
-        pattern: #"(?:href|src|data-src|data-lazy-src)=["']([^"']+)["']"#,
-        options: [.caseInsensitive]
-    )
-    private nonisolated static let pageAnchorRegex = try! NSRegularExpression(
-        pattern: #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["']"#,
-        options: [.caseInsensitive]
-    )
-    private nonisolated static let currentLiRegex = try! NSRegularExpression(
-        pattern: #"<li[^>]+class=["'][^"']*current[^"']*["'][^>]*>\s*<span[^>]*>\s*([0-9,]+)\s*</span>"#,
-        options: [.caseInsensitive]
-    )
-    private nonisolated static let currentSpanRegex = try! NSRegularExpression(
-        pattern: #"<span[^>]+class=["'][^"']*(?:page-numbers\s+current|current\s+page-numbers)[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#,
-        options: [.caseInsensitive]
-    )
+    // Invalid patterns trigger an assertion in debug builds and gracefully
+    // fall back to a no-match regex in release, rather than crashing.
+    private nonisolated static let urlExtractionRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: #"(?:href|src|data-src|data-lazy-src)=["']([^"']+)["']"#,
+                options: [.caseInsensitive]
+            )
+        } catch {
+            assertionFailure("Invalid urlExtractionRegex: \(error)")
+            return DetailPageHTMLResolver.noMatchRegex
+        }
+    }()
+    private nonisolated static let pageAnchorRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: #"<a[^>]+class=["'][^"']*page-numbers[^"']*["'][^>]+href=["']([^"']+)["']"#,
+                options: [.caseInsensitive]
+            )
+        } catch {
+            assertionFailure("Invalid pageAnchorRegex: \(error)")
+            return DetailPageHTMLResolver.noMatchRegex
+        }
+    }()
+    private nonisolated static let currentLiRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: #"<li[^>]+class=["'][^"']*current[^"']*["'][^>]*>\s*<span[^>]*>\s*([0-9,]+)\s*</span>"#,
+                options: [.caseInsensitive]
+            )
+        } catch {
+            assertionFailure("Invalid currentLiRegex: \(error)")
+            return DetailPageHTMLResolver.noMatchRegex
+        }
+    }()
+    private nonisolated static let currentSpanRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: #"<span[^>]+class=["'][^"']*(?:page-numbers\s+current|current\s+page-numbers)[^"']*["'][^>]*>\s*([0-9,]+)\s*</span>"#,
+                options: [.caseInsensitive]
+            )
+        } catch {
+            assertionFailure("Invalid currentSpanRegex: \(error)")
+            return DetailPageHTMLResolver.noMatchRegex
+        }
+    }()
+
+    /// A regex that matches nothing — safe fallback for invalid pattern errors.
+    private nonisolated static let noMatchRegex = try! NSRegularExpression(pattern: "$^", options: [])
 
     private nonisolated static func matches(regex: NSRegularExpression, in text: String) -> [String] {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)

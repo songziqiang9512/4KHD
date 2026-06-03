@@ -71,11 +71,14 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        guard !hasAppeared else { return }
+        hasAppeared = true
         if let firstResponder = view.window?.firstResponder as? NSText, firstResponder.isEditable {
             return
         }
-        view.window?.makeFirstResponder(view)
+        view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
     }
+    private var hasAppeared = false
 
     func focus() {
         view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)

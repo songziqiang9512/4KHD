@@ -39,7 +39,9 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
     private let actionChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let actionLabel = NSTextField(labelWithString: "")
     private let desktopButton: NSButton = {
-        let b = NSButton(image: NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "设为桌面壁纸")!,
+        let desktopImage = NSImage(systemSymbolName: "photo.on.rectangle", accessibilityDescription: "设为桌面壁纸")
+                         ?? NSImage(size: NSSize(width: 16, height: 16))
+        let b = NSButton(image: desktopImage,
                          target: nil, action: nil)
         b.bezelStyle = .accessoryBarAction
         b.controlSize = .small
@@ -90,9 +92,12 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        guard !hasAppeared else { return }
+        hasAppeared = true
         if let firstResponder = view.window?.firstResponder as? NSText, firstResponder.isEditable { return }
-        view.window?.makeFirstResponder(view)
+        view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
     }
+    private var hasAppeared = false
 
     func focus() {
         view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
