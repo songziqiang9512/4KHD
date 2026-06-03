@@ -70,6 +70,82 @@ enum WorkspaceToolbarSnapshot {
         let canShare: Bool
         let isFilmstripPresented: Bool
     }
+
+    /// Extracts common fields for toolbar display, eliminating the need
+    /// for repeated 4-way switches in WorkspaceToolbarHost.
+    struct CommonFields {
+        let moduleName: String
+        let searchText: String
+        let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveImage: Bool
+        let canResetZoom: Bool
+        let canShare: Bool
+        let isFilmstripPresented: Bool
+        let hasSelection: Bool
+    }
+
+    var fields: CommonFields {
+        switch self {
+        case .gallery(let s):
+            CommonFields(
+                moduleName: "4KHD", searchText: s.searchText,
+                isRefreshing: s.isRefreshing,
+                canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                hasSelection: true
+            )
+        case .local(let s):
+            CommonFields(
+                moduleName: "本地图片", searchText: s.searchText,
+                isRefreshing: s.isRefreshing,
+                canFavorite: false, isFavorite: false,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                hasSelection: s.hasSelection
+            )
+        case .missKon(let s):
+            CommonFields(
+                moduleName: "MissKon", searchText: s.searchText,
+                isRefreshing: s.isRefreshing,
+                canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                hasSelection: true
+            )
+        case .wallhaven(let s):
+            CommonFields(
+                moduleName: "Wallhaven", searchText: s.searchText,
+                isRefreshing: s.isRefreshing,
+                canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canShare: s.canShare, isFilmstripPresented: false,
+                hasSelection: true
+            )
+        }
+    }
 }
 
 enum WorkspaceCurrentReference {

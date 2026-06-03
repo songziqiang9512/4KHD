@@ -583,63 +583,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     private func observeSnapshot(_ snapshot: WorkspaceToolbarSnapshot) {
+        // Read common fields for Observation tracking.  Also read the
+        // module-specific fields that CommonFields doesn't cover:
+        // layout, sortField, sortDirection.
+        _ = snapshot.fields
         switch snapshot {
-        case .gallery(let gallerySnapshot):
-            _ = gallerySnapshot.searchText
-            _ = gallerySnapshot.layout
-            _ = gallerySnapshot.isRefreshing
-            _ = gallerySnapshot.canFavorite
-            _ = gallerySnapshot.isFavorite
-            _ = gallerySnapshot.canIncreaseGridColumns
-            _ = gallerySnapshot.canDecreaseGridColumns
-            _ = gallerySnapshot.canSelectPreviousImage
-            _ = gallerySnapshot.canSelectNextImage
-            _ = gallerySnapshot.canSaveImage
-            _ = gallerySnapshot.canResetZoom
-            _ = gallerySnapshot.canShare
-            _ = gallerySnapshot.isFilmstripPresented
-        case .local(let localSnapshot):
-            _ = localSnapshot.searchText
-            _ = localSnapshot.layout
-            _ = localSnapshot.sortField
-            _ = localSnapshot.sortDirection
-            _ = localSnapshot.isRefreshing
-            _ = localSnapshot.hasSelection
-            _ = localSnapshot.canIncreaseGridColumns
-            _ = localSnapshot.canDecreaseGridColumns
-            _ = localSnapshot.canSelectPreviousImage
-            _ = localSnapshot.canSelectNextImage
-            _ = localSnapshot.canSaveImage
-            _ = localSnapshot.canResetZoom
-            _ = localSnapshot.canShare
-            _ = localSnapshot.isFilmstripPresented
-        case .missKon(let snapshot):
-            _ = snapshot.searchText
-            _ = snapshot.layout
-            _ = snapshot.isRefreshing
-            _ = snapshot.canFavorite
-            _ = snapshot.isFavorite
-            _ = snapshot.canIncreaseGridColumns
-            _ = snapshot.canDecreaseGridColumns
-            _ = snapshot.canSelectPreviousImage
-            _ = snapshot.canSelectNextImage
-            _ = snapshot.canSaveImage
-            _ = snapshot.canResetZoom
-            _ = snapshot.canShare
-            _ = snapshot.isFilmstripPresented
-        case .wallhaven(let snapshot):
-            _ = snapshot.searchText
-            _ = snapshot.layout
-            _ = snapshot.isRefreshing
-            _ = snapshot.canFavorite
-            _ = snapshot.isFavorite
-            _ = snapshot.canIncreaseGridColumns
-            _ = snapshot.canDecreaseGridColumns
-            _ = snapshot.canSelectPreviousImage
-            _ = snapshot.canSelectNextImage
-            _ = snapshot.canSaveImage
-            _ = snapshot.canResetZoom
-            _ = snapshot.canShare
+        case .gallery(let s):  _ = s.layout
+        case .local(let s):    _ = s.layout; _ = s.sortField; _ = s.sortDirection
+        case .missKon(let s):  _ = s.layout
+        case .wallhaven(let s): _ = s.layout
         }
     }
 
@@ -662,24 +614,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func updateSearchField() {
         guard let searchField = searchItem?.searchField else { return }
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        let text: String
-        switch snapshot {
-        case .gallery(let gallerySnapshot):
-            text = gallerySnapshot.searchText
-            searchField.placeholderString = "搜索 4KHD"
-        case .local(let localSnapshot):
-            text = localSnapshot.searchText
-            searchField.placeholderString = "搜索本地图片"
-        case .missKon(let snapshot):
-            text = snapshot.searchText
-            searchField.placeholderString = "搜索 MissKon"
-        case .wallhaven(let snapshot):
-            text = snapshot.searchText
-            searchField.placeholderString = "搜索 Wallhaven"
-        }
-        if searchField.stringValue != text {
-            searchField.stringValue = text
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        searchField.placeholderString = "搜索 \(f.moduleName)"
+        if searchField.stringValue != f.searchText {
+            searchField.stringValue = f.searchText
         }
     }
 
@@ -695,65 +633,34 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func updateLocalGridColumnsControl() {
         guard let localGridColumnsControl else { return }
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        switch snapshot {
-        case .local(let s):
-            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
-            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
-        case .missKon(let s):
-            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
-            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
-        case .gallery(let s):
-            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
-            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
-        case .wallhaven(let s):
-            localGridColumnsControl.setEnabled(s.canIncreaseGridColumns, forSegment: 0)
-            localGridColumnsControl.setEnabled(s.canDecreaseGridColumns, forSegment: 1)
-        }
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        localGridColumnsControl.setEnabled(f.canIncreaseGridColumns, forSegment: 0)
+        localGridColumnsControl.setEnabled(f.canDecreaseGridColumns, forSegment: 1)
     }
 
     private func updateRefreshItem() {
         guard let refreshItem else { return }
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        switch snapshot {
-        case .gallery(let gallerySnapshot):
-            refreshItem.isEnabled = !gallerySnapshot.isRefreshing
-            refreshItem.toolTip = gallerySnapshot.isRefreshing ? "正在刷新 4KHD" : "刷新 4KHD"
-        case .local(let localSnapshot):
-            refreshItem.isEnabled = !localSnapshot.isRefreshing && localSnapshot.hasSelection
-            refreshItem.toolTip = localSnapshot.hasSelection ? "刷新本地图片" : "先选择一个本地目录"
-        case .missKon(let snapshot):
-            refreshItem.isEnabled = !snapshot.isRefreshing
-            refreshItem.toolTip = snapshot.isRefreshing ? "正在刷新 MissKon" : "刷新 MissKon"
-        case .wallhaven(let snapshot):
-            refreshItem.isEnabled = !snapshot.isRefreshing
-            refreshItem.toolTip = snapshot.isRefreshing ? "正在刷新 Wallhaven" : "刷新 Wallhaven"
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        if currentModuleID == .localLibrary {
+            refreshItem.isEnabled = !f.isRefreshing && f.hasSelection
+            refreshItem.toolTip = f.hasSelection ? "刷新本地图片" : "先选择一个本地目录"
+        } else {
+            refreshItem.isEnabled = !f.isRefreshing
+            refreshItem.toolTip = f.isRefreshing ? "正在刷新 \(f.moduleName)" : "刷新 \(f.moduleName)"
         }
     }
 
     private func updateFavoriteItem() {
         guard let favoriteItem else { return }
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        let canFavorite: Bool
-        let isFavorite: Bool
-        switch snapshot {
-        case .gallery(let s):
-            canFavorite = s.canFavorite
-            isFavorite = s.isFavorite
-        case .missKon(let s):
-            canFavorite = s.canFavorite
-            isFavorite = s.isFavorite
-        case .wallhaven(let s):
-            canFavorite = s.canFavorite
-            isFavorite = s.isFavorite
-        case .local:
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        guard f.canFavorite else {
             favoriteItem.isEnabled = false
             favoriteItem.image = NSImage(systemSymbolName: "heart", accessibilityDescription: "收藏")
             favoriteItem.toolTip = "收藏"
             return
         }
-        favoriteItem.isEnabled = canFavorite
-        if isFavorite {
+        favoriteItem.isEnabled = true
+        if f.isFavorite {
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
             favoriteItem.image = NSImage(
                 systemSymbolName: "heart.fill", accessibilityDescription: "取消收藏"
@@ -763,7 +670,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
                 systemSymbolName: "heart", accessibilityDescription: "收藏"
             )
         }
-        favoriteItem.toolTip = isFavorite ? "取消收藏" : "收藏"
+        favoriteItem.toolTip = f.isFavorite ? "取消收藏" : "收藏"
     }
 
     private func updateResetZoomItem() {
@@ -774,25 +681,22 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func updateFilmstripItem() {
         guard let filmstripItem else { return }
         let isPresented: Bool
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            isPresented = snapshot.isFilmstripPresented
-            filmstripItem.isEnabled = snapshot.canResetZoom
-        case .local(let snapshot):
-            isPresented = snapshot.isFilmstripPresented
-            filmstripItem.isEnabled = snapshot.hasSelection
-        case .missKon(let snapshot):
-            isPresented = snapshot.isFilmstripPresented
-            filmstripItem.isEnabled = snapshot.canSaveImage
-        case .wallhaven:
+        let isEnabled: Bool
+        if currentModuleID == .wallhaven {
             isPresented = false
-            filmstripItem.isEnabled = false
+            isEnabled = false
+        } else {
+            let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+            isPresented = f.isFilmstripPresented
+            isEnabled = currentModuleID == .localLibrary ? f.hasSelection
+                : currentModuleID == .missKon ? f.canSaveImage : f.canResetZoom
         }
         filmstripItem.image = NSImage(
             systemSymbolName: isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle",
             accessibilityDescription: isPresented ? "隐藏缩略图" : "显示缩略图"
         )
         filmstripItem.toolTip = isPresented ? "隐藏缩略图" : "显示缩略图"
+        filmstripItem.isEnabled = isEnabled
     }
 
     private func updateImmersiveItem() {
@@ -813,114 +717,42 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func updateShareItem() {
         guard let shareItem else { return }
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        switch snapshot {
-        case .gallery(let gallerySnapshot):
-            shareItem.isEnabled = gallerySnapshot.canShare
-            shareItem.toolTip = gallerySnapshot.canShare ? "共享当前图集链接" : "先选择一个图集"
-        case .local(let localSnapshot):
-            shareItem.isEnabled = localSnapshot.canShare
-            shareItem.toolTip = localSnapshot.canShare ? "共享当前本地图片" : "先选择一张本地图片"
-        case .missKon(let snapshot):
-            shareItem.isEnabled = snapshot.canShare
-            shareItem.toolTip = snapshot.canShare ? "共享当前链接" : "先选择一个图集"
-        case .wallhaven(let snapshot):
-            shareItem.isEnabled = snapshot.canShare
-            shareItem.toolTip = snapshot.canShare ? "共享当前链接" : "先选择一张壁纸"
-        }
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        shareItem.isEnabled = f.canShare
+        shareItem.toolTip = f.canShare ? "共享当前\(f.moduleName)内容" : "先选择一项"
     }
 
     private var canRefreshCurrentModule: Bool {
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        switch snapshot {
-        case .gallery(let gallerySnapshot):
-            return !gallerySnapshot.isRefreshing
-        case .local(let localSnapshot):
-            return !localSnapshot.isRefreshing && localSnapshot.hasSelection
-        case .missKon(let snapshot):
-            return !snapshot.isRefreshing
-        case .wallhaven(let snapshot):
-            return !snapshot.isRefreshing
-        }
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        return !f.isRefreshing && (currentModuleID != .localLibrary || f.hasSelection)
     }
 
     private var canFavoriteCurrentModule: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canFavorite
-        case .missKon(let snapshot):
-            return snapshot.canFavorite
-        case .wallhaven(let snapshot):
-            return snapshot.canFavorite
-        case .local:
-            return false
-        }
+        appContext.toolbarContext.snapshot(for: currentModuleID).fields.canFavorite
     }
 
     private var canResetCurrentZoom: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canResetZoom
-        case .local(let snapshot):
-            return snapshot.canResetZoom
-        case .missKon(let snapshot):
-            return snapshot.canResetZoom
-        case .wallhaven(let snapshot):
-            return snapshot.canResetZoom
-        }
+        appContext.toolbarContext.snapshot(for: currentModuleID).fields.canResetZoom
     }
 
     private var canSaveCurrentImage: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canSaveImage
-        case .local(let snapshot):
-            return snapshot.canSaveImage
-        case .missKon(let snapshot):
-            return snapshot.canSaveImage
-        case .wallhaven(let snapshot):
-            return snapshot.canSaveImage
-        }
+        appContext.toolbarContext.snapshot(for: currentModuleID).fields.canSaveImage
     }
 
     private var canUseFilmstrip: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            return snapshot.canResetZoom
-        case .local(let snapshot):
-            return snapshot.hasSelection
-        case .missKon(let snapshot):
-            return snapshot.canSaveImage
-        case .wallhaven:
-            return false
-        }
+        if currentModuleID == .wallhaven { return false }
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        return currentModuleID == .localLibrary ? f.hasSelection
+            : currentModuleID == .missKon ? f.canSaveImage : f.canResetZoom
     }
 
     private var canShareCurrentModule: Bool {
-        let snapshot = appContext.toolbarContext.snapshot(for: currentModuleID)
-        switch snapshot {
-        case .gallery(let gallerySnapshot):
-            return gallerySnapshot.canShare
-        case .local(let localSnapshot):
-            return localSnapshot.canShare
-        case .missKon(let snapshot):
-            return snapshot.canShare
-        case .wallhaven(let snapshot):
-            return snapshot.canShare
-        }
+        appContext.toolbarContext.snapshot(for: currentModuleID).fields.canShare
     }
 
     private var canAdjustLocalGridColumns: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .local(let snapshot):
-            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
-        case .missKon(let snapshot):
-            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
-        case .gallery(let snapshot):
-            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
-        case .wallhaven(let snapshot):
-            return snapshot.canIncreaseGridColumns || snapshot.canDecreaseGridColumns
-        }
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        return f.canIncreaseGridColumns || f.canDecreaseGridColumns
     }
 
     private func configureDetailPaneItem(_ item: NSToolbarItem?) {
