@@ -167,19 +167,10 @@ final class WallhavenFeedStore {
     private func resetAndRefresh() {
         invalidateListRequests()
         clearUploaderBrowsing()
-        loadTask?.cancel()
-        loadTask = nil
-        searchLoadTask?.cancel()
-        searchLoadTask = nil
-        searchTask?.cancel()
-        searchTask = nil
-        searchDebounceTask?.cancel()
-        searchDebounceTask = nil
+        cancelAllTasks()
+        resetInFlightMarkers()
         activeSearchQuery = nil
         searchText = ""
-        inFlightPage = nil
-        inFlightSearchPage = nil
-        inFlightUploaderPage = nil
         cachedWallpapers[section] = nil
         cachedPages[section] = nil
         cacheTimestamps[section] = nil
@@ -193,21 +184,29 @@ final class WallhavenFeedStore {
         refreshFromNetwork()
     }
 
+    private func cancelAllTasks() {
+        loadTask?.cancel(); loadTask = nil
+        searchLoadTask?.cancel(); searchLoadTask = nil
+        searchTask?.cancel(); searchTask = nil
+        searchDebounceTask?.cancel(); searchDebounceTask = nil
+    }
+
+    private func resetInFlightMarkers() {
+        inFlightPage = nil
+        inFlightSearchPage = nil
+        inFlightUploaderPage = nil
+    }
+
     // MARK: - Network
 
     func setSection(_ newSection: WallhavenSection) {
         guard section != newSection else { return }
         invalidateListRequests()
-        loadTask?.cancel()
-        searchLoadTask?.cancel()
-        searchTask?.cancel()
-        searchDebounceTask?.cancel()
+        cancelAllTasks()
         clearUploaderBrowsing()
+        resetInFlightMarkers()
         activeSearchQuery = nil
         searchText = ""
-        inFlightPage = nil
-        inFlightSearchPage = nil
-        inFlightUploaderPage = nil
         section = newSection
         restoreSectionCache()
     }
@@ -226,14 +225,7 @@ final class WallhavenFeedStore {
             let requestPurity = accountStore.purity
             let requestApiKey = accountStore.apiKey
             let requestToken = beginListRequest()
-            loadTask?.cancel()
-            loadTask = nil
-            searchTask?.cancel()
-            searchTask = nil
-            searchLoadTask?.cancel()
-            searchLoadTask = nil
-            searchDebounceTask?.cancel()
-            searchDebounceTask = nil
+            cancelAllTasks()
             loadTask = Task { [weak self] in
                 guard let self else { return }
                 do {
@@ -283,10 +275,7 @@ final class WallhavenFeedStore {
         let (searchParams, searchApiKey) = makeSearchParameters(page: 1)
         inFlightPage = nil
         inFlightSearchPage = nil
-        loadTask?.cancel()
-        loadTask = nil
-        searchLoadTask?.cancel()
-        searchLoadTask = nil
+        cancelAllTasks()
         loadTask = Task { [weak self] in
             guard let self else { return }
             self.feedErrorMessage = nil
@@ -412,12 +401,7 @@ final class WallhavenFeedStore {
         activeSearchQuery = trimmed
         isRefreshingList = true
         feedErrorMessage = nil
-        loadTask?.cancel()
-        loadTask = nil
-        searchTask?.cancel()
-        searchTask = nil
-        searchLoadTask?.cancel()
-        searchLoadTask = nil
+        cancelAllTasks()
         inFlightSearchPage = nil
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: 1, query: trimmed)
@@ -497,18 +481,10 @@ final class WallhavenFeedStore {
 
     func clearSearch() {
         invalidateListRequests()
-        searchTask?.cancel()
-        searchTask = nil
-        searchLoadTask?.cancel()
-        searchLoadTask = nil
-        searchDebounceTask?.cancel()
-        searchDebounceTask = nil
-        loadTask?.cancel()
-        loadTask = nil
+        cancelAllTasks()
+        resetInFlightMarkers()
         activeSearchQuery = nil
         searchText = ""
-        inFlightPage = nil
-        inFlightSearchPage = nil
         canLoadMoreList = false
         isRefreshingList = false
         restoreSectionCache()
@@ -590,11 +566,7 @@ final class WallhavenFeedStore {
                 searchQuery: activeSearchQuery
             )
         }
-        loadTask?.cancel()
-        searchTask?.cancel()
-        searchLoadTask?.cancel()
-        searchDebounceTask?.cancel()
-        searchDebounceTask = nil
+        cancelAllTasks()
         isBrowsingUploader = true
         uploaderUsername = username
         uploaderPage = 1
@@ -698,10 +670,7 @@ final class WallhavenFeedStore {
     func restorePreviousBrowseState() {
         guard isBrowsingUploader else { return }
         invalidateListRequests()
-        loadTask?.cancel()
-        searchTask?.cancel()
-        searchLoadTask?.cancel()
-        searchDebounceTask?.cancel()
+        cancelAllTasks()
         guard let saved = savedState else {
             clearUploaderBrowsing()
             restoreSectionCache()
