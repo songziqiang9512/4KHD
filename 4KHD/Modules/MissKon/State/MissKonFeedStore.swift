@@ -403,19 +403,7 @@ final class MissKonFeedStore {
 
     func restoreSectionCache() {
         if section == .favorites {
-            let items = MissKonFavoritesBridge.missKonItems(from: favoritesStore.favorites)
-            allItems = items
-            visibleItems = items
-            nextPageURL = nil
-            canLoadMoreList = false
-            feedErrorMessage = nil
-            let previousID = selectedItemID
-            if selectedItemID == nil || !items.contains(where: { $0.id == selectedItemID }) {
-                selectedItemID = items.first?.id
-            }
-            if selectedItemID != previousID {
-                onSelectionChanged?(selectedItemID.flatMap { id in items.first { $0.id == id } })
-            }
+            refreshFavoritesIfNeeded()
             return
         }
         if let cached = cachedItems[self.section], !cached.isEmpty {
@@ -456,6 +444,26 @@ final class MissKonFeedStore {
             feedErrorMessage = nil
             canLoadMoreList = false
             refreshFromNetwork()
+        }
+    }
+
+    /// Rebuilds the favorites list from FavoritesStore.  No-op when not
+    /// currently viewing the favorites section — the data will be loaded
+    /// next time the user switches to it.
+    func refreshFavoritesIfNeeded() {
+        guard section == .favorites else { return }
+        let items = MissKonFavoritesBridge.missKonItems(from: favoritesStore.favorites)
+        allItems = items
+        visibleItems = items
+        nextPageURL = nil
+        canLoadMoreList = false
+        feedErrorMessage = nil
+        let previousID = selectedItemID
+        if selectedItemID == nil || !items.contains(where: { $0.id == selectedItemID }) {
+            selectedItemID = items.first?.id
+        }
+        if selectedItemID != previousID {
+            onSelectionChanged?(selectedItemID.flatMap { id in items.first { $0.id == id } })
         }
     }
 

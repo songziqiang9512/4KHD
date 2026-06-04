@@ -80,8 +80,12 @@ final class MissKonGalleryStore {
 
     func toggleFavorite(for item: MissKonItem) {
         favorites.toggle(MissKonFavoritesBridge.record(from: item))
-        if feed.section == .favorites {
-            feed.restoreSectionCache()
-        }
+        feed.refreshFavoritesIfNeeded()
+    }
+
+    /// Refreshes the favorites list from FavoritesStore when external
+    /// changes (e.g. import) may have added or removed records.
+    func refreshFavoritesIfNeeded() {
+        feed.refreshFavoritesIfNeeded()
     }
 }

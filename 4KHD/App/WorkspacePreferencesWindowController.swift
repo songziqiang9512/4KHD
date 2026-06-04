@@ -31,12 +31,8 @@ final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarD
         let storageViewController = WorkspaceStoragePreferencesViewController(
             favoritesStore: appContext.favoritesStore,
             onFavoritesImported: {
-                if appContext.galleryStore.section == .favorites {
-                    appContext.galleryStore.refreshFavoritesIfNeeded()
-                }
-                if appContext.missKonStore.section == .favorites {
-                    appContext.missKonStore.feed.restoreSectionCache()
-                }
+                appContext.galleryStore.refreshFavoritesIfNeeded()
+                appContext.missKonStore.refreshFavoritesIfNeeded()
                 appContext.wallhavenStore.feed.refreshFavoritesIfNeeded()
             }
         )
