@@ -33,7 +33,7 @@ final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarD
             onFavoritesImported: {
                 appContext.galleryStore.refreshFavoritesIfNeeded()
                 appContext.missKonStore.refreshFavoritesIfNeeded()
-                appContext.wallhavenStore.feed.refreshFavoritesIfNeeded()
+                appContext.wallhavenStore.refreshFavoritesIfNeeded()
             }
         )
         self.contentPaneViewController = contentPaneViewController

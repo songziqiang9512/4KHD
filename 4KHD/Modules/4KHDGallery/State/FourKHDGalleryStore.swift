@@ -108,9 +108,7 @@ final class FourKHDGalleryStore {
 
     func toggleFavorite(for item: GalleryItem) {
         favorites.toggle(GalleryFavoritesBridge.record(from: item))
-        if feed.section == .favorites {
-            feed.selectFirstItemIfNeeded(force: true)
-        }
+        refreshFavoritesIfNeeded()
     }
 
     func refreshFavoritesIfNeeded() {

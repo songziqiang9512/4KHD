@@ -86,6 +86,12 @@ final class WallhavenGalleryStore {
 
     func toggleFavorite(for wallpaper: Wallpaper) {
         favorites.toggle(WallhavenFavoritesBridge.record(from: wallpaper))
+        refreshFavoritesIfNeeded()
+    }
+
+    /// Refreshes the favorites list from FavoritesStore when external
+    /// changes (e.g. import) may have added or removed records.
+    func refreshFavoritesIfNeeded() {
         feed.refreshFavoritesIfNeeded()
     }
 }
