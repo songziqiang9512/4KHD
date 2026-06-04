@@ -545,6 +545,11 @@ final class WallhavenFeedStore {
 
     /// Call when favorites change externally, to refresh the list if currently viewing favorites.
     func refreshFavoritesIfNeeded() {
+        // Always clear caches so a later switch to .favorites picks up
+        // fresh data from FavoritesStore after import / external mutation.
+        cachedWallpapers[.favorites] = nil
+        cachedPages[.favorites] = nil
+        cacheTimestamps[.favorites] = nil
         guard section == .favorites, !isBrowsingUploader else { return }
         refreshFavorites()
     }

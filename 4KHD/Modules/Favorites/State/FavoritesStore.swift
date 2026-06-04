@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// 收藏列表 + 持久化。
 /// 这里只管理收藏记录本身，不承载具体业务模块的展示模型。
@@ -108,15 +109,19 @@ final class FavoritesStore {
 
     private func load() {
         // Prefer file-based storage; migrate legacy UserDefaults data on first access.
-        if let data = try? Data(contentsOf: Self.favoritesFileURL ?? URL(fileURLWithPath: "/dev/null")),
+        if let url = Self.favoritesFileURL,
+           let data = try? Data(contentsOf: url),
            let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: data) {
             favorites = decoded
         } else if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
                   let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: data) {
             // Migrate from legacy UserDefaults storage to file-based storage.
+            // Only remove the old key *after* confirming the file write succeeded,
+            // so a transient write failure does not lose all favorites.
             favorites = decoded
-            save()
-            UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
+            if save() {
+                UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
+            }
         } else {
             favorites = []
             return
@@ -134,10 +139,17 @@ final class FavoritesStore {
         }
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         guard let fileURL = Self.favoritesFileURL,
-              let data = try? JSONEncoder().encode(favorites) else { return }
-        try? data.write(to: fileURL, options: .atomicWrite)
+              let data = try? JSONEncoder().encode(favorites) else { return false }
+        do {
+            try data.write(to: fileURL, options: .atomicWrite)
+            return true
+        } catch {
+            os_log(.error, "FavoritesStore: save failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     private static var jsonEncoder: JSONEncoder {

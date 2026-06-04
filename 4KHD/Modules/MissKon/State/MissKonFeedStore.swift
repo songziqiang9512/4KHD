@@ -447,10 +447,17 @@ final class MissKonFeedStore {
         }
     }
 
-    /// Rebuilds the favorites list from FavoritesStore.  No-op when not
-    /// currently viewing the favorites section — the data will be loaded
-    /// next time the user switches to it.
+    /// Always rebuilds favorites from FavoritesStore so import / external
+    /// mutations are reflected immediately.  When the user is not currently
+    /// viewing the favorites section only `cachedItems` is invalidated so
+    /// the next visit picks up fresh data.
     func refreshFavoritesIfNeeded() {
+        // Always clear cached section data for .favorites so a later switch
+        // loads fresh data from FavoritesStore instead of stale cache.
+        cachedItems[.favorites] = nil
+        cachedNextPageURLs[.favorites] = nil
+        cacheTimestamps[.favorites] = nil
+
         guard section == .favorites else { return }
         let items = MissKonFavoritesBridge.missKonItems(from: favoritesStore.favorites)
         allItems = items
