@@ -34,7 +34,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "MissKonGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
-    private var scrollObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

@@ -115,7 +115,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         }
     }
 
-    private var moduleVisibilityObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var moduleVisibilityObserver: NSObjectProtocol?
 
     deinit {
         if let routeObserverID {

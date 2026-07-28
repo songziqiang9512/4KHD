@@ -79,7 +79,7 @@ struct ImageSlot: Identifiable {
     let knownURL: URL?
 }
 
-struct ResolvedImagePage {
+struct ResolvedImagePage: Sendable {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]

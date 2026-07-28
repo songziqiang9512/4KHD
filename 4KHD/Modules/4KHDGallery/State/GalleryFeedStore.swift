@@ -127,6 +127,10 @@ final class GalleryFeedStore {
         }
     }
 
+    func bootstrapIfNeeded() {
+        refreshSectionIfNeeded()
+    }
+
     // MARK: - 搜索
 
     func submitSearch(force: Bool = false) {

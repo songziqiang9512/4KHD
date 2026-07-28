@@ -48,8 +48,19 @@ extension GalleryContentViewController {
 
     @objc func toggleFavoriteFromMenu(_ sender: NSMenuItem) {
         guard let item = sender.representedObject as? GalleryItem else { return }
-        library.toggleFavorite(for: item)
-        reloadContent()
+        Task {
+            do {
+                try await library.toggleFavorite(for: item)
+                reloadContent()
+            } catch {
+                let alert = makeAppAlert(
+                    title: "收藏保存失败",
+                    message: error.localizedDescription,
+                    style: .warning
+                )
+                presentAppAlert(alert, in: view.window)
+            }
+        }
     }
 
     @objc func moveFavoriteFromMenu(_ sender: NSMenuItem) {

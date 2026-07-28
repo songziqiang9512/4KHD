@@ -16,6 +16,12 @@ enum WorkspaceAppAssembly {
         let wallhavenPreferences = WallhavenContentPreferences()
         let wallhavenFeedStore = WallhavenFeedStore(accountStore: wallhavenAccountStore, preferences: wallhavenPreferences, favoritesStore: favoritesStore)
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
+        favoritesStore.onFavoritesChanged = {
+            [weak fourKHDGalleryStore, weak missKonStore, weak wallhavenStore] in
+            fourKHDGalleryStore?.refreshFavoritesIfNeeded()
+            missKonStore?.refreshFavoritesIfNeeded()
+            wallhavenStore?.refreshFavoritesIfNeeded()
+        }
         let wallhavenDetailInteraction = WallhavenDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
         let localPreferences = LocalLibraryContentPreferences()
@@ -175,7 +181,7 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: {
-                        fourKHDGalleryStore.refreshFromNetwork()
+                        fourKHDGalleryStore.bootstrapIfNeeded()
                     }
                 ),
                 WorkspaceModuleDescriptor(
@@ -213,7 +219,7 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: {
-                        missKonStore.refreshFromNetwork()
+                        missKonStore.bootstrapIfNeeded()
                     }
                 ),
                 WorkspaceModuleDescriptor(
@@ -250,7 +256,7 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: {
-                        wallhavenStore.refreshFromNetwork()
+                        wallhavenStore.bootstrapIfNeeded()
                     }
                 )
             ]

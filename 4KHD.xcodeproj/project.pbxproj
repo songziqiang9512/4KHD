@@ -12,12 +12,24 @@
 
 /* Begin PBXFileReference section */
 		986D1CCE2F824386006EDCBC /* 4KHD.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = 4KHD.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000012F00000000000001 /* 4KHDTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = 4KHDTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000022F00000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 986D1CC62F824386006EDCBC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 986D1CCD2F824386006EDCBC;
+			remoteInfo = 4KHD;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		986D1CE42FBB0001006EDCBC /* Exceptions for "4KHD" folder in "4KHD" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				4KHD.entitlements,
 				Info.plist,
 			);
 			target = 986D1CCD2F824386006EDCBC /* 4KHD */;
@@ -33,6 +45,11 @@
 			path = 4KHD;
 			sourceTree = "<group>";
 		};
+		A10000032F00000000000001 /* 4KHDTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = 4KHDTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +61,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000042F00000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -51,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				986D1CD02F824386006EDCBC /* 4KHD */,
+				A10000032F00000000000001 /* 4KHDTests */,
 				986D1CCF2F824386006EDCBC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -59,6 +84,7 @@
 			isa = PBXGroup;
 			children = (
 				986D1CCE2F824386006EDCBC /* 4KHD.app */,
+				A10000012F00000000000001 /* 4KHDTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,6 +115,29 @@
 			productReference = 986D1CCE2F824386006EDCBC /* 4KHD.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A10000052F00000000000001 /* 4KHDTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000062F00000000000001 /* Build configuration list for PBXNativeTarget "4KHDTests" */;
+			buildPhases = (
+				A10000072F00000000000001 /* Sources */,
+				A10000042F00000000000001 /* Frameworks */,
+				A10000082F00000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A10000092F00000000000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000032F00000000000001 /* 4KHDTests */,
+			);
+			name = 4KHDTests;
+			packageProductDependencies = (
+			);
+			productName = 4KHDTests;
+			productReference = A10000012F00000000000001 /* 4KHDTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -101,6 +150,10 @@
 				TargetAttributes = {
 					986D1CCD2F824386006EDCBC = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					A10000052F00000000000001 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 986D1CCD2F824386006EDCBC;
 					};
 				};
 			};
@@ -122,6 +175,7 @@
 			projectRoot = "";
 			targets = (
 				986D1CCD2F824386006EDCBC /* 4KHD */,
+				A10000052F00000000000001 /* 4KHDTests */,
 			);
 		};
 /* End PBXProject section */
@@ -134,10 +188,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000082F00000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		986D1CCA2F824386006EDCBC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000072F00000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -277,6 +345,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_ENTITLEMENTS = 4KHD/4KHD.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 155;
@@ -286,7 +355,6 @@
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_PICTURE_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
@@ -312,7 +380,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -321,7 +389,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_ENTITLEMENTS = 4KHD/4KHD.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 155;
@@ -331,7 +400,6 @@
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_FILE_ACCESS_PICTURE_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
@@ -357,7 +425,37 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A100000A2F00000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = H9QWU9XN8R;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.songziqiang.4khd-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/4KHD.app/Contents/MacOS/4KHD";
+			};
+			name = Debug;
+		};
+		A100000B2F00000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = H9QWU9XN8R;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.songziqiang.4khd-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/4KHD.app/Contents/MacOS/4KHD";
 			};
 			name = Release;
 		};
@@ -382,7 +480,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A10000062F00000000000001 /* Build configuration list for PBXNativeTarget "4KHDTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000A2F00000000000001 /* Debug */,
+				A100000B2F00000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin PBXTargetDependency section */
+		A10000092F00000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 986D1CCD2F824386006EDCBC /* 4KHD */;
+			targetProxy = A10000022F00000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		986D1CE32F865C5A006EDCBC /* XCRemoteSwiftPackageReference "Nuke" */ = {

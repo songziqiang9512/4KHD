@@ -1,17 +1,17 @@
 import Foundation
 import OSLog
 
-struct CachedDetailImagePage {
+struct CachedDetailImagePage: Sendable {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]
 }
 
-final class DetailPageImageCache {
+nonisolated final class DetailPageImageCache: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.songziqiang.4khd", category: "DetailPageCache")
     static let shared = DetailPageImageCache()
 
-    private struct Entry: Codable {
+    private struct Entry: Codable, Sendable {
         let pageURL: URL
         let imageURLs: [URL]
         let pageURLs: [URL]
@@ -27,7 +27,8 @@ final class DetailPageImageCache {
     private let maxPersistentEntryCount = 800
     private var storage: [String: Entry] = [:]
     private var cachedDetailPaths = Set<String>()
-    private var didLoadFromDisk = false
+    private var loadGeneration = 0
+    private var persistentOverrides: [String: Bool] = [:]
     private var pendingSaveWorkItem: DispatchWorkItem?
 
     private init() {
@@ -35,6 +36,12 @@ final class DetailPageImageCache {
             ?? FileManager.default.temporaryDirectory
         let directory = supportDirectory.appendingPathComponent("4KHD/DetailPageCache", isDirectory: true)
         cacheURL = directory.appendingPathComponent("pages.json")
+        scheduleInitialLoad()
+    }
+
+    init(cacheURL: URL) {
+        self.cacheURL = cacheURL
+        scheduleInitialLoad()
     }
 
     func urls(for pageURL: URL) -> ResolvedImagePage? {
@@ -45,7 +52,6 @@ final class DetailPageImageCache {
 
     func page(for pageURL: URL) -> CachedDetailImagePage? {
         lock.lock()
-        loadFromDiskIfNeededLocked()
         let key = pageURL.absoluteString
         guard let entry = storage[key] else {
             lock.unlock()
@@ -68,17 +74,17 @@ final class DetailPageImageCache {
 
     func store(pageURL: URL, imageURLs: [URL], pageURLs: [URL]) {
         lock.lock()
-        loadFromDiskIfNeededLocked()
         let key = pageURL.absoluteString
         let existing = storage[key]
+        let detailPath = pageURL.normalizedDetailPathKey
         storage[key] = Entry(
             pageURL: pageURL,
             imageURLs: imageURLs,
             pageURLs: pageURLs,
             updatedAt: Date(),
-            isPersistent: existing?.isPersistent ?? false
+            isPersistent: persistentOverrides[detailPath] ?? existing?.isPersistent ?? false
         )
-        cachedDetailPaths.insert(pageURL.normalizedDetailPathKey)
+        cachedDetailPaths.insert(detailPath)
         pruneEntriesLocked()
         scheduleSaveLocked()
         lock.unlock()
@@ -86,7 +92,6 @@ final class DetailPageImageCache {
 
     func containsCachedPage(forDetailURL detailURL: URL) -> Bool {
         lock.lock()
-        loadFromDiskIfNeededLocked()
         let hasEntry = cachedDetailPaths.contains(detailURL.normalizedDetailPathKey)
         lock.unlock()
         return hasEntry
@@ -94,7 +99,7 @@ final class DetailPageImageCache {
 
     func setPersistent(_ isPersistent: Bool, forDetailURL detailURL: URL) {
         lock.lock()
-        loadFromDiskIfNeededLocked()
+        persistentOverrides[detailURL.normalizedDetailPathKey] = isPersistent
         var didChange = false
         for (key, entry) in storage where entry.pageURL.isSameDetailPath(as: detailURL) && entry.isPersistent != isPersistent {
             var updated = entry
@@ -112,7 +117,6 @@ final class DetailPageImageCache {
 
     func prune() {
         lock.lock()
-        loadFromDiskIfNeededLocked()
         if pruneEntriesLocked() {
             scheduleSaveLocked()
         }
@@ -120,8 +124,8 @@ final class DetailPageImageCache {
     }
 
     func flush() {
+        saveQueue.sync {}
         lock.lock()
-        loadFromDiskIfNeededLocked()
         let snapshot = storage
         let cacheURL = cacheURL
         pendingSaveWorkItem?.cancel()
@@ -133,19 +137,48 @@ final class DetailPageImageCache {
         }
     }
 
-    private func loadFromDiskIfNeededLocked() {
-        guard !didLoadFromDisk else { return }
-        didLoadFromDisk = true
-        guard let data = try? Data(contentsOf: cacheURL),
-              let decoded = try? JSONDecoder().decode([String: Entry].self, from: data) else {
-            storage = [:]
-            cachedDetailPaths = []
-            return
+    func clear() throws {
+        lock.lock()
+        loadGeneration += 1
+        pendingSaveWorkItem?.cancel()
+        pendingSaveWorkItem = nil
+        storage.removeAll()
+        cachedDetailPaths.removeAll()
+        let cacheDirectory = cacheURL.deletingLastPathComponent()
+        lock.unlock()
+
+        try saveQueue.sync {
+            if FileManager.default.fileExists(atPath: cacheDirectory.path) {
+                try FileManager.default.removeItem(at: cacheDirectory)
+            }
         }
-        storage = decoded
-        rebuildCachedDetailPathsLocked()
-        if pruneEntriesLocked() {
-            scheduleSaveLocked()
+    }
+
+    private func scheduleInitialLoad() {
+        let cacheURL = cacheURL
+        let generation = loadGeneration
+        saveQueue.async { [weak self] in
+            guard let data = try? Data(contentsOf: cacheURL),
+                  let decoded = try? JSONDecoder().decode([String: Entry].self, from: data),
+                  let self else {
+                return
+            }
+            lock.lock()
+            guard loadGeneration == generation else {
+                lock.unlock()
+                return
+            }
+            for (key, var entry) in decoded where storage[key] == nil {
+                if let override = persistentOverrides[entry.pageURL.normalizedDetailPathKey] {
+                    entry.isPersistent = override
+                }
+                storage[key] = entry
+            }
+            rebuildCachedDetailPathsLocked()
+            if pruneEntriesLocked() {
+                scheduleSaveLocked()
+            }
+            lock.unlock()
         }
     }
 

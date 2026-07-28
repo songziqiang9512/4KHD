@@ -20,8 +20,13 @@ struct WorkspaceModuleDescriptor {
 }
 
 @MainActor
-struct WorkspaceModuleRegistry {
+final class WorkspaceModuleRegistry {
     let modules: [WorkspaceModuleDescriptor]
+    private var bootstrappedModuleIDs = Set<WorkspaceModuleID>()
+
+    init(modules: [WorkspaceModuleDescriptor]) {
+        self.modules = modules
+    }
 
     private var modulesByID: [WorkspaceModuleID: WorkspaceModuleDescriptor] {
         Dictionary(uniqueKeysWithValues: modules.map { ($0.id, $0) })
@@ -72,10 +77,9 @@ struct WorkspaceModuleRegistry {
         descriptor(for: route)?.applyRoute(route)
     }
 
-    func bootstrapModules() {
-        for module in modules {
-            module.bootstrap()
-        }
+    func bootstrapModule(_ moduleID: WorkspaceModuleID) {
+        guard bootstrappedModuleIDs.insert(moduleID).inserted else { return }
+        descriptor(for: moduleID)?.bootstrap()
     }
 
     private func normalizedRouteIfAvailable(_ route: WorkspaceRoute) -> WorkspaceRoute? {

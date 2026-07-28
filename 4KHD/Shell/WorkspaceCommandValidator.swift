@@ -90,108 +90,38 @@ final class WorkspaceCommandValidator {
     }
 
     private func canRefreshCurrentModule(_ moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return !snapshot.isRefreshing
-        case .local(let snapshot):
-            return !snapshot.isRefreshing && snapshot.hasSelection
-        case .missKon(let snapshot):
-            return !snapshot.isRefreshing
-        case .wallhaven(let snapshot):
-            return !snapshot.isRefreshing
-        }
+        let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
+        return !fields.isRefreshing && (moduleID != .localLibrary || fields.hasSelection)
     }
 
     private func canShareCurrentModule(_ moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return snapshot.canShare
-        case .local(let snapshot):
-            return snapshot.canShare
-        case .missKon(let snapshot):
-            return snapshot.canShare
-        case .wallhaven(let snapshot):
-            return snapshot.canShare
-        }
+        appContext.toolbarContext.snapshot(for: moduleID).fields.canShare
     }
 
     private func canSaveCurrentImage(_ moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return snapshot.canSaveImage
-        case .local(let snapshot):
-            return snapshot.canSaveImage
-        case .missKon(let snapshot):
-            return snapshot.canSaveImage
-        case .wallhaven(let snapshot):
-            return snapshot.canSaveImage
-        }
+        appContext.toolbarContext.snapshot(for: moduleID).fields.canSaveImage
     }
 
     private func canResetCurrentZoom(_ moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return snapshot.canResetZoom
-        case .local(let snapshot):
-            return snapshot.canResetZoom
-        case .missKon(let snapshot):
-            return snapshot.canResetZoom
-        case .wallhaven(let snapshot):
-            return snapshot.canResetZoom
-        }
+        appContext.toolbarContext.snapshot(for: moduleID).fields.canResetZoom
     }
 
     private func canInspectCurrentItem(_ moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return snapshot.canShare
-        case .local(let snapshot):
-            return snapshot.hasSelection
-        case .missKon(let snapshot):
-            return snapshot.canShare
-        case .wallhaven(let snapshot):
-            return snapshot.canShare
-        }
+        appContext.toolbarContext.snapshot(for: moduleID).fields.hasSelection
     }
 
     private func canFavoriteCurrentItem(_ moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return snapshot.canFavorite
-        case .missKon(let snapshot):
-            return snapshot.canFavorite
-        case .wallhaven(let snapshot):
-            return snapshot.canFavorite
-        case .local:
-            return false
-        }
+        appContext.toolbarContext.snapshot(for: moduleID).fields.canFavorite
     }
 
     private func canStepImage(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
-        case .local(let snapshot):
-            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
-        case .missKon(let snapshot):
-            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
-        case .wallhaven(let snapshot):
-            return delta < 0 ? snapshot.canSelectPreviousImage : snapshot.canSelectNextImage
-        }
+        let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
+        return delta < 0 ? fields.canSelectPreviousImage : fields.canSelectNextImage
     }
 
     private func canAdjustLocalGridColumns(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {
-        let snapshot = appContext.toolbarContext.snapshot(for: moduleID)
-        switch snapshot {
-        case .local(let s):
-            return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
-        case .missKon(let s):
-            return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
-        case .wallhaven(let s):
-            return delta > 0 ? s.canIncreaseGridColumns : s.canDecreaseGridColumns
-        default:
-            return false
-        }
+        let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
+        return delta > 0 ? fields.canIncreaseGridColumns : fields.canDecreaseGridColumns
     }
 
     private func updateFavoriteValidationItem(
@@ -199,19 +129,13 @@ final class WorkspaceCommandValidator {
         moduleID: WorkspaceModuleID
     ) {
         guard let menuItem = item as? NSMenuItem else { return }
-        let isFavorite: Bool
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            isFavorite = snapshot.isFavorite
-        case .missKon(let snapshot):
-            isFavorite = snapshot.isFavorite
-        case .wallhaven(let snapshot):
-            isFavorite = snapshot.isFavorite
-        case .local:
+        let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
+        guard fields.canFavorite else {
             menuItem.title = "Favorite"
             menuItem.state = .off
             return
         }
+        let isFavorite = fields.isFavorite
         menuItem.title = isFavorite ? "Unfavorite" : "Favorite"
         menuItem.state = isFavorite ? .on : .off
     }
@@ -222,17 +146,7 @@ final class WorkspaceCommandValidator {
         isList: Bool
     ) {
         guard let menuItem = item as? NSMenuItem else { return }
-        let selectedLayoutIsList: Bool
-        switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case .gallery(let snapshot):
-            selectedLayoutIsList = snapshot.layout == .list
-        case .local(let snapshot):
-            selectedLayoutIsList = snapshot.layout == .list
-        case .missKon(let snapshot):
-            selectedLayoutIsList = snapshot.layout == .list
-        case .wallhaven(let snapshot):
-            selectedLayoutIsList = snapshot.layout == .list
-        }
+        let selectedLayoutIsList = appContext.toolbarContext.snapshot(for: moduleID).isListLayout
         menuItem.state = selectedLayoutIsList == isList ? .on : .off
     }
 

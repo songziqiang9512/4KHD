@@ -392,8 +392,8 @@ private enum MainMenuBuilder {
     }
 
     private static func gridColumnsMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Local Grid Columns", action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: "Local Grid Columns")
+        let item = NSMenuItem(title: "Grid Columns", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Grid Columns")
         menu.addItem(NSMenuItem(
             title: "Increase Columns",
             action: #selector(WorkspaceSplitViewController.increaseLocalGridColumns(_:)),

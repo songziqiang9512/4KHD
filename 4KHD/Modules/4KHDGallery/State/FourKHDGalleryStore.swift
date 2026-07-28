@@ -60,6 +60,7 @@ final class FourKHDGalleryStore {
     func submitSearch() { feed.submitSearch() }
     func clearSearch() { feed.clearSearch() }
     func refreshFromNetwork() { feed.refreshFromNetwork() }
+    func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
 
     func select(_ item: GalleryItem, force: Bool = false) {
         feed.select(item, force: force)
@@ -106,9 +107,8 @@ final class FourKHDGalleryStore {
 
     func isFavorite(_ item: GalleryItem) -> Bool { favorites.contains(detailURL: item.detailURL) }
 
-    func toggleFavorite(for item: GalleryItem) {
-        favorites.toggle(GalleryFavoritesBridge.record(from: item))
-        refreshFavoritesIfNeeded()
+    func toggleFavorite(for item: GalleryItem) async throws {
+        try await favorites.toggle(GalleryFavoritesBridge.record(from: item))
     }
 
     func refreshFavoritesIfNeeded() {

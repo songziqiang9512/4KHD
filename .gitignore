@@ -18,3 +18,5 @@ Package.resolved
 
 # Local scraper output
 Scripts/outputs/
+
+.claude

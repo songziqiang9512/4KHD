@@ -60,6 +60,7 @@ final class WallhavenGalleryStore {
 
     func select(_ wallpaper: Wallpaper) { feed.select(wallpaper) }
     func refreshFromNetwork() { feed.refreshFromNetwork() }
+    func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
     func loadMoreIfNeeded() { feed.loadMoreIfNeeded() }
     func setSearchText(_ text: String) { feed.setSearchText(text) }
     func submitSearch(_ query: String) { feed.submitSearch(query) }
@@ -84,9 +85,8 @@ final class WallhavenGalleryStore {
         favorites.contains(detailURL: wallpaper.sourcePageUrl)
     }
 
-    func toggleFavorite(for wallpaper: Wallpaper) {
-        favorites.toggle(WallhavenFavoritesBridge.record(from: wallpaper))
-        refreshFavoritesIfNeeded()
+    func toggleFavorite(for wallpaper: Wallpaper) async throws {
+        try await favorites.toggle(WallhavenFavoritesBridge.record(from: wallpaper))
     }
 
     /// Refreshes the favorites list from FavoritesStore when external

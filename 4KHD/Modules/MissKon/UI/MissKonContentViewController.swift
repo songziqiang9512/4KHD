@@ -385,8 +385,19 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
     @objc private func toggleFavoriteFromMenu(_ sender: NSMenuItem) {
         guard let item = sender.representedObject as? MissKonItem else { return }
-        library.toggleFavorite(for: item)
-        reloadContent()
+        Task {
+            do {
+                try await library.toggleFavorite(for: item)
+                reloadContent()
+            } catch {
+                let alert = makeAppAlert(
+                    title: "收藏保存失败",
+                    message: error.localizedDescription,
+                    style: .warning
+                )
+                presentAppAlert(alert, in: view.window)
+            }
+        }
     }
 
     @objc private func shareItem(_ sender: NSMenuItem) {

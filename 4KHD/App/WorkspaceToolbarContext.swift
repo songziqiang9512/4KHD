@@ -103,7 +103,7 @@ enum WorkspaceToolbarSnapshot {
                 canSelectNextImage: s.canSelectNextImage,
                 canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
-                hasSelection: true
+                hasSelection: s.canShare
             )
         case .local(let s):
             CommonFields(
@@ -129,7 +129,7 @@ enum WorkspaceToolbarSnapshot {
                 canSelectNextImage: s.canSelectNextImage,
                 canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
-                hasSelection: true
+                hasSelection: s.canShare
             )
         case .wallhaven(let s):
             CommonFields(
@@ -142,8 +142,21 @@ enum WorkspaceToolbarSnapshot {
                 canSelectNextImage: s.canSelectNextImage,
                 canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: false,
-                hasSelection: true
+                hasSelection: s.canShare
             )
+        }
+    }
+
+    var isListLayout: Bool {
+        switch self {
+        case .gallery(let snapshot):
+            snapshot.layout == .list
+        case .local(let snapshot):
+            snapshot.layout == .list
+        case .missKon(let snapshot):
+            snapshot.layout == .list
+        case .wallhaven(let snapshot):
+            snapshot.layout == .list
         }
     }
 }
@@ -373,6 +386,32 @@ final class WorkspaceToolbarContext {
         }
     }
 
+    func setLayout(isList: Bool, for moduleID: WorkspaceModuleID) {
+        switch moduleID {
+        case .fourKHDGallery:
+            setGalleryLayout(isList ? .list : .grid)
+        case .localLibrary:
+            setLocalLayout(isList ? .list : .grid)
+        case .missKon:
+            setMissKonLayout(isList ? .list : .grid)
+        case .wallhaven:
+            setWallhavenLayout(isList ? .list : .grid)
+        }
+    }
+
+    func adjustGridColumns(delta: Int, for moduleID: WorkspaceModuleID) {
+        switch moduleID {
+        case .fourKHDGallery:
+            adjustGalleryGridColumns(delta: delta)
+        case .localLibrary:
+            adjustLocalGridColumns(delta: delta)
+        case .missKon:
+            adjustMissKonGridColumns(delta: delta)
+        case .wallhaven:
+            adjustWallhavenGridColumns(delta: delta)
+        }
+    }
+
     func submitSearch(for moduleID: WorkspaceModuleID) {
         switch moduleID {
         case .fourKHDGallery:
@@ -475,18 +514,29 @@ final class WorkspaceToolbarContext {
     }
 
     func toggleFavorite(for moduleID: WorkspaceModuleID) {
-        switch moduleID {
-        case .fourKHDGallery:
-            guard let item = galleryStore.selectedItem else { return }
-            galleryStore.toggleFavorite(for: item)
-        case .missKon:
-            guard let item = missKonStore.currentItem else { return }
-            missKonStore.toggleFavorite(for: item)
-        case .wallhaven:
-            guard let wallpaper = wallhavenStore.selectedWallpaper else { return }
-            wallhavenStore.toggleFavorite(for: wallpaper)
-        case .localLibrary:
-            return
+        Task {
+            do {
+                switch moduleID {
+                case .fourKHDGallery:
+                    guard let item = galleryStore.selectedItem else { return }
+                    try await galleryStore.toggleFavorite(for: item)
+                case .missKon:
+                    guard let item = missKonStore.currentItem else { return }
+                    try await missKonStore.toggleFavorite(for: item)
+                case .wallhaven:
+                    guard let wallpaper = wallhavenStore.selectedWallpaper else { return }
+                    try await wallhavenStore.toggleFavorite(for: wallpaper)
+                case .localLibrary:
+                    return
+                }
+            } catch {
+                let alert = makeAppAlert(
+                    title: "收藏保存失败",
+                    message: error.localizedDescription,
+                    style: .warning
+                )
+                presentAppAlert(alert, in: appModalHostWindow())
+            }
         }
     }
 

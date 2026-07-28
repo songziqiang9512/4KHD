@@ -55,22 +55,11 @@ final class ApifyLibrary {
     }
 
     private static func loadPayload(bundle: Bundle) -> RootPayload? {
-        let candidates = [
-            URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("Scripts/outputs/4khd_site_capture/apify-expanded/expanded-ui-content.json")
-        ].compactMap { $0 }
-
-        for url in candidates {
-            guard let data = try? Data(contentsOf: url),
-                  let payload = try? JSONDecoder().decode(RootPayload.self, from: data) else {
-                continue
-            }
-            return payload
+        guard let url = bundle.url(forResource: "expanded-ui-content", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else {
+            return nil
         }
-        return nil
+        return try? JSONDecoder().decode(RootPayload.self, from: data)
     }
 
     private static func mapPayload(_ payload: RootPayload?) -> [GallerySection: [GalleryItem]] {

@@ -140,7 +140,9 @@
 - 在线模块异步结果必须按请求时的 section/query 回写，不能在 `await` 后直接读当前 section 写状态
 - 收藏桥和详情图片解析必须使用 exact/subdomain allowlist，不要用 `host.contains(...)`
 - 详情 HTML 截取不要用 `lowercased()` 产生的 `String.Index` 切原字符串；用 `NSString`/`NSRange` 或原字符串 case-insensitive range
-- 当前 Xcode 工程只有 `4KHD` App target，尚未配置 XCTest target；补单元测试前要先建测试 target
+- 当前 Xcode 工程包含 `4KHD` App target 和 `4KHDTests` XCTest target；纯逻辑与共享命令行为优先补回归测试
+- 在线模块通过 `WorkspaceModuleRegistry.bootstrapModule(_:)` 在首次进入时启动；不要恢复为启动阶段全模块并发刷新
+- 在线图片只使用 Nuke DataCache 作为磁盘层，URLCache 不落盘；缓存清理必须同时清内存状态与对应磁盘目录
 - **生产代码 0 SwiftUI** — 不得引入 `import SwiftUI`、`NSHostingController`、`NSViewRepresentable`、`AnyView`
 - 分页 `nextPageURL` 永远直接用 `page.nextPageURL`，不要加 `newItems.isEmpty ? nil : ...` 条件
 

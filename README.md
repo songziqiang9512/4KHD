@@ -65,6 +65,7 @@
     Wallhaven/  — wallhaven.cc 在线壁纸
     LocalLibrary/ — 本地图片
     Favorites/  — 收藏记录
+4KHDTests/      — XCTest 回归测试
 ```
 
 详见 `AGENTS.md`。
@@ -84,6 +85,9 @@
 open 4KHD.xcodeproj
 # 或
 xcodebuild -scheme 4KHD -project 4KHD.xcodeproj -configuration Debug build
+
+# 回归测试
+xcodebuild -scheme 4KHD -project 4KHD.xcodeproj -destination 'platform=macOS' test
 ```
 
 ### 设计原则
@@ -104,10 +108,12 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 - Gallery 详情页解析结果：`~/Library/Application Support/4KHD/DetailPageCache/pages.json`
 - MissKon 列表缓存：`~/Library/Application Support/4KHD/MissKon/feed-cache.json`
 - Wallhaven 详情缓存：`~/Library/Application Support/4KHD/Wallhaven/detail-cache.json`
-- 本地缩略图：`~/Library/Application Support/4KHD/LocalImageThumbnails/`
-- 图片：Nuke 管线管理（384MB 内存缓存 + 可配置磁盘缓存）
-- 收藏记录：UserDefaults 持久化
+- 本地缩略图：`~/Library/Application Support/4KHD/LocalImageThumbnails/`（最多 1GB / 20,000 文件）
+- 在线图片：Nuke 管线管理（384MB 内存缓存 + 单一可配置磁盘缓存）
+- 收藏记录：`~/Library/Application Support/4KHD/favorites.json`
 - Wallhaven API Key：UserDefaults 存储
+
+在线模块在首次进入时才启动网络加载，未打开的模块不会在应用启动阶段抢占请求和解码资源。
 
 ## 注意事项
 

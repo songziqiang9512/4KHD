@@ -20,7 +20,6 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     private var lastAppliedListSignature: [LocalImageListRowSignature] = []
     private var pendingScrollIndex: Int?
     private var metadataTask: Task<Void, Never>?
-    private var availabilityTask: Task<Void, Never>?
     private var isObserving = false
     private var isObservingGridLayoutPreferences = false
     var isApplyingSelection = false
@@ -50,7 +49,6 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
 
     deinit {
         metadataTask?.cancel()
-        availabilityTask?.cancel()
     }
 
     override func loadView() {
@@ -297,7 +295,6 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         guard ids != observedImageIDs else { return }
         observedImageIDs = ids
         metadataTask?.cancel()
-        availabilityTask?.cancel()
 
         metadataTask = Task { [weak self] in
             let metadata = await LocalImageMetadataService.loadMetadata(for: images)
@@ -305,59 +302,6 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             guard let self else { return }
             self.metadataByImageID.merge(metadata) { _, new in new }
             self.reloadContent()
-        }
-        availabilityTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                let availability = await LocalImageMetadataService.loadAvailability(for: images)
-                guard !Task.isCancelled else { return }
-                var changedIDs = Set<LocalImageItem.ID>()
-                for (id, fileExists) in availability {
-                    guard let metadata = self?.metadataByImageID[id], metadata.fileExists != fileExists else { continue }
-                    self?.metadataByImageID[id] = LocalImageMetadata(
-                        fileSize: metadata.fileSize,
-                        modifiedDate: metadata.modifiedDate,
-                        pixelWidth: metadata.pixelWidth,
-                        pixelHeight: metadata.pixelHeight,
-                        fileExists: fileExists
-                    )
-                    changedIDs.insert(id)
-                }
-                guard !changedIDs.isEmpty else { continue }
-                self?.reloadAvailabilityChangedItems(changedIDs)
-            }
-        }
-    }
-
-    /// Reload only the visible cells/rows whose availability changed,
-    /// avoiding a full ``reloadContent()`` that resets the entire view.
-    @MainActor
-    private func reloadAvailabilityChangedItems(_ changedIDs: Set<LocalImageItem.ID>) {
-        if preferences.layout == .grid, activeView === gridView {
-            // Sync the grid's in-memory entries so card badges reflect file existence.
-            for i in gridView.entries.indices {
-                let id = gridView.entries[i].image.id
-                guard changedIDs.contains(id), let metadata = metadataByImageID[id] else { continue }
-                gridView.entries[i] = LocalImageGridContainerView.Entry(
-                    originalIndex: gridView.entries[i].originalIndex,
-                    image: gridView.entries[i].image,
-                    metadata: metadata
-                )
-            }
-            let visiblePaths = gridView.collectionView.indexPathsForVisibleItems()
-                .filter { gridView.entries.indices.contains($0.item) && changedIDs.contains(gridView.entries[$0.item].image.id) }
-            if !visiblePaths.isEmpty {
-                gridView.collectionView.reloadItems(at: Set(visiblePaths))
-            }
-        } else if preferences.layout == .list, activeView === scrollView {
-            let changedRows = IndexSet(
-                filteredEntries.enumerated().compactMap { offset, entry in
-                    changedIDs.contains(entry.image.id) ? offset : nil
-                }
-            )
-            if !changedRows.isEmpty {
-                tableView.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integer: 0))
-            }
         }
     }
 

@@ -5,6 +5,17 @@ struct SiteListPage {
     let nextPageURL: URL?
 }
 
+enum SiteListResolverError: LocalizedError, Equatable {
+    case unrecognizedListMarkup
+
+    var errorDescription: String? {
+        switch self {
+        case .unrecognizedListMarkup:
+            "4KHD 列表页面结构无法解析，请稍后重试"
+        }
+    }
+}
+
 enum SiteListResolver {
     private static let requestCoalescer = HTMLRequestCoalescer()
     private static let listItemRegex = regex(#"<li[^>]+class=["'][^"']*wp-block-post[^"']*["'][\s\S]*?</li>"#)
@@ -40,12 +51,18 @@ enum SiteListResolver {
 
     static func resolveSearch(pageURL: URL) async throws -> SiteListPage {
         let html = try await fetchHTML(pageURL)
-        return parse(html: html, pageURL: pageURL, section: .latest, usesLatestPagination: false)
+        return try parse(
+            html: html,
+            pageURL: pageURL,
+            section: .latest,
+            usesLatestPagination: false,
+            allowsEmptyResults: true
+        )
     }
 
     static func resolve(pageURL: URL, section: GallerySection) async throws -> SiteListPage {
         let html = try await fetchHTML(pageURL)
-        return parse(html: html, pageURL: pageURL, section: section)
+        return try parse(html: html, pageURL: pageURL, section: section)
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {
@@ -67,9 +84,21 @@ enum SiteListResolver {
         return html
     }
 
-    private static func parse(html: String, pageURL: URL, section: GallerySection, usesLatestPagination: Bool = true) -> SiteListPage {
-        SiteListPage(
-            items: listItemHTML(in: html).compactMap { makeItem(from: $0, section: section) },
+    static func parse(
+        html: String,
+        pageURL: URL,
+        section: GallerySection,
+        usesLatestPagination: Bool = true,
+        allowsEmptyResults: Bool = false
+    ) throws -> SiteListPage {
+        let itemHTML = listItemHTML(in: html)
+        let items = itemHTML.compactMap { makeItem(from: $0, section: section) }
+        let isRecognizedEmptyResult = allowsEmptyResults && containsRecognizedEmptyState(in: html)
+        guard !items.isEmpty || isRecognizedEmptyResult else {
+            throw SiteListResolverError.unrecognizedListMarkup
+        }
+        return SiteListPage(
+            items: items,
             nextPageURL: nextPageURL(in: html, baseURL: pageURL, section: section, usesLatestPagination: usesLatestPagination)
         )
     }
@@ -80,6 +109,13 @@ enum SiteListResolver {
             guard let matchRange = Range(result.range, in: html) else { return nil }
             return String(html[matchRange])
         }
+    }
+
+    private static func containsRecognizedEmptyState(in html: String) -> Bool {
+        html.range(
+            of: #"(?:no-results|search-no-results|nothing\s+found|no\s+posts)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     private static func nextPageURL(in html: String, baseURL: URL, section: GallerySection, usesLatestPagination: Bool) -> URL? {

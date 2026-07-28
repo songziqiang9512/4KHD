@@ -67,6 +67,7 @@ final class MissKonGalleryStore {
     }
 
     func refreshFromNetwork() { feed.refreshFromNetwork() }
+    func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
     func loadMoreListIfNeeded() { feed.loadMoreListIfNeeded() }
     func setSearchText(_ text: String) { feed.setSearchText(text) }
     func submitSearch(_ query: String) { feed.submitSearch(query) }
@@ -78,9 +79,8 @@ final class MissKonGalleryStore {
         favorites.contains(detailURL: item.detailURL)
     }
 
-    func toggleFavorite(for item: MissKonItem) {
-        favorites.toggle(MissKonFavoritesBridge.record(from: item))
-        feed.refreshFavoritesIfNeeded()
+    func toggleFavorite(for item: MissKonItem) async throws {
+        try await favorites.toggle(MissKonFavoritesBridge.record(from: item))
     }
 
     /// Refreshes the favorites list from FavoritesStore when external

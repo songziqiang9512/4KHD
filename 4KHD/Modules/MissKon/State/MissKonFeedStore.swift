@@ -34,6 +34,13 @@ final class MissKonFeedStore {
     private var cachedItems: [MissKonSection: [MissKonItem]] = [:]
     private var cachedNextPageURLs: [MissKonSection: URL] = [:]
     private var cacheTimestamps: [MissKonSection: Date] = [:]
+    @ObservationIgnored private var cacheLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var didLoadCache = false
+    @ObservationIgnored private var pendingNetworkRefresh = false
+    @ObservationIgnored private let cacheWriteQueue = DispatchQueue(
+        label: "com.songziqiang.4khd.misskon-cache",
+        qos: .utility
+    )
 
     private static let fullPageItemCount = 20
 
@@ -47,9 +54,7 @@ final class MissKonFeedStore {
 
     private static var cacheDirectory: URL? {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        let dir = appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
     }
 
     private static var cacheFileURL: URL? {
@@ -58,8 +63,21 @@ final class MissKonFeedStore {
 
     init(favoritesStore: FavoritesStore) {
         self.favoritesStore = favoritesStore
-        loadCache()
-        restoreSectionCache()
+        let cacheFileURL = Self.cacheFileURL
+        cacheLoadTask = Task { [weak self] in
+            let snapshot = await Task.detached(priority: .utility) {
+                Self.loadCacheSnapshot(from: cacheFileURL)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            self.applyCacheSnapshot(snapshot)
+            self.didLoadCache = true
+            self.cacheLoadTask = nil
+            self.restoreSectionCache(allowNetworkRefresh: false)
+            if self.pendingNetworkRefresh {
+                self.pendingNetworkRefresh = false
+                self.refreshFromNetwork()
+            }
+        }
     }
 
     // MARK: - Cache Persistence
@@ -80,14 +98,30 @@ final class MissKonFeedStore {
             nextPageURLs: cachedNextPageURLs.mapKeys { $0.rawValue }.mapValues { $0.absoluteString },
             timestamps: cacheTimestamps.mapKeys { $0.rawValue }.mapValues { $0.timeIntervalSince1970 }
         )
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        try? data.write(to: fileURL, options: .atomicWrite)
+        cacheWriteQueue.async {
+            do {
+                try FileManager.default.createDirectory(
+                    at: fileURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                let data = try JSONEncoder().encode(snapshot)
+                try data.write(to: fileURL, options: .atomicWrite)
+            } catch {
+                // A failed cache write must not affect the live feed.
+            }
+        }
     }
 
-    private func loadCache() {
-        guard let fileURL = Self.cacheFileURL,
-              let data = try? Data(contentsOf: fileURL),
-              let snapshot = try? JSONDecoder().decode(CacheSnapshot.self, from: data) else { return }
+    private nonisolated static func loadCacheSnapshot(from fileURL: URL?) -> CacheSnapshot? {
+        guard let fileURL,
+              let data = try? Data(contentsOf: fileURL) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CacheSnapshot.self, from: data)
+    }
+
+    private func applyCacheSnapshot(_ snapshot: CacheSnapshot?) {
+        guard let snapshot else { return }
         for (key, items) in snapshot.items {
             guard let section = MissKonSection(rawValue: key) else { continue }
             cachedItems[section] = items
@@ -106,11 +140,49 @@ final class MissKonFeedStore {
         }
     }
 
+    func clearCache() async throws {
+        cacheLoadTask?.cancel()
+        cacheLoadTask = nil
+        didLoadCache = true
+        pendingNetworkRefresh = false
+        loadTask?.cancel()
+        searchLoadTask?.cancel()
+        searchTask?.cancel()
+        searchDebounceTask?.cancel()
+        loadTask = nil
+        searchLoadTask = nil
+        searchTask = nil
+        searchDebounceTask = nil
+        inFlightPageURL = nil
+        inFlightSearchPageURL = nil
+        pendingListLoadMore = false
+        pendingSearchLoadMore = false
+        isRefreshingList = false
+        cachedItems.removeAll()
+        cachedNextPageURLs.removeAll()
+        cacheTimestamps.removeAll()
+        let cacheDirectory = Self.cacheDirectory
+        let cacheWriteQueue = cacheWriteQueue
+        try await Task.detached(priority: .utility) {
+            try cacheWriteQueue.sync {
+                guard let cacheDirectory,
+                      FileManager.default.fileExists(atPath: cacheDirectory.path) else {
+                    return
+                }
+                try FileManager.default.removeItem(at: cacheDirectory)
+            }
+        }.value
+    }
+
     // MARK: - Network
 
     func refreshFromNetwork() {
         if !section.isNetworkBacked {
             if section == .favorites { restoreSectionCache() }
+            return
+        }
+        guard didLoadCache else {
+            pendingNetworkRefresh = true
             return
         }
         if let query = activeSearchQuery, !query.isEmpty {
@@ -166,6 +238,11 @@ final class MissKonFeedStore {
                 }
             }
         }
+    }
+
+    func bootstrapIfNeeded() {
+        guard loadTask == nil, !isRefreshingList else { return }
+        refreshFromNetwork()
     }
 
     func loadMoreListIfNeeded() {
@@ -401,11 +478,12 @@ final class MissKonFeedStore {
         restoreSectionCache()
     }
 
-    func restoreSectionCache() {
+    func restoreSectionCache(allowNetworkRefresh: Bool = true) {
         if section == .favorites {
             refreshFavoritesIfNeeded()
             return
         }
+        guard didLoadCache else { return }
         if let cached = cachedItems[self.section], !cached.isEmpty {
             allItems = cached
             visibleItems = cached
@@ -429,7 +507,7 @@ final class MissKonFeedStore {
             } else {
                 needsRefresh = false
             }
-            if needsRefresh {
+            if needsRefresh, allowNetworkRefresh {
                 refreshFromNetwork()
             }
         } else {
@@ -443,7 +521,9 @@ final class MissKonFeedStore {
             }
             feedErrorMessage = nil
             canLoadMoreList = false
-            refreshFromNetwork()
+            if allowNetworkRefresh {
+                refreshFromNetwork()
+            }
         }
     }
 
@@ -503,7 +583,7 @@ final class MissKonFeedStore {
 
 // MARK: - Cache Snapshot
 
-private struct CacheSnapshot: Codable {
+nonisolated private struct CacheSnapshot: Codable {
     let items: [String: [MissKonItem]]
     let nextPageURLs: [String: String]
     var timestamps: [String: TimeInterval]?

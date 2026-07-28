@@ -36,7 +36,9 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         isSelected: Bool,
         cachedThumbnail: NSImage?,
         searchQuery: String?,
-        thumbnailLoader: @escaping (@escaping (LocalImageThumbnailLoadResult) -> Void) -> Void
+        thumbnailLoader: @escaping @MainActor (
+            @escaping @MainActor (LocalImageThumbnailLoadResult) -> Void
+        ) -> Void
     ) {
         representedID = image.id
         cardView.prepareForImmediateDisplay()

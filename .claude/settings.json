@@ -1,9 +1,40 @@
 {
   "permissions": {
     "allow": [
+      "Bash(xcodebuild:-project,4KHD.xcodeproj,*)",
       "Bash(xcodebuild:*)",
-      "Bash(curl -s -L:*)",
-      "Bash(curl -s -A:*)"
+      "Bash(xcrun:*)",
+      "Bash(swift:build,test,run,package)",
+      "Bash(swiftlint:*)",
+      "Bash(swiftformat:*)",
+      "Bash(open:*4KHD*)",
+      "Bash(osascript:*)",
+      "Bash(screencapture:*)",
+      "Bash(plutil:*)",
+      "Bash(codesign:*)",
+      "Bash(security:find-identity,*)",
+      "Bash(otool:*)",
+      "Bash(nm:*)",
+      "Bash(strings:*)",
+      "Bash(lipo:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(grep:-rn,-i,*)",
+      "Bash(sed:-n,*)",
+      "Bash(sort:*)",
+      "Bash(chmod:*)",
+      "Bash(bash:*.sh,*.command)",
+      "Bash(echo:*)",
+      "Bash(screencapture:*)",
+      "Bash(claude:--version,update)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:misskon.com)",
+      "WebSearch"
+    ],
+    "deny": [
+      "Read(**/.env*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
     ]
   }
 }

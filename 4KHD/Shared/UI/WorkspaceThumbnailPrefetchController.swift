@@ -11,7 +11,7 @@ private enum WorkspaceThumbnailPrefetchConstants {
 
 @MainActor
 final class WorkspaceThumbnailPrefetchController<ID: Hashable> {
-    private var workItem: DispatchWorkItem?
+    nonisolated(unsafe) private var workItem: DispatchWorkItem?
     private var lastPrefetchIDs = Set<ID>()
     private var lastFirstVisibleIndex: Int?
 

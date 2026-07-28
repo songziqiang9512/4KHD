@@ -24,10 +24,6 @@ final class WorkspaceCoalescingQueue {
         self.maxInterval = maxInterval
     }
 
-    deinit {
-        timer?.invalidate()
-    }
-
     func add(id: String, operation: @escaping @MainActor () -> Void) {
         restartTimer()
         if !calls.contains(where: { $0.id == id }) {

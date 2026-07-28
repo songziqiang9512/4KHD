@@ -32,7 +32,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "WallhavenGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
-    private var scrollObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

@@ -70,9 +70,11 @@ class WorkspaceZoomableImageView: NSView {
             context.allowsImplicitAnimation = true
             scrollView.setMagnification(1, centeredAt: center)
         } completionHandler: { [weak self] in
-            guard let self else { return }
-            self.scrollView.contentView.scroll(to: .zero)
-            self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.scrollView.contentView.scroll(to: .zero)
+                self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+            }
         }
     }
 

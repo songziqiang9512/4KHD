@@ -60,12 +60,17 @@ final class WallhavenFeedStore {
 
     /// Cache for resolved wallpaper details so favorites/collections don't re-fetch /w/{id} every time.
     private var detailCache: [String: Wallpaper] = [:]
+    @ObservationIgnored private var detailCacheLoadTask: Task<Void, Never>?
+    @ObservationIgnored private let detailCacheWriteQueue = DispatchQueue(
+        label: "com.songziqiang.4khd.wallhaven-detail-cache",
+        qos: .utility
+    )
 
     private static var detailCacheFileURL: URL? {
         guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        let d = dir.appendingPathComponent("4KHD/Wallhaven", isDirectory: true)
-        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d.appendingPathComponent("detail-cache.json")
+        return dir
+            .appendingPathComponent("4KHD/Wallhaven", isDirectory: true)
+            .appendingPathComponent("detail-cache.json")
     }
 
     var isBrowsingUploader = false
@@ -98,7 +103,17 @@ final class WallhavenFeedStore {
         self.sorting = preferences.preferredSorting
         self.resolution = preferences.preferredResolution
         self.ratio = preferences.preferredRatio
-        loadDetailCache()
+        let detailCacheURL = Self.detailCacheFileURL
+        detailCacheLoadTask = Task { [weak self] in
+            let cached = await Task.detached(priority: .utility) {
+                Self.loadDetailCache(from: detailCacheURL)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            for (key, wallpaper) in cached where self.detailCache[key] == nil {
+                self.detailCache[key] = wallpaper
+            }
+            self.detailCacheLoadTask = nil
+        }
     }
 
     /// The effective purity for API requests, from AccountStore.
@@ -195,6 +210,33 @@ final class WallhavenFeedStore {
         inFlightPage = nil
         inFlightSearchPage = nil
         inFlightUploaderPage = nil
+    }
+
+    func clearCache() async throws {
+        detailCacheLoadTask?.cancel()
+        detailCacheLoadTask = nil
+        invalidateListRequests()
+        cancelAllTasks()
+        resetInFlightMarkers()
+        resolveTask?.cancel()
+        resolveTask = nil
+        isRefreshingList = false
+        isResolvingDetail = false
+        cachedWallpapers.removeAll()
+        cachedPages.removeAll()
+        cacheTimestamps.removeAll()
+        detailCache.removeAll()
+        let cacheDirectory = Self.detailCacheFileURL?.deletingLastPathComponent()
+        let detailCacheWriteQueue = detailCacheWriteQueue
+        try await Task.detached(priority: .utility) {
+            try detailCacheWriteQueue.sync {
+                guard let cacheDirectory,
+                      FileManager.default.fileExists(atPath: cacheDirectory.path) else {
+                    return
+                }
+                try FileManager.default.removeItem(at: cacheDirectory)
+            }
+        }.value
     }
 
     // MARK: - Network
@@ -315,6 +357,11 @@ final class WallhavenFeedStore {
                 self.loadTask = nil
             }
         }
+    }
+
+    func bootstrapIfNeeded() {
+        guard loadTask == nil, !isRefreshingList else { return }
+        refreshFromNetwork()
     }
 
     func loadMoreIfNeeded() {
@@ -769,11 +816,13 @@ final class WallhavenFeedStore {
 
     // MARK: - Detail cache
 
-    private func loadDetailCache() {
-        guard let url = Self.detailCacheFileURL,
+    private nonisolated static func loadDetailCache(from url: URL?) -> [String: Wallpaper] {
+        guard let url,
               let data = try? Data(contentsOf: url),
-              let cached = try? JSONDecoder().decode([String: Wallpaper].self, from: data) else { return }
-        detailCache = cached
+              let cached = try? JSONDecoder().decode([String: Wallpaper].self, from: data) else {
+            return [:]
+        }
+        return cached
     }
 
     private static let maxDetailCacheEntries = 500
@@ -790,9 +839,20 @@ final class WallhavenFeedStore {
             let kept = sorted.prefix(Self.maxDetailCacheEntries).map { ($0.key, $0.value) }
             detailCache = Dictionary(uniqueKeysWithValues: kept)
         }
-        guard let url = Self.detailCacheFileURL,
-              let data = try? JSONEncoder().encode(detailCache) else { return }
-        try? data.write(to: url, options: .atomicWrite)
+        guard let url = Self.detailCacheFileURL else { return }
+        let snapshot = detailCache
+        detailCacheWriteQueue.async {
+            do {
+                try FileManager.default.createDirectory(
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                let data = try JSONEncoder().encode(snapshot)
+                try data.write(to: url, options: .atomicWrite)
+            } catch {
+                // A failed cache write must not affect the live feed.
+            }
+        }
     }
 
     // MARK: - Private

@@ -310,7 +310,9 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
                 filmstripHeightConstraint?.animator().constant = showsFilmstrip ? 112 : 0
                 updateImageTopConstraint(showsFilmstrip: showsFilmstrip)
             } completionHandler: { [weak self] in
-                self?.filmstripView.isHidden = !showsFilmstrip
+                Task { @MainActor [weak self] in
+                    self?.filmstripView.isHidden = !showsFilmstrip
+                }
             }
         } else {
             filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0

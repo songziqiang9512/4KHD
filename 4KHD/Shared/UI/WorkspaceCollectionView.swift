@@ -6,7 +6,7 @@ class WorkspaceCollectionView: NSCollectionView {
 
     private var hoverTrackingArea: NSTrackingArea?
     var lastHoveredIndexPath: IndexPath?
-    private var scrollBoundsObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var scrollBoundsObserver: NSObjectProtocol?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -33,7 +33,9 @@ class WorkspaceCollectionView: NSCollectionView {
             object: clipView,
             queue: .main
         ) { [weak self] _ in
-            self?.updateHoverAfterScroll()
+            Task { @MainActor [weak self] in
+                self?.updateHoverAfterScroll()
+            }
         }
     }
 

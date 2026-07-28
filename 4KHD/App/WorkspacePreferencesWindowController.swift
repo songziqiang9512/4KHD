@@ -30,6 +30,42 @@ final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarD
         )
         let storageViewController = WorkspaceStoragePreferencesViewController(
             favoritesStore: appContext.favoritesStore,
+            clearCaches: {
+                var failures: [String] = []
+                RemoteImagePipeline.shared.clearAllCaches()
+                do {
+                    try DetailPageImageCache.shared.clear()
+                } catch {
+                    failures.append("详情页")
+                }
+                do {
+                    try await LocalImageCache.shared.clear()
+                } catch {
+                    failures.append("本地缩略图")
+                }
+                do {
+                    try await appContext.missKonStore.feed.clearCache()
+                } catch {
+                    failures.append("MissKon")
+                }
+                do {
+                    try await appContext.wallhavenStore.feed.clearCache()
+                } catch {
+                    failures.append("Wallhaven")
+                }
+
+                let tempDirectory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("4KHD-Wallpaper", isDirectory: true)
+                do {
+                    try await Task.detached(priority: .utility) {
+                        guard FileManager.default.fileExists(atPath: tempDirectory.path) else { return }
+                        try FileManager.default.removeItem(at: tempDirectory)
+                    }.value
+                } catch {
+                    failures.append("临时文件")
+                }
+                return failures
+            },
             onFavoritesImported: {
                 appContext.galleryStore.refreshFavoritesIfNeeded()
                 appContext.missKonStore.refreshFavoritesIfNeeded()

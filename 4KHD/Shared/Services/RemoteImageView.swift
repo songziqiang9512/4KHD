@@ -43,10 +43,7 @@ enum OnlineCacheLimit: String, CaseIterable, Identifiable {
     static func apply(_ limit: OnlineCacheLimit) {
         UserDefaults.standard.set(limit.rawValue, forKey: defaultsKey)
         RemoteImagePipeline.shared.applyCacheLimit(limit)
-        NotificationCenter.default.post(name: didChangeNotification, object: limit)
     }
-
-    static let didChangeNotification = Notification.Name("OnlineCacheLimitDidChangeNotification")
 }
 
 final class RemoteImagePipeline {
@@ -57,10 +54,11 @@ final class RemoteImagePipeline {
     private let thumbnailPrefetcher: ImagePrefetcher
     private let urlCache: URLCache
     private let dataCache: DataCache?
+    private var inFlightTasks = Set<ImageTask>()
 
     private init() {
         let cacheLimit = OnlineCacheLimit.current.byteLimit
-        let urlCache = Self.makeURLCache(diskCapacity: cacheLimit)
+        let urlCache = Self.makeURLCache()
         var configuration = ImagePipeline.Configuration()
         configuration.dataLoader = DataLoader(configuration: Self.urlSessionConfiguration(urlCache: urlCache))
         configuration.imageCache = ImageCache(costLimit: 384 * 1024 * 1024, countLimit: 900)
@@ -98,12 +96,14 @@ final class RemoteImagePipeline {
         let bytes = limit.byteLimit
         dataCache?.sizeLimit = bytes
         dataCache?.sweep()
-        urlCache.diskCapacity = bytes
-        urlCache.memoryCapacity = min(bytes / 4, 128 * 1024 * 1024)
     }
 
     func clearAllCaches() {
-        dataCache?.removeAll()
+        detailPrefetcher.stopPrefetching()
+        thumbnailPrefetcher.stopPrefetching()
+        inFlightTasks.forEach { $0.cancel() }
+        inFlightTasks.removeAll()
+        pipeline.cache.removeAll()
         urlCache.removeAllCachedResponses()
     }
 
@@ -130,14 +130,17 @@ final class RemoteImagePipeline {
 
     @discardableResult
     func loadImage(with request: ImageRequest, completion: @escaping (NSImage?) -> Void) -> ImageTask {
-        pipeline.loadImage(with: request) { result in
+        let task = pipeline.loadImage(with: request) { [weak self] result in
             switch result {
             case .success(let response):
                 completion(response.image)
             case .failure:
                 completion(nil)
             }
+            self?.pruneFinishedTasks()
         }
+        track(task)
+        return task
     }
 
     func cachedImage(with request: ImageRequest) -> NSImage? {
@@ -145,14 +148,17 @@ final class RemoteImagePipeline {
     }
 
     func loadData(with request: ImageRequest, completion: @escaping (Data?) -> Void) -> ImageTask {
-        pipeline.loadData(with: request) { result in
+        let task = pipeline.loadData(with: request) { [weak self] result in
             switch result {
             case .success(let payload):
                 completion(payload.data)
             case .failure:
                 completion(nil)
             }
+            self?.pruneFinishedTasks()
         }
+        track(task)
+        return task
     }
 
     func prefetchDetailImages(_ urls: [URL]) {
@@ -171,10 +177,19 @@ final class RemoteImagePipeline {
         detailPrefetcher.stopPrefetching()
     }
 
-    private static func makeURLCache(diskCapacity: Int) -> URLCache {
+    private func track(_ task: ImageTask) {
+        pruneFinishedTasks()
+        inFlightTasks.insert(task)
+    }
+
+    private func pruneFinishedTasks() {
+        inFlightTasks = inFlightTasks.filter { $0.state == .running }
+    }
+
+    private static func makeURLCache() -> URLCache {
         URLCache(
-            memoryCapacity: min(diskCapacity / 4, 128 * 1024 * 1024),
-            diskCapacity: diskCapacity,
+            memoryCapacity: 32 * 1024 * 1024,
+            diskCapacity: 0,
             diskPath: "4KHDImageURLCache"
         )
     }
@@ -190,6 +205,11 @@ final class RemoteImagePipeline {
 }
 
 actor LocalImageCache {
+    struct FileVersion: Sendable {
+        let fileSize: Int64?
+        let modifiedAt: Date?
+    }
+
     static let shared = LocalImageCache()
 
     private static let diskCacheDirectory: URL = {
@@ -202,75 +222,167 @@ actor LocalImageCache {
         return directory
     }()
 
-    private static let cache: NSCache<NSString, NSImage> = {
+    nonisolated(unsafe) private static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 700
         cache.totalCostLimit = 640 * 1024 * 1024
         return cache
     }()
-    private var inFlight: [String: Task<NSImage?, Never>] = [:]
+    private var inFlight: [String: (id: UUID, task: Task<NSImage?, Never>)] = [:]
     private var failedSignatures = Set<String>()
+    private var loadsSinceDiskPrune = 0
+    private var didScheduleInitialDiskPrune = false
+    private var cacheGeneration = 0
+    private var isClearing = false
+    private var clearWaiters: [CheckedContinuation<Void, Never>] = []
 
     private init() {}
 
-    nonisolated func cachedImage(for url: URL, maxPixelSize: CGFloat?) -> NSImage? {
-        let key = cacheKey(for: url, maxPixelSize: maxPixelSize)
-        if let cached = Self.cache.object(forKey: key as NSString) {
-            return cached
-        }
-        guard let diskImage = Self.diskImage(forKey: key) else { return nil }
-        Self.cache.setObject(diskImage, forKey: key as NSString, cost: diskImage.cacheCost)
-        return diskImage
+    nonisolated func cachedImage(
+        for url: URL,
+        maxPixelSize: CGFloat?,
+        fileVersion: FileVersion?
+    ) -> NSImage? {
+        guard let fileVersion else { return nil }
+        let key = cacheKey(for: url, maxPixelSize: maxPixelSize, fileVersion: fileVersion)
+        return Self.cache.object(forKey: key as NSString)
     }
 
-    func image(for url: URL, maxPixelSize: CGFloat?) async -> NSImage? {
-        let key = cacheKey(for: url, maxPixelSize: maxPixelSize)
+    func image(
+        for url: URL,
+        maxPixelSize: CGFloat?,
+        fileVersion: FileVersion? = nil
+    ) async -> NSImage? {
+        if isClearing {
+            await withCheckedContinuation { continuation in
+                clearWaiters.append(continuation)
+            }
+        }
+        guard !Task.isCancelled else { return nil }
+        scheduleDiskPruneIfNeeded()
+        let resolvedVersion = fileVersion ?? self.fileVersion(for: url)
+        let key = cacheKey(for: url, maxPixelSize: maxPixelSize, fileVersion: resolvedVersion)
         if let cached = Self.cache.object(forKey: key as NSString) {
             return cached
         }
-        if let diskImage = Self.diskImage(forKey: key) {
-            Self.cache.setObject(diskImage, forKey: key as NSString, cost: diskImage.cacheCost)
-            return diskImage
-        }
-        let signature = failureSignature(for: url)
-        if let signature, failedSignatures.contains(signature) {
+        let signature = failureSignature(for: url, fileVersion: resolvedVersion)
+        if failedSignatures.contains(signature) {
             return nil
         }
-        if let task = inFlight[key] {
-            return await task.value
+        if let inFlight = inFlight[key] {
+            return await inFlight.task.value
         }
 
-        let task = Task.detached(priority: .utility) {
-            loadImage(at: url, maxPixelSize: maxPixelSize)
+        let requestGeneration = cacheGeneration
+        let requestID = UUID()
+        let task = Task.detached(priority: .utility) { () -> NSImage? in
+            if let diskImage = Self.diskImage(forKey: key) {
+                return diskImage
+            }
+            guard let image = loadImage(at: url, maxPixelSize: maxPixelSize) else { return nil }
+            guard !Task.isCancelled else { return nil }
+            Self.writeToDisk(image, forKey: key)
+            return image
         }
-        inFlight[key] = task
+        inFlight[key] = (requestID, task)
         let loaded = await task.value
-        inFlight[key] = nil
+        if inFlight[key]?.id == requestID {
+            inFlight[key] = nil
+        }
+        guard cacheGeneration == requestGeneration, !isClearing else { return nil }
+        loadsSinceDiskPrune += 1
 
         if let loaded {
-            if let signature { failedSignatures.remove(signature) }
+            failedSignatures.remove(signature)
             Self.cache.setObject(loaded, forKey: key as NSString, cost: loaded.cacheCost)
-            Self.writeToDisk(loaded, forKey: key)
-        } else if let signature {
+        } else {
             failedSignatures.insert(signature)
         }
         return loaded
     }
 
-    private nonisolated func cacheKey(for url: URL, maxPixelSize: CGFloat?) -> String {
-        "\(url.path)#\(fileSignature(for: url))#\(Int(maxPixelSize ?? 0))"
-    }
-
-    private nonisolated func failureSignature(for url: URL) -> String? {
-        fileSignature(for: url)
-    }
-
-    private nonisolated func fileSignature(for url: URL) -> String {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
-            return "missing"
+    func clear() async throws {
+        if isClearing {
+            await withCheckedContinuation { continuation in
+                clearWaiters.append(continuation)
+            }
+            return
         }
-        let size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
-        let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        isClearing = true
+        cacheGeneration += 1
+        let activeTasks = inFlight.values.map(\.task)
+        for task in activeTasks {
+            task.cancel()
+        }
+        for task in activeTasks {
+            _ = await task.value
+        }
+        inFlight.removeAll()
+        failedSignatures.removeAll()
+        loadsSinceDiskPrune = 0
+        didScheduleInitialDiskPrune = false
+        Self.cache.removeAllObjects()
+
+        do {
+            try await Task.detached(priority: .utility) {
+                let fileManager = FileManager.default
+                if fileManager.fileExists(atPath: Self.diskCacheDirectory.path) {
+                    try fileManager.removeItem(at: Self.diskCacheDirectory)
+                }
+                try fileManager.createDirectory(
+                    at: Self.diskCacheDirectory,
+                    withIntermediateDirectories: true
+                )
+            }.value
+            finishClearing()
+        } catch {
+            finishClearing()
+            throw error
+        }
+    }
+
+    private func scheduleDiskPruneIfNeeded() {
+        let shouldPrune = !didScheduleInitialDiskPrune || loadsSinceDiskPrune >= 100
+        guard shouldPrune else { return }
+        didScheduleInitialDiskPrune = true
+        loadsSinceDiskPrune = 0
+        Task.detached(priority: .background) {
+            Self.pruneDiskCache()
+        }
+    }
+
+    private func finishClearing() {
+        isClearing = false
+        let waiters = clearWaiters
+        clearWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    private nonisolated func cacheKey(
+        for url: URL,
+        maxPixelSize: CGFloat?,
+        fileVersion: FileVersion
+    ) -> String {
+        "\(url.path)#\(fileSignature(for: url, fileVersion: fileVersion))#\(Int(maxPixelSize ?? 0))"
+    }
+
+    private nonisolated func failureSignature(for url: URL, fileVersion: FileVersion) -> String {
+        fileSignature(for: url, fileVersion: fileVersion)
+    }
+
+    private nonisolated func fileVersion(for url: URL) -> FileVersion {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return FileVersion(fileSize: nil, modifiedAt: nil)
+        }
+        return FileVersion(
+            fileSize: (attributes[.size] as? NSNumber)?.int64Value,
+            modifiedAt: attributes[.modificationDate] as? Date
+        )
+    }
+
+    private nonisolated func fileSignature(for url: URL, fileVersion: FileVersion) -> String {
+        let size = fileVersion.fileSize ?? -1
+        let modifiedAt = fileVersion.modifiedAt?.timeIntervalSince1970 ?? 0
         return "\(url.path)|\(size)|\(Int64(modifiedAt))"
     }
 
@@ -287,7 +399,49 @@ actor LocalImageCache {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
         let bitmap = NSBitmapImageRep(cgImage: cgImage)
         guard let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.86]) else { return }
+        try? FileManager.default.createDirectory(at: diskCacheDirectory, withIntermediateDirectories: true)
         try? data.write(to: diskCacheURL(forKey: key), options: .atomic)
+    }
+
+    private nonisolated static func pruneDiskCache() {
+        let fileManager = FileManager.default
+        let resourceKeys: Set<URLResourceKey> = [
+            .isRegularFileKey,
+            .fileSizeKey,
+            .contentModificationDateKey
+        ]
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: diskCacheDirectory,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        let entries = urls.compactMap { url -> (url: URL, size: Int64, modifiedAt: Date)? in
+            guard let values = try? url.resourceValues(forKeys: resourceKeys),
+                  values.isRegularFile == true else {
+                return nil
+            }
+            return (
+                url,
+                Int64(values.fileSize ?? 0),
+                values.contentModificationDate ?? .distantPast
+            )
+        }.sorted { $0.modifiedAt > $1.modifiedAt }
+
+        let maxBytes: Int64 = 1024 * 1024 * 1024
+        let maxFileCount = 20_000
+        var retainedBytes: Int64 = 0
+        var retainedCount = 0
+        for entry in entries {
+            if retainedCount >= maxFileCount || retainedBytes + entry.size > maxBytes {
+                try? fileManager.removeItem(at: entry.url)
+            } else {
+                retainedBytes += entry.size
+                retainedCount += 1
+            }
+        }
     }
 
     private nonisolated static func diskCacheURL(forKey key: String) -> URL {

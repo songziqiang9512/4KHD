@@ -23,7 +23,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var routeObserverID: UUID?
     private var detailObserverID: UUID?
     private var immersiveObserverID: UUID?
-    private var toolbarMonitor: Any?
+    nonisolated(unsafe) private var toolbarMonitor: Any?
     private let splitResizeStateSaveQueue = WorkspaceCoalescingQueue(
         name: "Workspace Split Resize State Save",
         interval: 0.2,
@@ -224,30 +224,12 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     @objc func increaseLocalGridColumns(_ sender: Any?) {
-        switch currentModuleID {
-        case .missKon:
-            appContext.toolbarContext.adjustMissKonGridColumns(delta: 1)
-        case .wallhaven:
-            appContext.toolbarContext.adjustWallhavenGridColumns(delta: 1)
-        case .fourKHDGallery:
-            appContext.toolbarContext.adjustGalleryGridColumns(delta: 1)
-        case .localLibrary:
-            appContext.toolbarContext.adjustLocalGridColumns(delta: 1)
-        }
+        appContext.toolbarContext.adjustGridColumns(delta: 1, for: currentModuleID)
         refreshToolbarState()
     }
 
     @objc func decreaseLocalGridColumns(_ sender: Any?) {
-        switch currentModuleID {
-        case .missKon:
-            appContext.toolbarContext.adjustMissKonGridColumns(delta: -1)
-        case .wallhaven:
-            appContext.toolbarContext.adjustWallhavenGridColumns(delta: -1)
-        case .fourKHDGallery:
-            appContext.toolbarContext.adjustGalleryGridColumns(delta: -1)
-        case .localLibrary:
-            appContext.toolbarContext.adjustLocalGridColumns(delta: -1)
-        }
+        appContext.toolbarContext.adjustGridColumns(delta: -1, for: currentModuleID)
         refreshToolbarState()
     }
 
@@ -456,16 +438,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func setContentLayout(isList: Bool) {
-        switch currentModuleID {
-        case .fourKHDGallery:
-            appContext.toolbarContext.setGalleryLayout(isList ? .list : .grid)
-        case .localLibrary:
-            appContext.toolbarContext.setLocalLayout(isList ? .list : .grid)
-        case .missKon:
-            break
-        case .wallhaven:
-            break
-        }
+        appContext.toolbarContext.setLayout(isList: isList, for: currentModuleID)
         refreshToolbarState()
     }
 
@@ -506,13 +479,16 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         }
 
         CookieBridge.shared.start()
-        appContext.moduleRegistry.bootstrapModules()
         appContext.routeController.applyCurrentRoute()
+        appContext.moduleRegistry.bootstrapModule(appContext.routeController.route.moduleID)
     }
 
     private var lastDetailModuleID: WorkspaceModuleID?
 
     private func reloadColumns(for route: WorkspaceRoute) {
+        if didBootstrap {
+            appContext.moduleRegistry.bootstrapModule(route.moduleID)
+        }
         sidebarController.reload()
         let moduleContext = WorkspaceModuleControllerContext(
             appContext: appContext,

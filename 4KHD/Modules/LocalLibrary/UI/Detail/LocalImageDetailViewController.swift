@@ -17,9 +17,6 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var imageTopSafeAreaConstraint: NSLayoutConstraint?
     private var imageTopFullBleedConstraint: NSLayoutConstraint?
-    private var metadataByImageID: [LocalImageItem.ID: LocalImageMetadata] = [:]
-    private var metadataTask: Task<Void, Never>?
-    private var observedImageIDs: [LocalImageItem.ID] = []
     private var isObserving = false
     private var currentImageID: LocalImageItem.ID?
     private var resetTokenSeen = UUID()
@@ -45,10 +42,6 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         nil
-    }
-
-    deinit {
-        metadataTask?.cancel()
     }
 
     override func loadView() {
@@ -226,7 +219,6 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             zoomableImageView.setImageURL(image.url)
         }
 
-        loadMetadataIfNeeded(for: selectedImages)
         filmstripView.update(images: selectedImages, selectedIndex: localLibrary.selectedImageIndex)
         updateFilmstripVisibility()
         if detailInteraction.resetToken != resetTokenSeen {
@@ -253,7 +245,9 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
                 filmstripHeightConstraint?.animator().constant = shouldShow ? 112 : 0
                 updateImageTopConstraint(showsFilmstrip: shouldShow)
             } completionHandler: { [weak self] in
-                self?.filmstripView.isHidden = !shouldShow
+                Task { @MainActor [weak self] in
+                    self?.filmstripView.isHidden = !shouldShow
+                }
             }
         } else {
             filmstripHeightConstraint?.constant = shouldShow ? 112 : 0
@@ -272,18 +266,6 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         let message = detailInteraction.saveMessage
         statusLabel.stringValue = message
         statusChrome.isHidden = message.isEmpty
-    }
-
-    private func loadMetadataIfNeeded(for images: [LocalImageItem]) {
-        let imageIDs = images.map(\.id)
-        guard observedImageIDs != imageIDs else { return }
-        observedImageIDs = imageIDs
-        metadataTask?.cancel()
-        metadataTask = Task { [weak self] in
-            let metadata = await LocalImageMetadataService.loadMetadata(for: images)
-            guard !Task.isCancelled else { return }
-            self?.metadataByImageID = metadata
-        }
     }
 
     private func quickLookSelected() {

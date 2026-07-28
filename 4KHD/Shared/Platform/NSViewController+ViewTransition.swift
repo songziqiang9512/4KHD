@@ -21,7 +21,9 @@ extension NSViewController {
             previousView.animator().alphaValue = 0
             nextView.animator().alphaValue = 1
         } completionHandler: {
-            previousView.removeFromSuperview()
+            Task { @MainActor in
+                previousView.removeFromSuperview()
+            }
         }
     }
 }

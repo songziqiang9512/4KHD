@@ -324,7 +324,9 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 filmstripHeightConstraint?.animator().constant = showsFilmstrip ? 112 : 0
             } completionHandler: { [weak self] in
-                self?.filmstripView.isHidden = !showsFilmstrip
+                Task { @MainActor [weak self] in
+                    self?.filmstripView.isHidden = !showsFilmstrip
+                }
             }
         } else {
             filmstripHeightConstraint?.constant = showsFilmstrip ? 112 : 0

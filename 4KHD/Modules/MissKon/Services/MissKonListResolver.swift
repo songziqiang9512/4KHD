@@ -7,10 +7,22 @@ struct MissKonListPage {
 
 enum MissKonListResolverError: Error, Equatable {
     case httpStatus(Int)
+    case unrecognizedListMarkup
 
     var isPageNotFound: Bool {
         if case .httpStatus(404) = self { return true }
         return false
+    }
+}
+
+extension MissKonListResolverError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .httpStatus(let status):
+            "MissKon 请求失败（HTTP \(status)）"
+        case .unrecognizedListMarkup:
+            "MissKon 列表页面结构无法解析，请稍后重试"
+        }
     }
 }
 
@@ -39,7 +51,12 @@ enum MissKonListResolver {
 
     static func resolveSearch(pageURL: URL) async throws -> MissKonListPage {
         let html = try await fetchHTML(pageURL)
-        return parse(html: html, pageURL: pageURL, section: .latest)
+        return try parse(
+            html: html,
+            pageURL: pageURL,
+            section: .latest,
+            allowsEmptyResults: true
+        )
     }
 
     static func resolve(section: MissKonSection) async throws -> MissKonListPage {
@@ -51,7 +68,7 @@ enum MissKonListResolver {
 
     static func resolve(pageURL: URL, section: MissKonSection) async throws -> MissKonListPage {
         let html = try await fetchHTML(pageURL)
-        return parse(html: html, pageURL: pageURL, section: section)
+        return try parse(html: html, pageURL: pageURL, section: section)
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {
@@ -68,12 +85,21 @@ enum MissKonListResolver {
         }
     }
 
-    private static func parse(html: String, pageURL: URL, section: MissKonSection) -> MissKonListPage {
+    static func parse(
+        html: String,
+        pageURL: URL,
+        section: MissKonSection,
+        allowsEmptyResults: Bool = false
+    ) throws -> MissKonListPage {
         let articles = articleHTML(in: html)
         let items = articles.compactMap { makeItem(from: $0, section: section) }
+        let isRecognizedEmptyResult = allowsEmptyResults && containsRecognizedEmptyState(in: html)
+        guard !items.isEmpty || isRecognizedEmptyResult else {
+            throw MissKonListResolverError.unrecognizedListMarkup
+        }
         return MissKonListPage(
             items: items,
-            nextPageURL: items.isEmpty ? nil : nextPageURL(in: html, baseURL: pageURL)
+            nextPageURL: nextPageURL(in: html, baseURL: pageURL)
         )
     }
 
@@ -83,6 +109,13 @@ enum MissKonListResolver {
             guard let matchRange = Range(result.range, in: html) else { return nil }
             return String(html[matchRange])
         }
+    }
+
+    private static func containsRecognizedEmptyState(in html: String) -> Bool {
+        html.range(
+            of: #"(?:no-results|not-found|nothing\s+found|no\s+posts|没有找到|未找到)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     private static func nextPageURL(in html: String, baseURL: URL) -> URL? {

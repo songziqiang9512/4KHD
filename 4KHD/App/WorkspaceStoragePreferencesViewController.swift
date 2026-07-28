@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 final class WorkspaceStoragePreferencesViewController: NSViewController, WorkspacePreferencesPane {
     private let favoritesStore: FavoritesStore
     private let onFavoritesImported: () -> Void
+    private let clearCaches: () async -> [String]
     private let cacheLimitPopup = NSPopUpButton()
     private let clearCacheButton: NSButton = {
         let b = NSButton(title: "清除所有缓存", target: nil, action: nil)
@@ -32,9 +33,11 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
 
     init(
         favoritesStore: FavoritesStore,
+        clearCaches: @escaping () async -> [String],
         onFavoritesImported: @escaping () -> Void
     ) {
         self.favoritesStore = favoritesStore
+        self.clearCaches = clearCaches
         self.onFavoritesImported = onFavoritesImported
         super.init(nibName: nil, bundle: nil)
     }
@@ -125,41 +128,18 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         guard clearTask == nil else { return }
         clearCacheButton.isEnabled = false
         statusLabel.stringValue = "清除中..."
-        clearTask = Task.detached(priority: .utility) {
-            // Nuke image/data caches + URL cache
-            await RemoteImagePipeline.shared.clearAllCaches()
-
-            // Detail page cache (Gallery)
-            await DetailPageImageCache.shared.flush()
-            if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                let detailPageDir = appSupport.appendingPathComponent("4KHD/DetailPageCache", isDirectory: true)
-                try? FileManager.default.removeItem(at: detailPageDir)
-
-                // MissKon feed cache
-                let missKonDir = appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
-                try? FileManager.default.removeItem(at: missKonDir)
-
-                // Wallhaven detail cache
-                let wallhavenDir = appSupport.appendingPathComponent("4KHD/Wallhaven", isDirectory: true)
-                try? FileManager.default.removeItem(at: wallhavenDir)
-
-                // Local image thumbnail cache
-                let localThumbDir = appSupport.appendingPathComponent("4KHD/LocalImageThumbnails", isDirectory: true)
-                try? FileManager.default.removeItem(at: localThumbDir)
+        clearTask = Task { [weak self] in
+            guard let self else { return }
+            let failures = await clearCaches()
+            if failures.isEmpty {
+                statusLabel.stringValue = "已清除"
+            } else {
+                statusLabel.stringValue = "\(failures.count) 项清除失败"
             }
-
-            // Wallhaven temp downloads
-            let tempDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("4KHD-Wallpaper", isDirectory: true)
-            try? FileManager.default.removeItem(at: tempDir)
-
-            await MainActor.run { [weak self] in
-                self?.statusLabel.stringValue = "已清除"
-                self?.clearCacheButton.isEnabled = true
-                self?.clearTask = nil
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                    self?.statusLabel.stringValue = ""
-                }
+            clearCacheButton.isEnabled = true
+            clearTask = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.statusLabel.stringValue = ""
             }
         }
     }
@@ -173,12 +153,16 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         panel.allowedContentTypes = [.json]
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try favoritesStore.exportFavorites(to: url)
-            favoritesStatusLabel.stringValue = "已导出 \(favoritesStore.favorites.count) 个收藏"
-            clearFavoritesStatusLater()
-        } catch {
-            favoritesStatusLabel.stringValue = "导出失败"
+        setFavoritesActionsEnabled(false)
+        Task {
+            defer { setFavoritesActionsEnabled(true) }
+            do {
+                try await favoritesStore.exportFavorites(to: url)
+                favoritesStatusLabel.stringValue = "已导出 \(favoritesStore.favorites.count) 个收藏"
+                clearFavoritesStatusLater()
+            } catch {
+                favoritesStatusLabel.stringValue = "导出失败：\(error.localizedDescription)"
+            }
         }
     }
 
@@ -192,19 +176,28 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         panel.allowedContentTypes = [.json]
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let result = try favoritesStore.importFavorites(from: url)
-            onFavoritesImported()
-            refresh()
-            if result.skippedCount > 0 {
-                favoritesStatusLabel.stringValue = "已导入 \(result.importedCount) 个，跳过 \(result.skippedCount) 个"
-            } else {
-                favoritesStatusLabel.stringValue = "已导入 \(result.importedCount) 个收藏"
+        setFavoritesActionsEnabled(false)
+        Task {
+            defer { setFavoritesActionsEnabled(true) }
+            do {
+                let result = try await favoritesStore.importFavorites(from: url)
+                onFavoritesImported()
+                refresh()
+                if result.skippedCount > 0 {
+                    favoritesStatusLabel.stringValue = "已导入 \(result.importedCount) 个，跳过 \(result.skippedCount) 个"
+                } else {
+                    favoritesStatusLabel.stringValue = "已导入 \(result.importedCount) 个收藏"
+                }
+                clearFavoritesStatusLater()
+            } catch {
+                favoritesStatusLabel.stringValue = "导入失败：\(error.localizedDescription)"
             }
-            clearFavoritesStatusLater()
-        } catch {
-            favoritesStatusLabel.stringValue = "导入失败"
         }
+    }
+
+    private func setFavoritesActionsEnabled(_ isEnabled: Bool) {
+        importFavoritesButton.isEnabled = isEnabled
+        exportFavoritesButton.isEnabled = isEnabled && !favoritesStore.favorites.isEmpty
     }
 
     private func row(label text: String, control: NSView) -> NSStackView {
