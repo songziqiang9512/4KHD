@@ -43,6 +43,7 @@ final class FavoritesStore {
     private(set) var isLoaded = false
 
     @ObservationIgnored private static let defaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
+    @ObservationIgnored private nonisolated(unsafe) static let backupFileName = "favorites.json.bak"
     @ObservationIgnored private let favoritesFileURL: URL?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var loadTask: Task<Void, Never>?
@@ -203,15 +204,24 @@ final class FavoritesStore {
                   let data = try? Data(contentsOf: fileURL) else { return nil }
             return try? JSONDecoder().decode([FavoriteRecord].self, from: data)
         }()
+        let backupFavorites: [FavoriteRecord]? = {
+            guard let fileURL,
+                  let data = try? Data(contentsOf: fileURL.deletingLastPathComponent().appendingPathComponent(backupFileName)) else { return nil }
+            return try? JSONDecoder().decode([FavoriteRecord].self, from: data)
+        }()
         let legacyFavorites = legacyData.flatMap {
             try? JSONDecoder().decode([FavoriteRecord].self, from: $0)
         }
 
         guard let legacyFavorites else {
-            return LoadResult(favorites: fileFavorites ?? [], didMigrateLegacyData: false)
+            let recovered = fileFavorites ?? backupFavorites ?? []
+            if fileFavorites == nil, let fileURL, !recovered.isEmpty {
+                try? write(recovered, to: fileURL)
+            }
+            return LoadResult(favorites: recovered, didMigrateLegacyData: false)
         }
 
-        let mergedFavorites = mergeFavorites(fileFavorites ?? [], legacyFavorites)
+        let mergedFavorites = mergeFavorites(fileFavorites ?? backupFavorites ?? [], legacyFavorites)
         guard let fileURL else {
             return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: false)
         }
@@ -238,11 +248,17 @@ final class FavoritesStore {
     }
 
     private nonisolated static func write(_ snapshot: [FavoriteRecord], to fileURL: URL) throws {
-        try FileManager.default.createDirectory(
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let data = try JSONEncoder().encode(snapshot)
+        let backupURL = fileURL.deletingLastPathComponent().appendingPathComponent(backupFileName)
+        if fileManager.fileExists(atPath: fileURL.path) {
+            try? fileManager.removeItem(at: backupURL)
+            try? fileManager.copyItem(at: fileURL, to: backupURL)
+        }
         try data.write(to: fileURL, options: .atomicWrite)
     }
 

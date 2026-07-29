@@ -93,6 +93,25 @@ final class FavoritesStoreTests: XCTestCase {
         XCTAssertEqual(callbackCount, 1)
     }
 
+    @MainActor
+    func testCorruptFavoritesFileRecoversFromBackup() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let fileURL = root.appendingPathComponent("favorites.json")
+        let backupURL = root.appendingPathComponent("favorites.json.bak")
+        try Data("not-json".utf8).write(to: fileURL)
+        try JSONEncoder().encode([Self.record]).write(to: backupURL)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "4KHDTests-\(UUID().uuidString)"))
+
+        let store = FavoritesStore(fileURL: fileURL, defaults: defaults)
+        await store.waitUntilLoaded()
+
+        XCTAssertEqual(store.favorites, [Self.record])
+        XCTAssertEqual(try JSONDecoder().decode([FavoriteRecord].self, from: Data(contentsOf: fileURL)), [Self.record])
+    }
+
     private static let record = FavoriteRecord(
         id: "sample",
         sourceID: "4khd",

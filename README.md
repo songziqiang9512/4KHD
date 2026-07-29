@@ -111,7 +111,7 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 - Wallhaven 详情缓存：`~/Library/Application Support/4KHD/Wallhaven/detail-cache.json`
 - 本地缩略图：`~/Library/Application Support/4KHD/LocalImageThumbnails/`（最多 1GB / 20,000 文件）
 - 在线图片：Nuke 管线管理（384MB 内存缓存 + 单一可配置磁盘缓存）
-- 收藏记录：`~/Library/Application Support/4KHD/favorites.json`
+- 收藏记录：`~/Library/Application Support/4KHD/favorites.json`；写入前保留 `favorites.json.bak`，主文件损坏时自动恢复
 - Wallhaven API Key：UserDefaults 存储
 
 在线模块在首次进入时才启动网络加载，未打开的模块不会在应用启动阶段抢占请求和解码资源。

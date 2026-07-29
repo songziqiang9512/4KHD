@@ -23,11 +23,12 @@
 - 详情页缓存改为后台预载并使用加载代次阻止清理前快照复活；本地缩略图清理期间暂停新加载，并拒绝旧代次任务回写。
 - 本地列表/网格的同步缓存查询不再读取文件属性；文件版本来自后台 metadata，缺失时由 `LocalImageCache` actor 在后台解析。
 - 在线模块 bootstrap 使用各 Store 的幂等入口；路由先应用目标栏目，再按需启动网络请求，避免首次进入时取消并重发同一请求。
-- 新增 Sparkle 2.9.x 更新入口：发布版每天检查 GitHub `update-feed/appcast.xml`，应用菜单提供“检查更新…”，Debug 构建只显示不执行更新的提示；发布工作流负责生成并发布 appcast。
+- 新增 Sparkle 2.9.x 更新入口：发布版每天检查 GitHub `update-feed/appcast.xml`，应用菜单提供“检查更新…”；当前 appcast 使用 HTTPS + Developer ID 公证，EdDSA 私钥签名尚未配置，因此暂不启用 `SUVerifyUpdateBeforeExtraction`。
+- 收藏文件写入前保留 `favorites.json.bak`，主文件损坏时自动恢复，避免覆盖安装或异常写入造成收藏列表再次丢失。
 
 ## 验证
 
-- Debug XCTest：13/13 通过。
+- Debug XCTest：14/14 通过。
 - Swift 6 Debug build：通过。
 - `4KHDTests` 当前覆盖路由序列化、请求头契约、模块 bootstrap 幂等性、列表解析失败、空搜索分页、收藏迁移/回调/持久化成功/失败和详情缓存清理代次。
 
