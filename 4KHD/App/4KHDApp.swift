@@ -125,14 +125,21 @@ private enum MainMenuBuilder {
         let appName = ProcessInfo.processInfo.processName
         let item = NSMenuItem()
         let menu = NSMenu(title: appName)
-        menu.addItem(
-            NSMenuItem(
-                title: "About \(appName)",
-                action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-                keyEquivalent: ""
-            )
-        )
-        menu.addItem(.separator())
+		menu.addItem(
+			NSMenuItem(
+				title: "About \(appName)",
+				action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+				keyEquivalent: ""
+			)
+		)
+		let updateItem = NSMenuItem(
+			title: "检查更新…",
+			action: #selector(AppUpdateController.checkForUpdates(_:)),
+			keyEquivalent: ""
+		)
+		updateItem.target = AppUpdateController.shared
+		menu.addItem(updateItem)
+		menu.addItem(.separator())
         let settingsItem = NSMenuItem(
             title: "Settings...",
             action: #selector(FourKHDAppDelegate.showPreferences(_:)),

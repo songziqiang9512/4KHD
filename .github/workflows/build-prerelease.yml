@@ -251,6 +251,51 @@ jobs:
               --target "$GITHUB_SHA"
           fi
 
+      - name: Generate Sparkle appcast
+        run: |
+          set -euo pipefail
+          sparkle_version="2.9.4"
+          sparkle_dir="$RUNNER_TEMP/sparkle"
+          feed_dir="$RUNNER_TEMP/sparkle-feed"
+          source script/version.env
+          dmg_path="${{ steps.final_package.outputs.dmg_path }}"
+          tag="${{ steps.version.outputs.tag }}"
+          release_notes="${{ steps.notes.outputs.notes_file }}"
+          dmg_filename="$(basename "$dmg_path" .dmg)"
+
+          rm -rf "$sparkle_dir" "$feed_dir"
+          mkdir -p "$sparkle_dir" "$feed_dir"
+          curl --fail --location --silent --show-error \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${sparkle_version}/Sparkle-${sparkle_version}.tar.xz" \
+            | tar -xJ -C "$sparkle_dir"
+
+          cp "$dmg_path" "$feed_dir/"
+          cp "$release_notes" "$feed_dir/${dmg_filename}.md"
+          "$sparkle_dir/bin/generate_appcast" \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/" \
+            --embed-release-notes \
+            --maximum-versions 1 \
+            --maximum-deltas 0 \
+            --link "https://github.com/${GITHUB_REPOSITORY}" \
+            -o build/appcast.xml \
+            "$feed_dir"
+
+      - name: Publish Sparkle update feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          feed_tag="update-feed"
+          if gh release view "$feed_tag" >/dev/null 2>&1; then
+            gh release upload "$feed_tag" build/appcast.xml --clobber
+          else
+            gh release create "$feed_tag" build/appcast.xml \
+              --title "4KHD Update Feed" \
+              --notes "Machine-readable Sparkle update feed." \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi
+
       - name: Clean up signing credentials
         if: always()
         run: |

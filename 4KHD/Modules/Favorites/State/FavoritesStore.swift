@@ -46,7 +46,13 @@ final class FavoritesStore {
     @ObservationIgnored private let favoritesFileURL: URL?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var loadTask: Task<Void, Never>?
-    @ObservationIgnored var onFavoritesChanged: (() -> Void)?
+    @ObservationIgnored var onFavoritesChanged: (() -> Void)? {
+        didSet {
+            if isLoaded {
+                onFavoritesChanged?()
+            }
+        }
+    }
 
     /// File-based storage in Application Support — Apple recommends against
     /// storing large collections in UserDefaults.
@@ -192,24 +198,43 @@ final class FavoritesStore {
     }
 
     private nonisolated static func loadSnapshot(fileURL: URL?, legacyData: Data?) -> LoadResult {
-        if let fileURL,
-           let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: data) {
-            return LoadResult(favorites: decoded, didMigrateLegacyData: false)
+        let fileFavorites: [FavoriteRecord]? = {
+            guard let fileURL,
+                  let data = try? Data(contentsOf: fileURL) else { return nil }
+            return try? JSONDecoder().decode([FavoriteRecord].self, from: data)
+        }()
+        let legacyFavorites = legacyData.flatMap {
+            try? JSONDecoder().decode([FavoriteRecord].self, from: $0)
         }
-        guard let legacyData,
-              let decoded = try? JSONDecoder().decode([FavoriteRecord].self, from: legacyData) else {
-            return LoadResult(favorites: [], didMigrateLegacyData: false)
+
+        guard let legacyFavorites else {
+            return LoadResult(favorites: fileFavorites ?? [], didMigrateLegacyData: false)
         }
+
+        let mergedFavorites = mergeFavorites(fileFavorites ?? [], legacyFavorites)
         guard let fileURL else {
-            return LoadResult(favorites: decoded, didMigrateLegacyData: false)
+            return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: false)
         }
         do {
-            try write(decoded, to: fileURL)
-            return LoadResult(favorites: decoded, didMigrateLegacyData: true)
+            try write(mergedFavorites, to: fileURL)
+            return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: true)
         } catch {
-            return LoadResult(favorites: decoded, didMigrateLegacyData: false)
+            return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: false)
         }
+    }
+
+    private nonisolated static func mergeFavorites(
+        _ primary: [FavoriteRecord],
+        _ secondary: [FavoriteRecord]
+    ) -> [FavoriteRecord] {
+        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: primary.map { ($0.detailURL, $0) })
+        var orderedDetailURLs = primary.map(\.detailURL)
+        for favorite in secondary {
+            guard !mergedByDetailURL.keys.contains(favorite.detailURL) else { continue }
+            mergedByDetailURL[favorite.detailURL] = favorite
+            orderedDetailURLs.append(favorite.detailURL)
+        }
+        return orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
     }
 
     private nonisolated static func write(_ snapshot: [FavoriteRecord], to fileURL: URL) throws {

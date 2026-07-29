@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		986D1CDF2F865C5A006EDCBC /* Nuke in Frameworks */ = {isa = PBXBuildFile; productRef = 986D1CE02F865C5A006EDCBC /* Nuke */; };
+		A10001012F865C5A006EDCBC /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A10001022F865C5A006EDCBC /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,6 +59,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				986D1CDF2F865C5A006EDCBC /* Nuke in Frameworks */,
+				A10001012F865C5A006EDCBC /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -110,6 +112,7 @@
 			name = 4KHD;
 			packageProductDependencies = (
 				986D1CE02F865C5A006EDCBC /* Nuke */,
+				A10001022F865C5A006EDCBC /* Sparkle */,
 			);
 			productName = 4KHD;
 			productReference = 986D1CCE2F824386006EDCBC /* 4KHD.app */;
@@ -168,6 +171,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				986D1CE32F865C5A006EDCBC /* XCRemoteSwiftPackageReference "Nuke" */,
+				A10001032F865C5A006EDCBC /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 986D1CCF2F824386006EDCBC /* Products */;
@@ -348,7 +352,7 @@
 				CODE_SIGN_ENTITLEMENTS = 4KHD/4KHD.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 164;
+				CURRENT_PROJECT_VERSION = 165;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = H9QWU9XN8R;
 				ENABLE_APP_SANDBOX = YES;
@@ -371,7 +375,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.4;
+				MARKETING_VERSION = 1.6.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.songziqiang.-KHD";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -393,7 +397,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 164;
+				CURRENT_PROJECT_VERSION = 165;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = H9QWU9XN8R;
 				ENABLE_APP_SANDBOX = YES;
@@ -416,7 +420,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.4;
+				MARKETING_VERSION = 1.6.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.songziqiang.-KHD";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -508,6 +512,14 @@
 				minimumVersion = 12.0.0;
 			};
 		};
+		A10001032F865C5A006EDCBC /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -515,6 +527,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 986D1CE32F865C5A006EDCBC /* XCRemoteSwiftPackageReference "Nuke" */;
 			productName = Nuke;
+		};
+		A10001022F865C5A006EDCBC /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10001032F865C5A006EDCBC /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

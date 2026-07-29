@@ -1,0 +1,24 @@
+{
+  "originHash" : "5498aa1078e90b5660d8cfb250126ded26970ec449bc3b34e030a1952a133c3a",
+  "pins" : [
+    {
+      "identity" : "nuke",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kean/Nuke.git",
+      "state" : {
+        "revision" : "83e19143355b02e9261edb2323b3e1e93287ebb9",
+        "version" : "12.9.0"
+      }
+    },
+    {
+      "identity" : "sparkle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sparkle-project/Sparkle",
+      "state" : {
+        "revision" : "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
+        "version" : "2.9.4"
+      }
+    }
+  ],
+  "version" : 3
+}

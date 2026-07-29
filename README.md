@@ -51,6 +51,7 @@
 - 在线缓存容量选择（512MB-4GB/无限制）
 - 一键清除所有缓存（图片、详情页、模块数据、临时文件）
 - 侧边栏模块显示开关（4KHD/MissKon）
+- 发布版每天自动检查更新，也可从应用菜单选择“检查更新…”
 
 ## 架构
 
@@ -77,7 +78,7 @@
 - Xcode 26+
 - Swift 6
 - AppKit
-- Swift Package Manager (Nuke)
+- Swift Package Manager（Nuke、Sparkle）
 
 ### 构建
 
