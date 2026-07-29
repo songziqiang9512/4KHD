@@ -21,6 +21,34 @@ final class FavoritesStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testNewFavoriteIsInsertedBeforeExistingFavorites() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let fileURL = root.appendingPathComponent("favorites.json")
+        try JSONEncoder().encode([Self.record]).write(to: fileURL)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "4KHDTests-\(UUID().uuidString)"))
+        let store = FavoritesStore(fileURL: fileURL, defaults: defaults)
+        await store.waitUntilLoaded()
+        let newRecord = FavoriteRecord(
+            id: "new",
+            sourceID: "latest",
+            title: "New",
+            rawTitle: "New",
+            subtitle: "",
+            detailURL: "https://www.4khd.com/content/new.html",
+            coverURL: nil,
+            imageCount: 1,
+            pageCount: 1
+        )
+
+        _ = try await store.toggle(newRecord)
+
+        XCTAssertEqual(store.favorites.map(\.detailURL), [newRecord.detailURL, Self.record.detailURL])
+    }
+
+    @MainActor
     func testToggleKeepsOldStateWhenPersistenceFails() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)

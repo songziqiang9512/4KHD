@@ -102,7 +102,9 @@ final class FavoritesStore {
             updatedFavorites.remove(at: index)
             isFavorite = false
         } else {
-            updatedFavorites.append(record)
+            // Favorites views initially expose a bounded prefix. Put a newly
+            // saved item first so the user sees it immediately.
+            updatedFavorites.insert(record, at: 0)
             isFavorite = true
         }
         try await persist(updatedFavorites)
