@@ -24,6 +24,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private var isObserving = false
     private var isApplyingSelection = false
     private var lastAppliedRows: [Row] = []
+    private var lastAppliedGridItemIDs: [GalleryItem.ID] = []
     private var lastGridColumnCount = 4
     private var lastVisibleListSignature: [Int: GalleryVisibleListRowSignature] = [:]
     private var pendingScrollItemID: GalleryItem.ID?
@@ -149,8 +150,10 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         case .grid:
             setActiveView(gridView)
             let columnCountChanged = preferences.gridColumnCount != lastGridColumnCount
-            if rows != lastAppliedRows || columnCountChanged {
+            let itemIDs = library.visibleItems.map(\.id)
+            if rows != lastAppliedRows || columnCountChanged || itemIDs != lastAppliedGridItemIDs {
                 lastAppliedRows = rows
+                lastAppliedGridItemIDs = itemIDs
                 lastGridColumnCount = preferences.gridColumnCount
                 gridView.update(
                     items: library.visibleItems,
