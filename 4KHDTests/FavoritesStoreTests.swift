@@ -112,6 +112,34 @@ final class FavoritesStoreTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([FavoriteRecord].self, from: Data(contentsOf: fileURL)), [Self.record])
     }
 
+    func testLegacySourceIDIsRecoveredFromDetailHost() {
+        let legacyMissKon = FavoriteRecord(
+            id: "legacy-misskon",
+            sourceID: "misskon",
+            title: "Legacy MissKon",
+            rawTitle: "Legacy MissKon",
+            subtitle: "",
+            detailURL: "https://misskon.com/legacy/",
+            coverURL: nil,
+            imageCount: 1,
+            pageCount: 1
+        )
+        let legacyGallery = FavoriteRecord(
+            id: "legacy-gallery",
+            sourceID: "4khd",
+            title: "Legacy Gallery",
+            rawTitle: "Legacy Gallery",
+            subtitle: "",
+            detailURL: "https://www.4khd.com/legacy/",
+            coverURL: nil,
+            imageCount: 1,
+            pageCount: 1
+        )
+
+        XCTAssertEqual(MissKonFavoritesBridge.missKonItems(from: [legacyMissKon]).count, 1)
+        XCTAssertEqual(GalleryFavoritesBridge.galleryItems(from: [legacyGallery]).count, 1)
+    }
+
     private static let record = FavoriteRecord(
         id: "sample",
         sourceID: "4khd",

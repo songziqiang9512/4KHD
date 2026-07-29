@@ -20,12 +20,12 @@ enum MissKonFavoritesBridge {
     }
 
     private nonisolated static func toMissKonItem(_ record: FavoriteRecord) -> MissKonItem? {
-        guard let section = MissKonSection(rawValue: record.sourceID),
-              section != .favorites,
-              let detailURL = URL(string: record.detailURL),
+        guard let detailURL = URL(string: record.detailURL),
               isAllowedHost(detailURL.host) else {
             return nil
         }
+        let section = MissKonSection(rawValue: record.sourceID) ?? .latest
+        guard section != .favorites else { return nil }
 
         let coverURL = record.coverURL.flatMap(URL.init(string:))
         let pageURLs = pageURLs(detailURL: detailURL, pageCount: record.pageCount)

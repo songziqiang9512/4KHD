@@ -24,8 +24,7 @@ enum WallhavenFavoritesBridge {
     }
 
     private nonisolated static func toWallpaper(_ record: FavoriteRecord) -> Wallpaper? {
-        guard record.sourceID == "wallhaven",
-              let detailURL = URL(string: record.detailURL),
+        guard let detailURL = URL(string: record.detailURL),
               isAllowedHost(detailURL.host) else {
             return nil
         }

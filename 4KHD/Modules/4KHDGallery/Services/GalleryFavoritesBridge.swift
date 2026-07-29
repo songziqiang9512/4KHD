@@ -20,12 +20,14 @@ enum GalleryFavoritesBridge {
     }
 
     private nonisolated static func toGalleryItem(_ record: FavoriteRecord) -> GalleryItem? {
-        guard let section = GallerySection(rawValue: record.sourceID),
-              section != .favorites,
-              let detailURL = URL(string: record.detailURL),
+        guard let detailURL = URL(string: record.detailURL),
               isAllowedHost(detailURL.host) else {
             return nil
         }
+        // Older snapshots stored module/source names instead of a section.
+        // The host is authoritative for deciding whether this is a 4KHD item.
+        let section = GallerySection(rawValue: record.sourceID) ?? .latest
+        guard section != .favorites else { return nil }
 
         let coverURL = record.coverURL.flatMap(URL.init(string:))
         let pageURLs = pageURLs(detailURL: detailURL, pageCount: record.pageCount)

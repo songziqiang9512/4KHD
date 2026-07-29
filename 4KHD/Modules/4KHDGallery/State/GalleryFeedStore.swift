@@ -13,6 +13,14 @@ final class GalleryFeedStore {
             clearSearchState()
             selectFirstItemIfNeeded(force: true)
             refreshSectionIfNeeded()
+            if section == .favorites {
+                Task { [weak self] in
+                    guard let self else { return }
+                    await favoritesStore.reloadFromDisk()
+                    guard self.section == .favorites else { return }
+                    self.selectFirstItemIfNeeded(force: true)
+                }
+            }
         }
     }
     var selectedItemID: GalleryItem.ID?

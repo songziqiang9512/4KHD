@@ -251,6 +251,14 @@ final class WallhavenFeedStore {
         searchText = ""
         section = newSection
         restoreSectionCache()
+        if newSection == .favorites {
+            Task { [weak self] in
+                guard let self else { return }
+                await favoritesStore.reloadFromDisk()
+                guard self.section == .favorites else { return }
+                self.refreshFavorites()
+            }
+        }
     }
 
     func refreshFromNetwork() {

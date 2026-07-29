@@ -175,6 +175,26 @@ final class FavoritesStore {
         }
     }
 
+    /// Re-reads the persisted snapshot so a favorites section opened after an
+    /// app replacement can discover data written by the previous process.
+    func reloadFromDisk() async {
+        await waitUntilLoaded()
+        let targetURL = favoritesFileURL
+        let legacyData = defaults.data(forKey: Self.defaultsKey)
+        let result = await Task.detached(priority: .utility) {
+            Self.loadSnapshot(fileURL: targetURL, legacyData: legacyData)
+        }.value
+        guard !Task.isCancelled else { return }
+        favorites = result.favorites
+        isLoaded = true
+        if result.didMigrateLegacyData {
+            defaults.removeObject(forKey: Self.defaultsKey)
+        }
+        markFavoriteCachesPersistent()
+        DetailPageImageCache.shared.prune()
+        onFavoritesChanged?()
+    }
+
     private func markFavoriteCachesPersistent() {
         // 把已收藏画廊的 detail cache 都标为 persistent。
         for favorite in favorites {

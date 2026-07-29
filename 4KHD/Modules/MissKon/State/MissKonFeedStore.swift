@@ -476,6 +476,14 @@ final class MissKonFeedStore {
         searchText = ""
         nextSearchPageURL = nil
         restoreSectionCache()
+        if section == .favorites {
+            Task { [weak self] in
+                guard let self else { return }
+                await favoritesStore.reloadFromDisk()
+                guard self.section == .favorites else { return }
+                self.refreshFavoritesIfNeeded()
+            }
+        }
     }
 
     func restoreSectionCache(allowNetworkRefresh: Bool = true) {
