@@ -18,6 +18,7 @@ final class LocalZoomableImageView: WorkspaceZoomableImageView {
 
     func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
         guard imageURL != url else { return }
+        imageView.alphaValue = 1
         let shouldKeepCurrent = preservesCurrentImageUntilLoaded && imageView.image != nil
         imageURL = url
         imageTask?.cancel()
@@ -46,9 +47,14 @@ final class LocalZoomableImageView: WorkspaceZoomableImageView {
         progressIndicator.stopAnimation(nil)
         progressIndicator.isHidden = true
         guard let image else { return }
+        imageView.alphaValue = 0
         imageView.image = image
         fitImage(resetMagnification: true)
         onDisplayed?()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            self.imageView.animator().alphaValue = 1
+        }
     }
 
     private func setupLocalOverlay() {

@@ -490,6 +490,7 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         // 同 URL 且已有图才跳过：加载失败（image 为 nil）后重试同一 URL 必须重新发起请求。
         guard loadedURL != url || imageView.image == nil else { return }
         loadedURL = url
+        imageView.alphaValue = 1
         guard let url else {
             imageView.image = nil
             placeholderContainer.isHidden = false
@@ -534,9 +535,14 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
                 }
                 self.placeholderContainer.isHidden = true
                 self.retryButton.isHidden = true
+                self.imageView.alphaValue = 0
                 self.imageView.image = image
                 self.fitImage(resetMagnification: true)
                 self.onImageLoadCompleted?(url, true)
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.15
+                    self.imageView.animator().alphaValue = 1
+                }
             }
         }
     }

@@ -78,6 +78,18 @@ class WorkspaceZoomableImageView: NSView {
         }
     }
 
+    // 双击放大/还原：以双击点为锚点，fit 状态放大到 2x，否则回到 fit。
+    @objc private func handleDoubleClick(_ gesture: NSClickGestureRecognizer) {
+        let point = gesture.location(in: imageView)
+        let isFitted = abs(scrollView.magnification - 1) < 0.05
+        let targetMagnification: CGFloat = isFitted ? min(maxMagnification, 2) : 1
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.allowsImplicitAnimation = true
+            scrollView.animator().setMagnification(targetMagnification, centeredAt: point)
+        }
+    }
+
     private func setupScrollView() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
@@ -103,6 +115,9 @@ class WorkspaceZoomableImageView: NSView {
         imageView.imageAlignment = .alignCenter
         imageView.wantsLayer = true
         imageView.layer?.backgroundColor = NSColor.clear.cgColor
+        let doubleClickGesture = NSClickGestureRecognizer(target: self, action: #selector(handleDoubleClick(_:)))
+        doubleClickGesture.numberOfClicksRequired = 2
+        imageView.addGestureRecognizer(doubleClickGesture)
 
         addSubview(scrollView)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
