@@ -65,9 +65,13 @@ final class GalleryDetailStore {
     func selectImage(at index: Int) {
         guard index >= 0 else { return }
         if index >= loadedImageSlots.count {
-            // 还没加载到这张：尝试拉下一页，并挂上 pendingSelectionIndex，等 slot 到位后跳过去。
-            ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange)
-            pendingSelectionIndex = loadedImageSlots.count
+            // 还没加载到这张：尝试拉下一页,记下用户目标 index,等 slot 到位后跳过去。
+            if ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange) {
+                pendingSelectionIndex = index
+            } else {
+                // 没有更多页可拉:回退到已加载范围内的最后一张。
+                selectedImageIndex = max(loadedImageSlots.count - 1, 0)
+            }
             return
         }
         selectedImageIndex = index
@@ -96,6 +100,10 @@ final class GalleryDetailStore {
     @discardableResult
     func ensureNextDetailPageLoaded(reason: DetailPageLoadReason) -> Bool {
         guard let item = currentItem else { return false }
+        // 同一时间只解析一页:多页并发返回会按网络顺序乱序追加 slot,
+        // 胶片条顺序与上一张/下一张导航全部错乱。上一页完成后
+        // registerResolvedPage → chainLoadIfNeeded 会接力下一页。
+        guard detailPageTasks.isEmpty else { return true }
         let cursor = itemPageCursors[item.id, default: 1]
         let pageURLs = pageURLs(for: item)
         guard cursor < pageURLs.count else { return false }
@@ -158,7 +166,9 @@ final class GalleryDetailStore {
     }
 
     /// 只在用户已经接近当前已加载尾部时接力，避免大图集在后台一路解析太远。
+    /// pending 跳转路径自行接力(pendingSelectionIndex 未满足时逐页拉取)。
     private func chainLoadIfNeeded() {
+        guard pendingSelectionIndex == nil else { return }
         guard isApproachingLoadedEnd(from: selectedImageIndex) else { return }
         ensureNextDetailPageLoaded(reason: .approachingLoadedEnd)
     }
@@ -202,8 +212,16 @@ final class GalleryDetailStore {
     }
 
     private func applyPendingSelectionIfPossible() {
-        guard let pendingSelectionIndex,
-              loadedImageSlots.indices.contains(pendingSelectionIndex) else { return }
+        guard let pendingSelectionIndex else { return }
+        guard loadedImageSlots.indices.contains(pendingSelectionIndex) else {
+            // 目标还没加载到:继续拉下一页;没有更多页时停在已加载末尾并清空。
+            if !ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange),
+               !loadedImageSlots.isEmpty {
+                selectedImageIndex = loadedImageSlots.count - 1
+                self.pendingSelectionIndex = nil
+            }
+            return
+        }
         selectedImageIndex = pendingSelectionIndex
         self.pendingSelectionIndex = nil
     }
@@ -237,8 +255,10 @@ final class GalleryDetailStore {
         for itemID in requestedDetailPageURLs.keys {
             requestedDetailPageURLs[itemID]?.remove(pageURL)
         }
-        // Advance to next page instead of infinite retry; chainLoadIfNeeded will skip failed pages.
-        chainLoadIfNeeded()
+        // Advance to next page instead of infinite retry; failed pages are skipped
+        // by the failedPageURLs guard.  Bypass the pending-selection relay: this
+        // page failed, nothing else will resume the chain.
+        ensureNextDetailPageLoaded(reason: .approachingLoadedEnd)
     }
 
     private func cancelOutstandingDetailPageTasks() {

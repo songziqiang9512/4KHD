@@ -111,6 +111,10 @@ final class RemoteImagePipeline {
         inFlightTasks.removeAll()
         pipeline.cache.removeAll()
         urlCache.removeAllCachedResponses()
+        // DataCache 磁盘层的 removeAll 是同步遍历删除,放后台避免卡主线程。
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.dataCache?.removeAll()
+        }
     }
 
     func request(
@@ -275,6 +279,9 @@ actor LocalImageCache {
     }()
     private var inFlight: [String: (id: UUID, task: Task<NSImage?, Never>)] = [:]
     private var failedSignatures = Set<String>()
+    /// 失效签名无界增长会拖垮大库浏览(外接盘断开后整库失效);
+    /// 超限整体清空,允许失败项周期性重试。
+    private let maxFailedSignatureCount = 4000
     private var loadsSinceDiskPrune = 0
     private var didScheduleInitialDiskPrune = false
     private var cacheGeneration = 0
@@ -342,6 +349,9 @@ actor LocalImageCache {
             Self.cache.setObject(loaded, forKey: key as NSString, cost: loaded.cacheCost)
         } else {
             failedSignatures.insert(signature)
+            if failedSignatures.count > maxFailedSignatureCount {
+                failedSignatures.removeAll()
+            }
         }
         return loaded
     }

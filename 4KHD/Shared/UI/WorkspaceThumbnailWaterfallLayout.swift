@@ -113,6 +113,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
            oldMetrics.columns == metrics.columns,
            !cache.isEmpty {
             updateCachedFrames(metrics: metrics, oldMetrics: oldMetrics)
+            // 列数没变的宽度调整不塌缩内容,滚动位置自然保持,锚点作废。
+            pendingScrollAnchor = nil
             return
         }
 
@@ -125,6 +127,62 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         contentHeight = inset.top + inset.bottom
         estimatedContentHeight = estimateContentHeight(metrics: metrics)
         resolvedColumnWidth = metrics.columnWidth
+
+        scheduleScrollAnchorRestore()
+    }
+
+    // MARK: - 滚动锚点(列数变化时保持可视位置)
+
+    private var pendingScrollAnchor: (indexPath: IndexPath, offset: CGFloat)?
+    private var pendingScrollAnchorItemCount: Int?
+
+    /// 记录"与可视区顶部相交的卡片"(或其间隙后的第一张)及其相对偏移。
+    private func captureScrollAnchor() {
+        guard let collectionView else { return }
+        let visibleRect = collectionView.visibleRect
+        guard visibleRect.height > 1 else { return }
+        let probeY = visibleRect.minY + 1
+        for attrs in cache {
+            guard let indexPath = attrs.indexPath,
+                  attrs.frame.minY <= probeY,
+                  attrs.frame.maxY > probeY else { continue }
+            pendingScrollAnchor = (indexPath, attrs.frame.minY - visibleRect.minY)
+            pendingScrollAnchorItemCount = collectionView.numberOfItems(inSection: 0)
+            return
+        }
+        // 顶部落在卡片间隙:对齐其下第一张卡片的顶部。
+        for attrs in cache {
+            guard let indexPath = attrs.indexPath,
+                  attrs.frame.maxY > visibleRect.minY else { continue }
+            pendingScrollAnchor = (indexPath, 0)
+            pendingScrollAnchorItemCount = collectionView.numberOfItems(inSection: 0)
+            return
+        }
+        pendingScrollAnchor = nil
+        pendingScrollAnchorItemCount = nil
+    }
+
+    /// 整表重建完成后异步恢复滚动,避免在布局 pass 中修改几何。
+    /// 内容量变化的刷新(切换列表/搜索)不 capture,自然没有锚点。
+    private func scheduleScrollAnchorRestore() {
+        guard let anchor = pendingScrollAnchor else { return }
+        let capturedItemCount = pendingScrollAnchorItemCount
+        pendingScrollAnchor = nil
+        pendingScrollAnchorItemCount = nil
+        DispatchQueue.main.async { [weak self, weak collectionView] in
+            guard let self,
+                  let collectionView,
+                  let clipView = collectionView.enclosingScrollView?.contentView else { return }
+            // 期间内容被替换(刷新/搜索/切换)时锚点失效,放弃恢复。
+            guard capturedItemCount == collectionView.numberOfItems(inSection: 0),
+                  capturedItemCount != nil else { return }
+            // layoutAttributesForItem 会触发生成到锚点卡片的布局,保证 frame 精确。
+            guard let attrs = self.layoutAttributesForItem(at: anchor.indexPath) else { return }
+            let targetY = max(0, attrs.frame.minY - anchor.offset)
+            let maxY = max(0, self.collectionViewContentSize.height - clipView.bounds.height)
+            clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(targetY, maxY)))
+            collectionView.enclosingScrollView?.reflectScrolledClipView(clipView)
+        }
     }
 
     private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
@@ -192,8 +250,17 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
     override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool {
         guard let collectionView else { return false }
-        guard collectionView.bounds.isFiniteForWaterfallLayout, newBounds.isFiniteForWaterfallLayout else { return true }
-        return abs(collectionView.bounds.width - newBounds.width) > 0.5
+        guard collectionView.bounds.isFiniteForWaterfallLayout, newBounds.isFiniteForWaterfallLayout else {
+            // 宽度塌缩(immersive / 收起详情面板):此时 bounds 仍是旧值,
+            // 记录锚点供后续重建恢复,否则滚动位置会被夹回顶部。
+            captureScrollAnchor()
+            return true
+        }
+        let widthChanged = abs(collectionView.bounds.width - newBounds.width) > 0.5
+        if widthChanged {
+            captureScrollAnchor()
+        }
+        return widthChanged
     }
 
     private func columnCount(for width: CGFloat) -> Int {
