@@ -76,6 +76,9 @@ enum AlbumDownloadOrchestrator {
             guard let page else {
                 summary.failedPageCount += 1
                 emit(.pageFailed(pageIndex: pageIndex, pageCount: worklist.count))
+                // 失败页按顺序推进;不消费 restartScan 的话,下一张成功页会
+                // 把扫描拉回起点,失败页被重复解析。
+                restartScan = false
                 pageIndex += 1
                 continue
             }

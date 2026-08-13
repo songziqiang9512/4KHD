@@ -74,6 +74,9 @@ final class GalleryDetailStore {
             }
             return
         }
+        // 用户主动选中已加载位置:取消任何挂起的跳转意图,避免在途页
+        // 到位时把选中强制拉回原目标。
+        pendingSelectionIndex = nil
         selectedImageIndex = index
         ensureNextDetailPageLoadedIfApproachingEnd(from: index)
     }
@@ -83,8 +86,12 @@ final class GalleryDetailStore {
         if delta > 0, nextIndex >= loadedImageSlots.count {
             // 在尾部按"下一张"：拉下一页 + 挂 pendingSelectionIndex；
             // 不 force-restart 当前页（会反复打断已在解析的 task）。
-            ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange)
-            pendingSelectionIndex = loadedImageSlots.count
+            // 没有更多页可拉时停在末位,不悬挂 pending。
+            if ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange) {
+                pendingSelectionIndex = loadedImageSlots.count
+            } else {
+                selectedImageIndex = max(loadedImageSlots.count - 1, 0)
+            }
             return
         }
         selectImage(at: nextIndex)

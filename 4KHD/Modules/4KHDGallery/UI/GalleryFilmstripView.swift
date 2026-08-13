@@ -31,6 +31,7 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
     func update(slots: [ImageSlot], selectedIndex: Int, showsLoadingTile: Bool) {
         let previousSelectedIndex = self.selectedIndex
         let slotIDsChanged = self.slots.map(\.id) != slots.map(\.id)
+        let slotContentChanged = contentSignature(self.slots) != contentSignature(slots)
         let loadingTileChanged = self.showsLoadingTile != showsLoadingTile
         let countChanged = (slots.count + (showsLoadingTile ? 1 : 0)) != (self.slots.count + (self.showsLoadingTile ? 1 : 0))
         self.slots = slots
@@ -41,7 +42,9 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
             // reload visible items in-place to avoid destroying cells
             // that the user may be interacting with.
             collectionView.reloadData()
-        } else if slotIDsChanged || loadingTileChanged {
+        } else if slotIDsChanged || loadingTileChanged || slotContentChanged {
+            // knownURL 变化(占位槽被解析结果替换)也要刷新可见槽,
+            // 否则缩略图停留在占位状态。
             collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems())
         } else if previousSelectedIndex != selectedIndex {
             refreshVisibleSelection()
@@ -51,6 +54,10 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         if selectionChanged {
             scrollToSelectedItem()
         }
+    }
+
+    private func contentSignature(_ slots: [ImageSlot]) -> [String] {
+        slots.map { $0.id + "|" + ($0.knownURL?.absoluteString ?? "") }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int {

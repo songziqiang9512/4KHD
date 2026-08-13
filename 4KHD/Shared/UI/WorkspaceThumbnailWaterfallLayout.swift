@@ -30,6 +30,13 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         invalidateLayout()
     }
 
+    /// 内容替换(reloadData/搜索/切换列表)时由宿主调用:丢弃已捕获的
+    /// 滚动锚点,防止旧锚点被应用到数量恰好相同的新内容上。
+    func clearPendingScrollAnchor() {
+        pendingScrollAnchor = nil
+        pendingScrollAnchorItemCount = nil
+    }
+
     private var cache: [NSCollectionViewLayoutAttributes] = []
     private var columnHeights: [CGFloat] = []
     private var nextItemIndex = 0

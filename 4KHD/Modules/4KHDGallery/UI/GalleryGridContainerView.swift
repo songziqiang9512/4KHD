@@ -116,6 +116,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
         let itemSizeChanged = updateItemSize()
         if contentChanged {
+            // 内容被替换:已捕获的滚动锚点对新内容无效。
+            gridLayout.clearPendingScrollAnchor()
             lastAppliedItemIDs = nextItemIDs
             lastShowsFooter = showsFooter
             thumbnailPrefetchController.reset()

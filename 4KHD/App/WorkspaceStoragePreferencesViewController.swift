@@ -196,7 +196,8 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         setFavoritesActionsEnabled(false)
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             defer { setFavoritesActionsEnabled(true) }
             do {
                 let result = try await favoritesStore.importFavorites(from: url)
@@ -228,7 +229,8 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
 
         setFavoritesActionsEnabled(false)
         clearFavoritesButton.isEnabled = false
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             defer { setFavoritesActionsEnabled(true) }
             do {
                 try await favoritesStore.removeAllFavorites()

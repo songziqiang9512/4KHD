@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 struct WorkspaceWindowState: Codable {
-    static let defaultExpandedSidebarNodeIDs = ["group:本地", "group:线上", "group:在线壁纸"]
+    static let defaultExpandedSidebarNodeIDs = ["group:本地", "group:4KHD", "group:在线壁纸"]
 
     var isFullScreen: Bool
     var splitViewWidths: [Int]

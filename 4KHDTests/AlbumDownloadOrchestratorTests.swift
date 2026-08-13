@@ -290,6 +290,50 @@ final class AlbumDownloadOrchestratorTests: XCTestCase {
         let attempts = await recorder.attempts(for: detailURL)
         XCTAssertEqual(attempts, 2)
     }
+
+    // MARK: - 替换清单后的失败页不被反复解析
+
+    func testFailedPageAfterWorklistReplacementNotRetriedEndlessly() async throws {
+        let folder = makeOrchestratorTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let page1 = try XCTUnwrap(URL(string: "https://www.4khd.com/f.html"))
+        let page2 = try XCTUnwrap(URL(string: "https://www.4khd.com/f.html/2"))
+        let page3 = try XCTUnwrap(URL(string: "https://www.4khd.com/f.html/3"))
+        let recorder = ResolveAttemptRecorder()
+        // 入口是第 2 页:替换 worklist 后重新扫描 [p1, p2, p3];p1 持续失败。
+        let source = AlbumDownloadSource(
+            detailURL: page2,
+            title: "测试图集",
+            estimatedImageCount: 3,
+            initialPageURLs: [page2],
+            resolvePage: { pageURL in
+                await recorder.recordAttempt(for: pageURL)
+                if pageURL == page1 {
+                    throw URLError(.cannotParseResponse)
+                }
+                return makeOrchestratorPage(pageURL, imageCount: 1, pageURLs: [page1, page2, page3])
+            },
+            configureImageRequest: { _ in }
+        )
+
+        let summary = await AlbumDownloadOrchestrator.run(
+            source: source,
+            destinationFolder: folder,
+            registry: ImageTaskRegistry(),
+            emit: { _ in },
+            fetcher: { _, _ in Data([0x01]) }
+        )
+
+        XCTAssertEqual(summary.failedPageCount, 1)
+        XCTAssertEqual(summary.completedCount, 2)
+        // 失败页只有"首次 + 重试一次"两次尝试,不会被重新扫描反复解析。
+        let page1Attempts = await recorder.attempts(for: page1)
+        XCTAssertEqual(page1Attempts, 2)
+        let page2Attempts = await recorder.attempts(for: page2)
+        XCTAssertEqual(page2Attempts, 1)
+        let page3Attempts = await recorder.attempts(for: page3)
+        XCTAssertEqual(page3Attempts, 1)
+    }
 }
 
 // MARK: - Helpers(自由函数,供 @Sendable 闭包调用)
