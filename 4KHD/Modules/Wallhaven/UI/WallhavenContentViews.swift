@@ -154,6 +154,7 @@ final class WallhavenGridItemView: NSCollectionViewItem {
     private var imageTask: ImageTask?
     private var representedID: Wallpaper.ID?
     private var currentThumbURL: URL?
+    var thumbnailMaxPixelSize: CGFloat = 512
 
     override func loadView() {
         view = NSView()
@@ -223,7 +224,7 @@ final class WallhavenGridItemView: NSCollectionViewItem {
         let request = RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .normal,
-            maxPixelSize: 512,
+            maxPixelSize: thumbnailMaxPixelSize,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest
         )
         if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {

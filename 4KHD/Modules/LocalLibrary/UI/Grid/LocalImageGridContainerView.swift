@@ -226,6 +226,13 @@ final class LocalImageGridContainerView: NSView {
         return false
     }
 
+    private var thumbnailMaxPixelSize: CGFloat {
+        let width = waterfallLayout.resolvedColumnWidth
+        guard width > 0 else { return 512 }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        return min(max(width * scale, 512), 1536)
+    }
+
     private func makeGridItem(
         collectionView: NSCollectionView,
         indexPath: IndexPath,
@@ -239,6 +246,7 @@ final class LocalImageGridContainerView: NSView {
             return NSCollectionViewItem()
         }
 
+        let maxPixelSize = thumbnailMaxPixelSize
         item.configure(
             image: entry.image,
             metadata: entry.metadata,
@@ -246,7 +254,7 @@ final class LocalImageGridContainerView: NSView {
             isSelected: entry.image.id == selectedImageID,
             cachedThumbnail: LocalImageCache.shared.cachedImage(
                 for: entry.image.url,
-                maxPixelSize: 512,
+                maxPixelSize: maxPixelSize,
                 fileVersion: Self.fileVersion(for: entry.metadata)
             ),
             searchQuery: searchQuery
@@ -255,7 +263,7 @@ final class LocalImageGridContainerView: NSView {
             Task { @MainActor in
                 let image = await LocalImageCache.shared.image(
                     for: entry.image.url,
-                    maxPixelSize: 512,
+                    maxPixelSize: maxPixelSize,
                     fileVersion: version
                 )
                 completion(image.map(LocalImageThumbnailLoadResult.image) ?? .unavailable)
@@ -492,19 +500,20 @@ final class LocalImageGridContainerView: NSView {
         guard !urls.isEmpty else { return }
 
         prefetchTask?.cancel()
+        let maxPixelSize = thumbnailMaxPixelSize
         prefetchTask = Task(priority: .utility) {
             await withTaskGroup(of: Void.self) { group in
                 var iterator = urls.makeIterator()
                 for _ in 0..<4 {
                     guard let url = iterator.next() else { break }
                     group.addTask {
-                        _ = await LocalImageCache.shared.image(for: url, maxPixelSize: 512)
+                        _ = await LocalImageCache.shared.image(for: url, maxPixelSize: maxPixelSize)
                     }
                 }
                 while await group.next() != nil {
                     guard !Task.isCancelled, let url = iterator.next() else { continue }
                     group.addTask {
-                        _ = await LocalImageCache.shared.image(for: url, maxPixelSize: 512)
+                        _ = await LocalImageCache.shared.image(for: url, maxPixelSize: maxPixelSize)
                     }
                 }
             }

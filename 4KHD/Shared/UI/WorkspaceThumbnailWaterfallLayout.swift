@@ -20,6 +20,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         didSet { invalidateIfChanged(oldValue, hoverScaleFactor) }
     }
     var aspectRatioProvider: ((IndexPath) -> CGFloat)?
+    /// 最近一次 prepare 得到的卡片列宽；宿主用它计算缩略图解码尺寸。
+    private(set) var resolvedColumnWidth: CGFloat = 0
 
     /// 卡片宽高比更新后由宿主调用：强制按新比例重排已生成的卡片。
     /// `invalidateLayout()` 不够——`prepare()` 在 LayoutMetrics 未变时会直接返回。
@@ -122,6 +124,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         didLayoutAllItems = itemCount == 0
         contentHeight = inset.top + inset.bottom
         estimatedContentHeight = estimateContentHeight(metrics: metrics)
+        resolvedColumnWidth = metrics.columnWidth
     }
 
     private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
@@ -322,6 +325,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         contentHeight = 0
         estimatedContentHeight = 0
         didLayoutAllItems = true
+        resolvedColumnWidth = 0
     }
 
     private func invalidateIfChanged(_ oldValue: CGFloat, _ newValue: CGFloat) {

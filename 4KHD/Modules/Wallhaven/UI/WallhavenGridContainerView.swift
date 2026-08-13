@@ -176,6 +176,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
             return footer
         }
         let item = collectionView.makeItem(withIdentifier: WallhavenGridItemView.reuseID, for: indexPath) as? WallhavenGridItemView ?? WallhavenGridItemView()
+        item.thumbnailMaxPixelSize = thumbnailMaxPixelSize
         let wallpaper = wallpapers[indexPath.item]
         item.configure(wallpaper: wallpaper, isSelected: wallpaper.id == selectedWallpaperID, searchQuery: searchQuery) { [weak self] ratio in
             self?.updateAspectRatio(ratio, for: wallpaper.id)
@@ -319,13 +320,20 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         return wallpapers[index].id
     }
 
+    private var thumbnailMaxPixelSize: CGFloat {
+        let width = gridLayout.resolvedColumnWidth
+        guard width > 0 else { return 512 }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        return min(max(width * scale, 512), 1536)
+    }
+
     private func thumbnailRequest(at index: Int) -> ImageRequest? {
         guard wallpapers.indices.contains(index),
               let coverURL = wallpapers[index].cardCoverUrl else { return nil }
         return RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .veryLow,
-            maxPixelSize: 512,
+            maxPixelSize: thumbnailMaxPixelSize,
             configureURLRequest: WallhavenRequestFactory.configureImageRequest
         )
     }

@@ -181,6 +181,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             return footer
         }
         let item = collectionView.makeItem(withIdentifier: MissKonGridItemView.reuseID, for: indexPath) as? MissKonGridItemView ?? MissKonGridItemView()
+        item.thumbnailMaxPixelSize = thumbnailMaxPixelSize
         let galleryItem = items[indexPath.item]
         item.configure(item: galleryItem, isSelected: galleryItem.id == selectedItemID, searchQuery: searchQuery) { [weak self] ratio in
             self?.updateAspectRatio(ratio, for: galleryItem.id)
@@ -319,13 +320,20 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         return items[index].id
     }
 
+    private var thumbnailMaxPixelSize: CGFloat {
+        let width = gridLayout.resolvedColumnWidth
+        guard width > 0 else { return 512 }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        return min(max(width * scale, 512), 1536)
+    }
+
     private func thumbnailRequest(at index: Int) -> ImageRequest? {
         guard items.indices.contains(index),
               let coverURL = items[index].coverURL else { return nil }
         return RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .veryLow,
-            maxPixelSize: 512,
+            maxPixelSize: thumbnailMaxPixelSize,
             configureURLRequest: MissKonRequestFactory.configureImageRequest
         )
     }

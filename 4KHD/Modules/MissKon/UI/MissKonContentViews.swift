@@ -188,6 +188,7 @@ final class MissKonGridItemView: NSCollectionViewItem {
     private var imageTask: ImageTask?
     private var representedID: MissKonItem.ID?
     private var currentCoverURL: URL?
+    var thumbnailMaxPixelSize: CGFloat = 512
 
     override func loadView() {
         view = NSView()
@@ -248,7 +249,7 @@ final class MissKonGridItemView: NSCollectionViewItem {
         let request = RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .normal,
-            maxPixelSize: 512,
+            maxPixelSize: thumbnailMaxPixelSize,
             configureURLRequest: MissKonRequestFactory.configureImageRequest
         )
         if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {

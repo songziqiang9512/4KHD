@@ -216,6 +216,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             withIdentifier: GalleryGridItemView.reuseID,
             for: indexPath
         ) as? GalleryGridItemView ?? GalleryGridItemView()
+        item.thumbnailMaxPixelSize = thumbnailMaxPixelSize
         let galleryItem = items[indexPath.item]
         item.configure(
             item: galleryItem,
@@ -392,13 +393,20 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         return items[index].id
     }
 
+    private var thumbnailMaxPixelSize: CGFloat {
+        let width = gridLayout.resolvedColumnWidth
+        guard width > 0 else { return 512 }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        return min(max(width * scale, 512), 1536)
+    }
+
     private func thumbnailRequest(at index: Int) -> ImageRequest? {
         guard items.indices.contains(index),
               let coverURL = items[index].coverURL else { return nil }
         return RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .veryLow,
-            maxPixelSize: 512,
+            maxPixelSize: thumbnailMaxPixelSize,
             configureURLRequest: GalleryRequestFactory.configureImageRequest
         )
     }
@@ -639,6 +647,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
     private var imageTask: ImageTask?
     private var representedID: GalleryItem.ID?
     private var currentCoverURL: URL?
+    var thumbnailMaxPixelSize: CGFloat = 512
 
     override func loadView() {
         view = NSView()
@@ -719,7 +728,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
         let request = RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .normal,
-            maxPixelSize: 512,
+            maxPixelSize: thumbnailMaxPixelSize,
             configureURLRequest: GalleryRequestFactory.configureImageRequest
         )
         if let cached = RemoteImagePipeline.shared.cachedImage(with: request) {
