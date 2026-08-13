@@ -80,13 +80,13 @@ final class RemoteImagePipeline {
         self.urlCache = urlCache
         self.detailPrefetcher = ImagePrefetcher(
             pipeline: pipeline,
-            destination: .memoryCache,
+            destination: .diskCache,
             maxConcurrentRequestCount: 3
         )
         self.detailPrefetcher.priority = .low
         self.thumbnailPrefetcher = ImagePrefetcher(
             pipeline: pipeline,
-            destination: .memoryCache,
+            destination: .diskCache,
             maxConcurrentRequestCount: 2
         )
         self.thumbnailPrefetcher.priority = .veryLow
@@ -120,7 +120,16 @@ final class RemoteImagePipeline {
 
         let processors: [ImageProcessing]
         if let maxPixelSize, maxPixelSize > 0 {
-            processors = [ImageProcessors.Resize(width: maxPixelSize, unit: .pixels, upscale: false)]
+            // 宽度上限为主；高度上限为 2 倍宽度，防止超长图（长截图/超长壁纸）解码像素失控。
+            // aspectFit 语义下普通竖图不受影响，只有高宽比超过 2:1 的图才会被高度封顶。
+            processors = [
+                ImageProcessors.Resize(
+                    size: CGSize(width: maxPixelSize, height: maxPixelSize * 2),
+                    unit: .pixels,
+                    contentMode: .aspectFit,
+                    upscale: false
+                )
+            ]
         } else {
             processors = []
         }

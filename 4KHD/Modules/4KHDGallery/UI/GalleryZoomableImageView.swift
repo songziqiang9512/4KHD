@@ -34,6 +34,7 @@ final class GalleryZoomableImageView: WorkspaceZoomableImageView {
         let request = RemoteImagePipeline.shared.request(
             for: url,
             priority: .veryHigh,
+            maxPixelSize: 4096,
             configureURLRequest: GalleryRequestFactory.configureImageRequest
         )
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
