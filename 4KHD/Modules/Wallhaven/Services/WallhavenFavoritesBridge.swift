@@ -29,6 +29,9 @@ enum WallhavenFavoritesBridge {
             return nil
         }
         let coverURL = record.coverURL.flatMap(URL.init(string:))
+        // 收藏记录的 subtitle 第三段保存的是 purity.title（见 record(from:)），反查恢复真实纯度。
+        let purityText = record.subtitle.components(separatedBy: " · ").last
+        let purity = WallhavenPurity.allCases.first { $0.title == purityText } ?? .sfw
         return Wallpaper(
             id: record.id,
             displayName: record.title,
@@ -46,7 +49,7 @@ enum WallhavenFavoritesBridge {
             colors: [],
             tags: [],
             createdAt: nil,
-            purity: .sfw,
+            purity: purity,
             category: nil,
             views: nil,
             favorites: nil,

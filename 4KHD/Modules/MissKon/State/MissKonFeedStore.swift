@@ -34,6 +34,8 @@ final class MissKonFeedStore {
     private var cachedItems: [MissKonSection: [MissKonItem]] = [:]
     private var cachedNextPageURLs: [MissKonSection: URL] = [:]
     private var cacheTimestamps: [MissKonSection: Date] = [:]
+    /// 已确认翻到最后一页的板块：cachedNextPageURLs 为 nil 时不再误判为“分页链断裂”而重拉第 1 页。
+    private var noMorePagesSections: Set<MissKonSection> = []
     @ObservationIgnored private var cacheLoadTask: Task<Void, Never>?
     @ObservationIgnored private var didLoadCache = false
     @ObservationIgnored private var pendingNetworkRefresh = false
@@ -96,7 +98,8 @@ final class MissKonFeedStore {
         let snapshot = CacheSnapshot(
             items: trimmedItems.mapKeys { $0.rawValue },
             nextPageURLs: cachedNextPageURLs.mapKeys { $0.rawValue }.mapValues { $0.absoluteString },
-            timestamps: cacheTimestamps.mapKeys { $0.rawValue }.mapValues { $0.timeIntervalSince1970 }
+            timestamps: cacheTimestamps.mapKeys { $0.rawValue }.mapValues { $0.timeIntervalSince1970 },
+            noMorePages: Dictionary(uniqueKeysWithValues: noMorePagesSections.map { ($0.rawValue, true) })
         )
         cacheWriteQueue.async {
             do {
@@ -135,6 +138,10 @@ final class MissKonFeedStore {
             guard let section = MissKonSection(rawValue: key) else { continue }
             cacheTimestamps[section] = Date(timeIntervalSince1970: timestamp)
         }
+        for (key, isAtEnd) in snapshot.noMorePages ?? [:] where isAtEnd {
+            guard let section = MissKonSection(rawValue: key) else { continue }
+            noMorePagesSections.insert(section)
+        }
         if pruneStaleAIGeneratedNextPageIfNeeded() {
             saveCache()
         }
@@ -161,6 +168,7 @@ final class MissKonFeedStore {
         cachedItems.removeAll()
         cachedNextPageURLs.removeAll()
         cacheTimestamps.removeAll()
+        noMorePagesSections.removeAll()
         let cacheDirectory = Self.cacheDirectory
         let cacheWriteQueue = cacheWriteQueue
         try await Task.detached(priority: .utility) {
@@ -209,6 +217,11 @@ final class MissKonFeedStore {
                 self.cachedItems[requestSection] = merged
                 self.cachedNextPageURLs[requestSection] = page.nextPageURL
                 self.cacheTimestamps[requestSection] = Date()
+                if page.nextPageURL == nil {
+                    self.noMorePagesSections.insert(requestSection)
+                } else {
+                    self.noMorePagesSections.remove(requestSection)
+                }
                 self.saveCache()
                 if self.section == requestSection, self.activeSearchQuery == nil {
                     self.allItems = merged
@@ -273,6 +286,11 @@ final class MissKonFeedStore {
                 self.cachedItems[requestSection] = existing
                 self.cachedNextPageURLs[requestSection] = page.nextPageURL
                 self.cacheTimestamps[requestSection] = Date()
+                if page.nextPageURL == nil {
+                    self.noMorePagesSections.insert(requestSection)
+                } else {
+                    self.noMorePagesSections.remove(requestSection)
+                }
                 self.saveCache()
                 if self.section == requestSection, self.activeSearchQuery == nil {
                     self.allItems = existing
@@ -356,6 +374,7 @@ final class MissKonFeedStore {
     private func markNoMorePages(for requestSection: MissKonSection) {
         cachedNextPageURLs[requestSection] = nil
         cacheTimestamps[requestSection] = Date()
+        noMorePagesSections.insert(requestSection)
         saveCache()
         guard section == requestSection, activeSearchQuery == nil else { return }
         nextPageURL = nil
@@ -505,9 +524,11 @@ final class MissKonFeedStore {
             if selectedItemID != previousID {
                 onSelectionChanged?(selectedItemID.flatMap { id in cached.first { $0.id == id } })
             }
-            // Auto-refresh if cache is stale or missing nextPageURL (pagination chain broken)
+            // Auto-refresh if cache is stale or missing nextPageURL (pagination chain broken).
+            // 已到末尾的板块（noMorePagesSections）缺失 nextPageURL 属正常终态，不重拉第 1 页。
             let needsRefresh: Bool
-            if cachedNextPageURLs[self.section] == nil {
+            if cachedNextPageURLs[self.section] == nil,
+               !noMorePagesSections.contains(self.section) {
                 needsRefresh = true
             } else if let timestamp = cacheTimestamps[self.section],
                       Date().timeIntervalSince(timestamp) > Self.cacheMaxAge {
@@ -595,6 +616,7 @@ nonisolated private struct CacheSnapshot: Codable {
     let items: [String: [MissKonItem]]
     let nextPageURLs: [String: String]
     var timestamps: [String: TimeInterval]?
+    var noMorePages: [String: Bool]?
 }
 
 extension Dictionary {

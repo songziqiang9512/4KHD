@@ -139,6 +139,14 @@ enum SiteListResolver {
     }
 
     private static func latestNextPageURL(in html: String) -> URL? {
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let hasPageLinks = queryPageRegex.firstMatch(in: html, range: range) != nil
+        if hasPageLinks {
+            // 页面带页码链接时以真实链接为准：当前页之后无链接即视为末页，分页链正常终止。
+            let baseURL = URL(string: "https://www.4khd.com/")!
+            return queryPaginationNextPageURL(in: html, baseURL: baseURL)
+        }
+        // 无页码链接的旧版分页：保持原有 +1 递增行为。
         let currentPage = firstMatch(currentPageRegex, in: html)
             .flatMap { Int($0.replacingOccurrences(of: ",", with: "")) } ?? 1
         var components = URLComponents()

@@ -487,7 +487,8 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
 
     func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
         imageTask?.cancel()
-        guard loadedURL != url else { return }
+        // 同 URL 且已有图才跳过：加载失败（image 为 nil）后重试同一 URL 必须重新发起请求。
+        guard loadedURL != url || imageView.image == nil else { return }
         loadedURL = url
         guard let url else {
             imageView.image = nil

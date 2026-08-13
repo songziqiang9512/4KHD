@@ -440,13 +440,14 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         guard preferences.layout == .list else {
             return false
         }
+        guard !rows.isEmpty else { return false }
 
         let selectedRow = rows.firstIndex { row in
             guard case .item(let id) = row else { return false }
             return id == library.selectedItemID
         }
         let currentRow = selectedRow ?? (tableView.selectedRow >= 0 ? tableView.selectedRow : 0)
-        let start = currentRow + (delta < 0 ? -1 : 1)
+        let start = min(max(currentRow + (delta < 0 ? -1 : 1), 0), rows.count - 1)
         let range: AnySequence<Int>
         if delta < 0 {
             range = AnySequence(stride(from: start, through: 0, by: -1))

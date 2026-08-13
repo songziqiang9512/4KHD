@@ -327,7 +327,7 @@ final class WorkspaceToolbarContext {
                         && !detailPaneController.isPresented
                         && missKonPreferences.canDecreaseGridColumns,
                     canSelectPreviousImage: selectedIndex > 0,
-                    canSelectNextImage: selectedIndex < slots.count - 1,
+                    canSelectNextImage: selectedIndex >= 0 && selectedIndex < slots.count - 1,
                     canSaveImage: haveImageURL,
                     canResetZoom: missKonStore.selectedSlotID != nil,
                     canShare: currentItem != nil,
@@ -352,7 +352,7 @@ final class WorkspaceToolbarContext {
                         && !detailPaneController.isPresented
                         && wallhavenPreferences.canDecreaseGridColumns,
                     canSelectPreviousImage: selectedIndex > 0,
-                    canSelectNextImage: selectedIndex < wallpapers.count - 1,
+                    canSelectNextImage: selectedIndex >= 0 && selectedIndex < wallpapers.count - 1,
                     canSaveImage: effective?.fullImageUrl != nil,
                     canResetZoom: effective != nil,
                     canShare: effective != nil

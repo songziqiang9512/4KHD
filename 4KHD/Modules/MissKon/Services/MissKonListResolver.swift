@@ -203,9 +203,12 @@ enum MissKonListResolver {
         ).trimmingCharacters(in: .whitespacesAndNewlines)
 
         let pageCount = max(Int(ceil(Double(imageCount) / 12.0)), 1)
+        let baseString = detailURL.absoluteString.hasSuffix("/")
+            ? detailURL.absoluteString
+            : detailURL.absoluteString + "/"
         let pageURLs = (1...pageCount).map { pageNumber -> URL in
             if pageNumber == 1 { return detailURL }
-            return URL(string: "\(detailURL.absoluteString)\(pageNumber)/") ?? detailURL
+            return URL(string: "\(baseString)\(pageNumber)/") ?? detailURL
         }
 
         let tags = tagsFromHTML(html)

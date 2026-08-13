@@ -11,6 +11,11 @@ final class GalleryFeedStore {
         didSet {
             guard section != oldValue else { return }
             clearSearchState()
+            // 丢弃旧板块在途的列表请求与加载状态，避免切换后 isRefreshingList 永久卡在 true。
+            listRefreshTasks.values.forEach { $0.cancel() }
+            listRefreshTasks.removeAll()
+            pendingListLoadMoreSections.removeAll()
+            isRefreshingList = false
             selectFirstItemIfNeeded(force: true)
             refreshSectionIfNeeded()
             if section == .favorites {
@@ -336,6 +341,8 @@ final class GalleryFeedStore {
     }
 
     private func clearSearchState() {
+        searchRefreshTask?.cancel()
+        searchRefreshTask = nil
         activeSearchQuery = nil
         searchText = ""
         searchItems = []

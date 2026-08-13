@@ -21,6 +21,13 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     }
     var aspectRatioProvider: ((IndexPath) -> CGFloat)?
 
+    /// 卡片宽高比更新后由宿主调用：强制按新比例重排已生成的卡片。
+    /// `invalidateLayout()` 不够——`prepare()` 在 LayoutMetrics 未变时会直接返回。
+    func invalidateCachedFrames() {
+        cacheInvalidatedByRatioChange = true
+        invalidateLayout()
+    }
+
     private var cache: [NSCollectionViewLayoutAttributes] = []
     private var columnHeights: [CGFloat] = []
     private var nextItemIndex = 0
@@ -28,6 +35,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     private var contentHeight: CGFloat = 0
     private var estimatedContentHeight: CGFloat = 0
     private var didLayoutAllItems = false
+    private var cacheInvalidatedByRatioChange = false
     private var layoutMetrics: LayoutMetrics?
     private let maximumLayoutWidth: CGFloat = 100_000
     private let maximumLayoutExtent: CGFloat = 100_000_000
@@ -84,6 +92,18 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             minAspectRatio: minAspectRatio,
             maxAspectRatio: maxAspectRatio
         )
+        // 宽高比更新时 LayoutMetrics 可能完全不变，但仍需按新比例重排已生成卡片。
+        if cacheInvalidatedByRatioChange {
+            cacheInvalidatedByRatioChange = false
+            if let oldMetrics = layoutMetrics,
+               oldMetrics.itemCount == metrics.itemCount,
+               oldMetrics.columns == metrics.columns,
+               !cache.isEmpty {
+                updateCachedFrames(metrics: metrics, oldMetrics: oldMetrics)
+                return
+            }
+        }
+
         guard layoutMetrics != metrics else { return }
 
         if let oldMetrics = layoutMetrics,
@@ -137,6 +157,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             }
         }
         layoutMetrics = metrics
+        // 同步列高：还有未生成的卡片时，后续 appendNextItem 必须基于重排后的列高继续。
+        columnHeights = heights
         didLayoutAllItems = nextItemIndex >= itemCount
         contentHeight = max(
             (heights.max() ?? metrics.sectionInset.top) + metrics.sectionInset.bottom - metrics.rowSpacing,

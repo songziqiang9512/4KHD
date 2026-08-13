@@ -137,7 +137,24 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         }
     }
 
-    func clear() throws {
+    func clear() async throws {
+        let cacheDirectory = resetStateForClear()
+
+        try await withCheckedThrowingContinuation { continuation in
+            saveQueue.async {
+                do {
+                    if FileManager.default.fileExists(atPath: cacheDirectory.path) {
+                        try FileManager.default.removeItem(at: cacheDirectory)
+                    }
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func resetStateForClear() -> URL {
         lock.lock()
         loadGeneration += 1
         pendingSaveWorkItem?.cancel()
@@ -146,12 +163,7 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         cachedDetailPaths.removeAll()
         let cacheDirectory = cacheURL.deletingLastPathComponent()
         lock.unlock()
-
-        try saveQueue.sync {
-            if FileManager.default.fileExists(atPath: cacheDirectory.path) {
-                try FileManager.default.removeItem(at: cacheDirectory)
-            }
-        }
+        return cacheDirectory
     }
 
     private func scheduleInitialLoad() {

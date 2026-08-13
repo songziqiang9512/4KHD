@@ -10,6 +10,7 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
     private var pageURL: URL?
     private var loadedPageURL: URL?
     private var generation = UUID()
+    private var webLoadGeneration: UUID?
     private var htmlResolutionTask: Task<Void, Never>?
     private var extractionTask: Task<Void, Never>?
 
@@ -89,10 +90,13 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("https://www.4khd.com/", forHTTPHeaderField: "Referer")
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        webLoadGeneration = generation
         webView.load(request)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // 旧导航（被 cancelCurrentWork 的 stopLoading / 新一轮 load 取代）的结果一律丢弃。
+        guard webLoadGeneration == generation else { return }
         let currentGeneration = generation
         loadedPageURL = pageURL
         extractionTask?.cancel()
@@ -104,10 +108,12 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard webLoadGeneration == generation else { return }
         if let pageURL { onFailure(pageURL) }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard webLoadGeneration == generation else { return }
         if let pageURL { onFailure(pageURL) }
     }
 

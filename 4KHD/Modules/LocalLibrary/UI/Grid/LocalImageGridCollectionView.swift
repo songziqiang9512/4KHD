@@ -17,6 +17,11 @@ final class LocalImageGridCollectionView: WorkspaceCollectionView {
     override func mouseDown(with event: NSEvent) {
         focusHandler?()
         window?.makeFirstResponder(self)
+        // 被取消的延迟释放不会执行，先复位上一张卡片的按压状态，避免其永久停在缩放态。
+        if let previousIndexPath = pressedCardIndexPath {
+            cardPressStateHandler?(previousIndexPath, false)
+            pressedCardIndexPath = nil
+        }
         pendingPressReleaseWorkItem?.cancel()
         pendingPressReleaseWorkItem = nil
 

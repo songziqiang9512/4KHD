@@ -34,7 +34,7 @@ final class WorkspacePreferencesWindowController: NSWindowController, NSToolbarD
                 var failures: [String] = []
                 RemoteImagePipeline.shared.clearAllCaches()
                 do {
-                    try DetailPageImageCache.shared.clear()
+                    try await DetailPageImageCache.shared.clear()
                 } catch {
                     failures.append("详情页")
                 }

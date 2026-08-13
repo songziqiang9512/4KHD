@@ -292,7 +292,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         guard abs(current - clamped) > threshold else { return }
         aspectRatiosByItemID[itemID] = clamped
         aspectRatioLayoutQueue.add(id: "invalidate") { [weak self] in
-            self?.performWithoutAnimation { self?.collectionView.collectionViewLayout?.invalidateLayout() }
+            self?.performWithoutAnimation { self?.gridLayout.invalidateCachedFrames() }
         }
     }
 

@@ -103,7 +103,7 @@ enum WallhavenCategory: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum WallhavenPurity: String, CaseIterable, Identifiable, Codable {
+nonisolated enum WallhavenPurity: String, CaseIterable, Identifiable, Codable {
     case sfw
     case sketchy
     case nsfw

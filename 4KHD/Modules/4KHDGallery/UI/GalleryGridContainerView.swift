@@ -364,7 +364,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         aspectRatiosByItemID[itemID] = clampedRatio
         aspectRatioLayoutQueue.add(id: "invalidate-layout") { [weak self] in
             self?.performWithoutCollectionAnimation {
-                self?.collectionView.collectionViewLayout?.invalidateLayout()
+                self?.gridLayout.invalidateCachedFrames()
             }
         }
     }

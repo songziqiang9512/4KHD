@@ -741,8 +741,10 @@ final class WallhavenFeedStore {
         lastPage = saved.lastPage
         seed = saved.seed
         activeSearchQuery = saved.searchQuery
-        if saved.searchQuery != nil {
-            searchText = saved.searchQuery ?? ""
+        if let query = saved.searchQuery {
+            searchText = query
+        } else {
+            searchText = ""
         }
         canLoadMoreList = saved.canLoadMore
         isRefreshingList = false

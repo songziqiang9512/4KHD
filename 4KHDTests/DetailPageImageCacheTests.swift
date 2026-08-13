@@ -3,7 +3,7 @@ import XCTest
 
 final class DetailPageImageCacheTests: XCTestCase {
     @MainActor
-    func testClearPreventsInitialDiskSnapshotFromReappearing() throws {
+    func testClearPreventsInitialDiskSnapshotFromReappearing() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -16,7 +16,7 @@ final class DetailPageImageCacheTests: XCTestCase {
         writer.flush()
 
         let cache = DetailPageImageCache(cacheURL: cacheURL)
-        try cache.clear()
+        try await cache.clear()
 
         XCTAssertNil(cache.page(for: pageURL))
         XCTAssertFalse(FileManager.default.fileExists(atPath: cacheURL.path))

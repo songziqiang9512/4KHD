@@ -53,13 +53,21 @@ final class LocalLibraryStore {
         let url = folderURL.standardizedFileURL
         isScanning = true
         scanTask?.cancel()
+        let wasAlreadyAdded = rootURLs.contains(url)
         scanTask = Task { [weak self] in
             let excludedPaths = self?.excludedFolderPathsByRootPath[url.path, default: []] ?? []
             let root = await Task.detached(priority: .userInitiated) {
                 Self.scanRoot(at: url, excluding: excludedPaths)
             }.value
 
-            guard !Task.isCancelled, let root else {
+            // 被更新的扫描取消时不动 isScanning，否则会覆盖新任务刚设置的 true。
+            guard !Task.isCancelled else { return }
+            guard let root else {
+                self?.isScanning = false
+                return
+            }
+            // 扫描期间用户删除了该根目录：尊重删除，不重新插回。
+            if wasAlreadyAdded, self?.rootURLs.contains(url) == false {
                 self?.isScanning = false
                 return
             }
@@ -230,6 +238,7 @@ final class LocalLibraryStore {
             if let scannedRoot,
                let index = self?.roots.firstIndex(where: { $0.url == url }) {
                 self?.roots[index] = scannedRoot
+                self?.invalidateAllImagesCache()
                 if self?.selectedFolderID == nil || Self.folder(withID: self?.selectedFolderID, in: scannedRoot.tree) == nil {
                     self?.selectedFolderID = Self.allImagesFolderID
                     self?.selectedImageIndex = 0
@@ -239,7 +248,10 @@ final class LocalLibraryStore {
                 self?.isScanning = false
             } else if let root = self?.roots.first(where: { $0.url == url }) {
                 self?.isScanning = false
-                self?.removeRoot(root)
+                // 目录不可读（外接磁盘断开等）时保留库内容；仅当目录确实存在（扫描结果为空）才移除。
+                if FileManager.default.fileExists(atPath: url.path) {
+                    self?.removeRoot(root)
+                }
             } else {
                 self?.isScanning = false
             }
@@ -257,6 +269,7 @@ final class LocalLibraryStore {
 
             guard !Task.isCancelled else { return }
             self.roots = scannedRoots
+            self.invalidateAllImagesCache()
             self.selectedFolderID = Self.allImagesFolderID
             self.clampSelectedImageIndex()
             self.isScanning = false
@@ -365,6 +378,11 @@ final class LocalLibraryStore {
 
     private var isAllImagesSelected: Bool {
         selectedFolderID == Self.allImagesFolderID
+    }
+
+    private func invalidateAllImagesCache() {
+        cachedAllImages = []
+        cachedAllImagesRootSignature = []
     }
 
     private var allImages: [LocalImageItem] {
