@@ -6,6 +6,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     case cosplay
     case aiGenerated
     case otherxxx
+    case xrUncensored
     case xiaoyu
     case privatePhotoshoot
     case xiuren
@@ -21,6 +22,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .cosplay: "Cosplay"
         case .aiGenerated: "AI 增强"
         case .otherxxx: "OtherXXX"
+        case .xrUncensored: "XR Uncensored"
         case .xiaoyu: "XiaoYu"
         case .privatePhotoshoot: "私房摄影"
         case .xiuren: "秀人"
@@ -36,6 +38,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .cosplay: "theatermasks"
         case .aiGenerated: "cpu"
         case .otherxxx: "rectangle.stack"
+        case .xrUncensored: "viewfinder"
         case .xiaoyu: "person.crop.square"
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
@@ -51,6 +54,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .cosplay: URL(string: "https://misskon.com/tag/cosplay/")
         case .aiGenerated: URL(string: "https://misskon.com/tag/ai-enhanced/")
         case .otherxxx: URL(string: "https://misskon.com/tag/otherxxx/")
+        case .xrUncensored: URL(string: "https://misskon.com/tag/xr-uncensored/")
         case .xiaoyu: URL(string: "https://misskon.com/tag/xiaoyu/")
         case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")
         case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")
