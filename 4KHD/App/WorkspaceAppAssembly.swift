@@ -28,6 +28,7 @@ enum WorkspaceAppAssembly {
         let localDetailInteraction = LocalDetailInteractionController()
         let filmstripVisibility = FilmstripVisibilityController()
         let detailPaneController = WorkspaceDetailPaneController()
+        let downloadStore = DownloadStore()
         let importRootFolderAction = {
             guard let folderURL = LocalLibraryImportService.chooseFolder() else { return }
             localLibraryStore.importRootFolder(folderURL)
@@ -63,6 +64,7 @@ enum WorkspaceAppAssembly {
             localDetailInteraction: localDetailInteraction,
             filmstripVisibility: filmstripVisibility,
             detailPaneController: detailPaneController,
+            downloadStore: downloadStore,
             importRootFolderAction: importRootFolderAction
         )
         let routeController = WorkspaceRouteController(
@@ -81,6 +83,7 @@ enum WorkspaceAppAssembly {
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
             toolbarContext: toolbarContext,
+            downloadStore: downloadStore,
             importRootFolderAction: importRootFolderAction
         )
     }

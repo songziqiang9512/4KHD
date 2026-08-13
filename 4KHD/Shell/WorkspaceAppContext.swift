@@ -12,6 +12,7 @@ final class WorkspaceAppContext {
     let localLibraryStore: LocalLibraryStore
     let favoritesStore: FavoritesStore
     let toolbarContext: WorkspaceToolbarContext
+    let downloadStore: DownloadStore
     @ObservationIgnored private let importRootFolderAction: () -> Void
 
     init(
@@ -24,6 +25,7 @@ final class WorkspaceAppContext {
         localLibraryStore: LocalLibraryStore,
         favoritesStore: FavoritesStore,
         toolbarContext: WorkspaceToolbarContext,
+        downloadStore: DownloadStore,
         importRootFolderAction: @escaping () -> Void
     ) {
         self.moduleRegistry = moduleRegistry
@@ -35,6 +37,7 @@ final class WorkspaceAppContext {
         self.localLibraryStore = localLibraryStore
         self.favoritesStore = favoritesStore
         self.toolbarContext = toolbarContext
+        self.downloadStore = downloadStore
         self.importRootFolderAction = importRootFolderAction
     }
 

@@ -17,6 +17,7 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     private var preferencesWindowController: WorkspacePreferencesWindowController?
     private var keyboardShortcutsWindowController: WorkspaceKeyboardShortcutsWindowController?
     private var inspectorWindowController: WorkspaceInspectorWindowController?
+    private var downloadsWindowController: WorkspaceDownloadsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -48,6 +49,8 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         windowController?.saveStateToUserDefaults()
         inspectorWindowController?.saveState()
+        // 中断下载任务与在飞请求;任务不持久化,已下载文件保留。
+        appContext?.downloadStore.shutdown()
         // 落盘防抖窗口内的详情页缓存变更，避免退出瞬间丢失。
         DetailPageImageCache.shared.flush()
     }
@@ -87,6 +90,17 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     @objc func showInspector(_ sender: Any?) {
         guard let appContext else { return }
         showInspector(sender, appContext: appContext)
+    }
+
+    @objc func showDownloadsWindow(_ sender: Any?) {
+        guard let appContext else { return }
+        if downloadsWindowController == nil {
+            downloadsWindowController = WorkspaceDownloadsWindowController(
+                downloadStore: appContext.downloadStore
+            )
+        }
+        downloadsWindowController?.showWindow(sender)
+        downloadsWindowController?.window?.makeKeyAndOrderFront(sender)
     }
 
     @objc func openApplicationSupportFolder(_ sender: Any?) {
@@ -476,6 +490,14 @@ private enum MainMenuBuilder {
         inspectorItem.keyEquivalentModifierMask = [.command, .option]
         inspectorItem.target = NSApp.delegate as AnyObject?
         menu.addItem(inspectorItem)
+        let downloadsItem = NSMenuItem(
+            title: "Downloads",
+            action: #selector(FourKHDAppDelegate.showDownloadsWindow(_:)),
+            keyEquivalent: "d"
+        )
+        downloadsItem.keyEquivalentModifierMask = [.command, .option]
+        downloadsItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(downloadsItem)
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(

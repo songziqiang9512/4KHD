@@ -40,6 +40,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var immersiveItem: NSToolbarItem?
     private weak var filmstripItem: NSToolbarItem?
     private weak var detailActionsItem: NSMenuToolbarItem?
+    private weak var onlineSaveItem: NSMenuToolbarItem?
     private weak var shareItem: NSToolbarItem?
     private weak var detailPaneItem: NSToolbarItem?
     private var isObservingToolbarState = false
@@ -347,14 +348,14 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             updateWallhavenFilterItem()
             return item
         case ItemID.onlineSave:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.target = self
-            item.action = #selector(saveCurrentImage(_:))
-            item.label = "保存图片"
-            item.paletteLabel = "保存图片"
-            item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
-            item.toolTip = "保存图片"
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "保存"
+            item.paletteLabel = "保存"
+            item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存")
+            item.toolTip = "保存"
             item.visibilityPriority = .standard
+            onlineSaveItem = item
+            updateOnlineSaveItem()
             return item
         case ItemID.onlineInfo:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -428,7 +429,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case ItemID.share:
             canShareCurrentModule
         case ItemID.onlineSave:
-            canSaveCurrentImage
+            canSaveCurrentImage || canSaveCurrentAlbum
         case ItemID.onlineInfo:
             true
         case ItemID.wallhavenSave:
@@ -545,6 +546,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         refresh()
     }
 
+    @objc private func saveGalleryItem(_ sender: Any?) {
+        appContext.toolbarContext.saveGalleryItem(for: currentModuleID)
+        refresh()
+    }
+
     @objc private func revealCurrentFileInFinder(_ sender: Any?) {
         guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
@@ -606,6 +612,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         updateImmersiveItem()
         updateFilmstripItem()
         updateDetailActionsItem()
+        updateOnlineSaveItem()
         updateWallhavenFilterItem()
         updateShareItem()
         configureDetailPaneItem(detailPaneItem)
@@ -715,6 +722,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         detailActionsItem.isEnabled = appContext.toolbarContext.currentReference(for: currentModuleID) != nil
     }
 
+    private func updateOnlineSaveItem() {
+        guard let onlineSaveItem else { return }
+        onlineSaveItem.menu = makeOnlineSaveMenu()
+    }
+
     private func updateShareItem() {
         guard let shareItem else { return }
         let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
@@ -737,6 +749,17 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private var canSaveCurrentImage: Bool {
         appContext.toolbarContext.snapshot(for: currentModuleID).fields.canSaveImage
+    }
+
+    private var canSaveCurrentAlbum: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case .gallery(let snapshot):
+            snapshot.canSaveAlbum
+        case .missKon(let snapshot):
+            snapshot.canSaveAlbum
+        case .local, .wallhaven:
+            false
+        }
     }
 
     private var canUseFilmstrip: Bool {
@@ -841,6 +864,24 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .fourKHDGallery, .missKon:
             break
         }
+        return menu
+    }
+
+    private func makeOnlineSaveMenu() -> NSMenu {
+        let menu = NSMenu(title: "保存")
+        menu.autoenablesItems = false
+
+        let saveImageItem = NSMenuItem(title: "保存当前图片", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+        saveImageItem.target = self
+        saveImageItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存当前图片")
+        saveImageItem.isEnabled = canSaveCurrentImage
+        menu.addItem(saveImageItem)
+
+        let saveAlbumItem = NSMenuItem(title: "保存整个图集…", action: #selector(saveGalleryItem(_:)), keyEquivalent: "")
+        saveAlbumItem.target = self
+        saveAlbumItem.image = NSImage(systemSymbolName: "square.stack.3d.down.right", accessibilityDescription: "保存整个图集")
+        saveAlbumItem.isEnabled = canSaveCurrentAlbum
+        menu.addItem(saveAlbumItem)
         return menu
     }
 

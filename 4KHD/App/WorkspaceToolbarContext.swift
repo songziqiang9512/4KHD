@@ -18,6 +18,7 @@ enum WorkspaceToolbarSnapshot {
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
+        let canSaveAlbum: Bool
         let canResetZoom: Bool
         let canShare: Bool
         let isFilmstripPresented: Bool
@@ -34,6 +35,7 @@ enum WorkspaceToolbarSnapshot {
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
+        let canSaveAlbum: Bool
         let canResetZoom: Bool
         let canShare: Bool
         let isFilmstripPresented: Bool
@@ -219,6 +221,7 @@ final class WorkspaceToolbarContext {
     private let localDetailInteraction: LocalDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
     private let detailPaneController: WorkspaceDetailPaneController
+    private let downloadStore: DownloadStore
     private let importRootFolderAction: () -> Void
 
     init(
@@ -236,6 +239,7 @@ final class WorkspaceToolbarContext {
         localDetailInteraction: LocalDetailInteractionController,
         filmstripVisibility: FilmstripVisibilityController,
         detailPaneController: WorkspaceDetailPaneController,
+        downloadStore: DownloadStore,
         importRootFolderAction: @escaping () -> Void
     ) {
         self.galleryStore = galleryStore
@@ -252,6 +256,7 @@ final class WorkspaceToolbarContext {
         self.localDetailInteraction = localDetailInteraction
         self.filmstripVisibility = filmstripVisibility
         self.detailPaneController = detailPaneController
+        self.downloadStore = downloadStore
         self.importRootFolderAction = importRootFolderAction
     }
 
@@ -275,6 +280,7 @@ final class WorkspaceToolbarContext {
                         galleryStore.selectedImageIndex < max(item.imageCount - 1, 0)
                     } ?? false,
                     canSaveImage: selectedItem != nil && galleryStore.selectedSlot?.knownURL != nil,
+                    canSaveAlbum: selectedItem != nil,
                     canResetZoom: galleryStore.selectedSlot != nil,
                     canShare: selectedItem != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
@@ -329,6 +335,7 @@ final class WorkspaceToolbarContext {
                     canSelectPreviousImage: selectedIndex > 0,
                     canSelectNextImage: selectedIndex >= 0 && selectedIndex < slots.count - 1,
                     canSaveImage: haveImageURL,
+                    canSaveAlbum: currentItem != nil,
                     canResetZoom: missKonStore.selectedSlotID != nil,
                     canShare: currentItem != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
@@ -583,6 +590,28 @@ final class WorkspaceToolbarContext {
         case .wallhaven:
             guard let wallpaper = wallhavenStore.effectiveSelectedWallpaper else { return }
             wallhavenDetailInteraction.saveWallpaper(wallpaper)
+        }
+    }
+
+    func saveGalleryItem(for moduleID: WorkspaceModuleID) {
+        let result: DownloadStore.EnqueueAlbumResult?
+        switch moduleID {
+        case .fourKHDGallery:
+            guard let item = galleryStore.selectedItem else { return }
+            result = downloadStore.enqueueAlbumChoosingFolder(source: .gallery(item))
+        case .missKon:
+            guard let item = missKonStore.currentItem else { return }
+            result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
+        case .localLibrary, .wallhaven:
+            return
+        }
+        if result == .duplicate {
+            let alert = makeAppAlert(
+                title: "该图集已在下载队列中",
+                message: "同一下载任务正在排队或下载中。",
+                style: .informational
+            )
+            presentAppAlert(alert, in: appModalHostWindow())
         }
     }
 
