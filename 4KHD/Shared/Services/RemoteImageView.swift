@@ -143,13 +143,43 @@ final class RemoteImagePipeline {
             switch result {
             case .success(let response):
                 completion(response.image)
+                self?.pruneFinishedTasks()
+            case .failure(let error):
+                if self?.isRetriableLoadingError(error) == true {
+                    // 瞬时网络错误自动重试一次，避免一次抖动让缩略图/详情图永久空白。
+                    self?.retryLoadImageOnce(with: request, completion: completion)
+                } else {
+                    completion(nil)
+                    self?.pruneFinishedTasks()
+                }
+            }
+        }
+        track(task)
+        return task
+    }
+
+    private func retryLoadImageOnce(with request: ImageRequest, completion: @escaping (NSImage?) -> Void) {
+        let task = pipeline.loadImage(with: request) { [weak self] result in
+            switch result {
+            case .success(let response):
+                completion(response.image)
             case .failure:
                 completion(nil)
             }
             self?.pruneFinishedTasks()
         }
         track(task)
-        return task
+    }
+
+    private func isRetriableLoadingError(_ error: ImagePipeline.Error) -> Bool {
+        guard case .dataLoadingFailed(let wrappedError) = error,
+              let urlError = wrappedError as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
     }
 
     func cachedImage(with request: ImageRequest) -> NSImage? {

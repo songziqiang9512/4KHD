@@ -38,7 +38,8 @@ class RemoteImageView: NSView {
     }
 
     func setImage(url: URL?, maxPixelSize: CGFloat = 220) {
-        guard loadedURL != url else { return }
+        // 同 URL 且已有图才跳过：加载失败的缩略图滚出再滚回时重新尝试。
+        guard loadedURL != url || imageView.image == nil else { return }
         imageTask?.cancel()
         loadedURL = url
         imageView.alphaValue = 1
