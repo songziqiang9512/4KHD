@@ -4,13 +4,17 @@ enum MissKonDetailResolver {
     private static let requestCoalescer = MissKonDetailHTMLRequestCoalescer()
     private static let pageLinkCurrentRegex = regex(#"<span\s+class=["'][^"']*post-page-numbers\s+current[^"']*["'][^>]*>\s*(\d+)\s*</span>"#)
     private static let pageLinkAnchorRegex = regex(#"<a(?=[^>]*class=["'][^"']*post-page-numbers[^"']*["'])[^>]*href=["']([^"']+)["'][^>]*>\s*(\d+)\s*</a>"#)
+    /// 详情页底部的 "Download link: MediaFire" 按钮。href 是 ouo.io 短链
+    /// (Cloudflare 防护,无法在运行时跟随出真实链接),原样提供给用户浏览器打开。
+    private static let mediaFireAnchorRegex = regex(#"<a\b(?=[^>]*href=["']([^"']+)["'])[^>]*>(?:(?!</a>).)*Download link:\s*MediaFire"#)
 
     static func resolve(pageURL: URL) async throws -> MissKonResolvedImagePage {
         if let cached = DetailPageImageCache.shared.page(for: pageURL) {
             return MissKonResolvedImagePage(
                 pageURL: cached.pageURL,
                 imageURLs: cached.imageURLs,
-                pageURLs: cached.pageURLs
+                pageURLs: cached.pageURLs,
+                mediaFireURL: nil
             )
         }
 
@@ -26,9 +30,24 @@ enum MissKonDetailResolver {
         try Task.checkCancellation()
 
         let pageURLs = resolvePageURLs(from: html, baseURL: pageURL)
-        let page = MissKonResolvedImagePage(pageURL: pageURL, imageURLs: imageURLs, pageURLs: pageURLs)
+        let mediaFireURL = extractMediaFireDownloadLink(from: html)
+        let page = MissKonResolvedImagePage(
+            pageURL: pageURL,
+            imageURLs: imageURLs,
+            pageURLs: pageURLs,
+            mediaFireURL: mediaFireURL
+        )
         DetailPageImageCache.shared.store(pageURL: page.pageURL, imageURLs: page.imageURLs, pageURLs: page.pageURLs)
         return page
+    }
+
+    /// 提取 MediaFire 下载按钮的短链 URL;没有该按钮时返回 nil。
+    static func extractMediaFireDownloadLink(from html: String) -> URL? {
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        guard let match = mediaFireAnchorRegex.firstMatch(in: html, range: range),
+              match.numberOfRanges > 1,
+              let urlRange = Range(match.range(at: 1), in: html) else { return nil }
+        return URL(string: String(html[urlRange]))
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {

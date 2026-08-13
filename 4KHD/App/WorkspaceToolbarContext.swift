@@ -605,13 +605,19 @@ final class WorkspaceToolbarContext {
         case .localLibrary, .wallhaven:
             return
         }
-        if result == .duplicate {
+        switch result {
+        case .enqueued:
+            // 下载开始即弹出管理窗口,让用户能看到进度与队列。
+            WorkspaceDownloadsPresenter.show()
+        case .duplicate:
             let alert = makeAppAlert(
                 title: "该图集已在下载队列中",
                 message: "同一下载任务正在排队或下载中。",
                 style: .informational
             )
             presentAppAlert(alert, in: appModalHostWindow())
+        case .cancelled, nil:
+            break
         }
     }
 

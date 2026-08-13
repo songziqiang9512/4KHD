@@ -365,6 +365,17 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
         menu.addItem(openItem)
 
+        // 详情页解析出 MediaFire 下载链接(短链)后提供快捷入口;
+        // 只对当前详情图集显示,避免打开别的图集的链接。
+        if library.detail.currentItem?.id == item.id,
+           let mediaFireURL = library.detail.mediaFireDownloadURL {
+            let mediaFireItem = NSMenuItem(title: "MediaFire", action: #selector(openMediaFire(_:)), keyEquivalent: "")
+            mediaFireItem.target = self
+            mediaFireItem.representedObject = mediaFireURL
+            mediaFireItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: "MediaFire")
+            menu.addItem(mediaFireItem)
+        }
+
         menu.addItem(.separator())
 
         let copyItem = NSMenuItem(title: "复制链接", action: #selector(copyDetailLink(_:)), keyEquivalent: "")
@@ -383,6 +394,11 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     @objc private func openInBrowser(_ sender: NSMenuItem) {
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }) else { return }
         NSWorkspace.shared.open(item.detailURL)
+    }
+
+    @objc private func openMediaFire(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func copyDetailLink(_ sender: NSMenuItem) {

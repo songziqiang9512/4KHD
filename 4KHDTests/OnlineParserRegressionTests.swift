@@ -106,6 +106,23 @@ final class OnlineParserRegressionTests: XCTestCase {
         XCTAssertEqual(page.items[0].pageURLs.count, 2)
         XCTAssertEqual(page.items[0].pageURLs[1].absoluteString, "https://misskon.com/post-name/2/")
     }
+
+    @MainActor
+    func testMediaFireDownloadLinkExtractedFromDetailHTML() throws {
+        // 真实详情页片段:ouo.io 短链 + 紧随其后的 Terabox 链接。
+        let html = #"""
+        <p style="text-align: center"><a href="https://ouo.io/AWhxx8" target="_blank" class="shortc-button medium green "><i class="fa fa fa-download"></i>Download link: MediaFire</a> <p style="text-align: center"><a href="https://1024terabox.com/s/171mfLkllv8Z1JSoKo9lP0Q" target="_blank" class="shortc-button medium blue "><i class="fa fa fa-download"></i>Download link: Terabox</a>
+        """#
+
+        let url = MissKonDetailResolver.extractMediaFireDownloadLink(from: html)
+        XCTAssertEqual(url?.absoluteString, "https://ouo.io/AWhxx8")
+
+        // 无 MediaFire 按钮时返回 nil。
+        let withoutButton = MissKonDetailResolver.extractMediaFireDownloadLink(
+            from: "<p><a href=\"https://example.com/x\">Download link: Terabox</a></p>"
+        )
+        XCTAssertNil(withoutButton)
+    }
 }
 
 final class WallhavenFavoritesBridgeTests: XCTestCase {

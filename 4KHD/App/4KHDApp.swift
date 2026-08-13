@@ -31,6 +31,12 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
             name: WorkspaceInspectorPresenter.showNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showDownloadsWindow(_:)),
+            name: WorkspaceDownloadsPresenter.showNotification,
+            object: nil
+        )
 
         let windowController = WorkspaceWindowController(appContext: appContext)
         self.windowController = windowController

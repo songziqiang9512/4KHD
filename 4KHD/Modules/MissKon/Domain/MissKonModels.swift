@@ -87,4 +87,5 @@ struct MissKonResolvedImagePage {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]
+    let mediaFireURL: URL?
 }

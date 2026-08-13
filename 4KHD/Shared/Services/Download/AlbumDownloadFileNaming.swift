@@ -35,12 +35,14 @@ enum AlbumDownloadFileNaming {
 
     /// lastPathComponent 去碰撞:"abc.jpg" 已存在时生成 "abc (1).jpg";
     /// 无扩展名补 ".jpg";reservedNames 用于排除本次运行内已分配的名字。
+    /// preferredExtension 传入时覆盖 URL 自带扩展名(如 webp 转 png 后落盘)。
     nonisolated static func uniqueFileName(
         for imageURL: URL,
         in folder: URL,
-        excluding reservedNames: Set<String> = []
+        excluding reservedNames: Set<String> = [],
+        preferredExtension: String? = nil
     ) -> URL {
-        let (base, ext) = splitFileName(imageURL.lastPathComponent)
+        let (base, ext) = splitFileName(imageURL.lastPathComponent, preferredExtension: preferredExtension)
         func isTaken(_ name: String) -> Bool {
             reservedNames.contains(name)
                 || FileManager.default.fileExists(atPath: folder.appendingPathComponent(name).path)
@@ -65,14 +67,20 @@ enum AlbumDownloadFileNaming {
         return contents.isEmpty
     }
 
-    private nonisolated static func splitFileName(_ rawName: String) -> (base: String, ext: String) {
-        guard let dotIndex = rawName.lastIndex(of: "."),
-              rawName.index(after: dotIndex) != rawName.endIndex
-        else {
-            return (rawName, ".jpg")
+    private nonisolated static func splitFileName(
+        _ rawName: String,
+        preferredExtension: String?
+    ) -> (base: String, ext: String) {
+        let fallback: (base: String, ext: String)
+        if let dotIndex = rawName.lastIndex(of: "."),
+           rawName.index(after: dotIndex) != rawName.endIndex {
+            let base = String(rawName[..<dotIndex])
+            fallback = (base.isEmpty ? "image" : base, String(rawName[dotIndex...]))
+        } else {
+            fallback = (rawName, ".jpg")
         }
-        let base = String(rawName[..<dotIndex])
-        return (base.isEmpty ? "image" : base, String(rawName[dotIndex...]))
+        guard let preferredExtension else { return fallback }
+        return (fallback.base, "." + preferredExtension)
     }
 }
 
@@ -87,13 +95,14 @@ final nonisolated class AlbumFileNameAllocator: @unchecked Sendable {
         self.folder = folder
     }
 
-    func allocate(for imageURL: URL) -> URL {
+    func allocate(for imageURL: URL, preferredExtension: String? = nil) -> URL {
         lock.lock()
         defer { lock.unlock() }
         let candidate = AlbumDownloadFileNaming.uniqueFileName(
             for: imageURL,
             in: folder,
-            excluding: reservedNames
+            excluding: reservedNames,
+            preferredExtension: preferredExtension
         )
         reservedNames.insert(candidate.lastPathComponent)
         return candidate

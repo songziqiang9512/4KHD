@@ -104,7 +104,7 @@ enum AlbumDownloadOrchestrator {
                 let chunk = Array(pageImageURLs[offset ..< min(offset + chunkSize, pageImageURLs.count)])
                 offset += chunk.count
 
-                await withTaskGroup(of: (imageURL: URL, data: Data?).self) { group in
+                await withTaskGroup(of: (imageURL: URL, data: Data?, extensionName: String?).self) { group in
                     for imageURL in chunk {
                         group.addTask {
                             // 失败自动重试一次(重试前检查取消)。
@@ -112,13 +112,15 @@ enum AlbumDownloadOrchestrator {
                             if data == nil, !Task.isCancelled {
                                 data = await resolvedFetcher(imageURL, registry)
                             }
-                            return (imageURL, data)
+                            // WebP 转无损 PNG;转换失败退回原数据。
+                            let converted = data.map { AlbumImageFormatConverter.convertingToPNGIfWebP($0) }
+                            return (imageURL, converted?.data, converted?.extensionName)
                         }
                     }
-                    for await (imageURL, data) in group {
+                    for await (imageURL, data, extensionName) in group {
                         guard !Task.isCancelled else { continue }
                         if let data {
-                            let fileURL = allocator.allocate(for: imageURL)
+                            let fileURL = allocator.allocate(for: imageURL, preferredExtension: extensionName)
                             if writeImageData(data, to: fileURL) {
                                 summary.completedCount += 1
                                 emit(.imageSucceeded(pageIndex: pageIndex, fileURL: fileURL))

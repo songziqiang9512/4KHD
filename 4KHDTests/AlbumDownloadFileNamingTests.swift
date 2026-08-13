@@ -79,6 +79,57 @@ final class AlbumDownloadFileNamingTests: XCTestCase {
         XCTAssertEqual(reserved.lastPathComponent, "def (1).jpg")
     }
 
+    // MARK: - 转码后扩展名覆盖
+
+    func testUniqueFileNamePreferredExtensionOverridesURL() throws {
+        let folder = makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        // webp URL + 转码扩展名 → 落盘 .png
+        let converted = try AlbumDownloadFileNaming.uniqueFileName(
+            for: XCTUnwrap(URL(string: "https://x.com/photo.webp")),
+            in: folder,
+            preferredExtension: "png"
+        )
+        XCTAssertEqual(converted.lastPathComponent, "photo.png")
+
+        // 冲突序号同样适用
+        try Data([0x01]).write(to: folder.appendingPathComponent("photo.png"))
+        let convertedCollided = try AlbumDownloadFileNaming.uniqueFileName(
+            for: XCTUnwrap(URL(string: "https://x.com/photo.webp")),
+            in: folder,
+            preferredExtension: "png"
+        )
+        XCTAssertEqual(convertedCollided.lastPathComponent, "photo (1).png")
+    }
+
+    // MARK: - WebP 检测与转码 fallback
+
+    func testWebPDetectionAndNonWebPPassthrough() {
+        // RIFF....WEBP 魔数
+        var webp = Data("RIFF".utf8)
+        webp.append(Data([0x00, 0x00, 0x00, 0x00]))
+        webp.append(Data("WEBP".utf8))
+        webp.append(Data([0x01, 0x02]))
+        XCTAssertTrue(AlbumImageFormatConverter.isWebP(webp))
+
+        // 假 WEBP 数据无法解码 → 原样返回,扩展名 nil
+        let fallback = AlbumImageFormatConverter.convertingToPNGIfWebP(webp)
+        XCTAssertEqual(fallback.data, webp)
+        XCTAssertNil(fallback.extensionName)
+
+        // JPEG 魔数 → 原样
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x02])
+        XCTAssertFalse(AlbumImageFormatConverter.isWebP(jpeg))
+        let passthrough = AlbumImageFormatConverter.convertingToPNGIfWebP(jpeg)
+        XCTAssertEqual(passthrough.data, jpeg)
+        XCTAssertNil(passthrough.extensionName)
+
+        // 短数据不误判
+        XCTAssertFalse(AlbumImageFormatConverter.isWebP(Data([0x01])))
+    }
+
     private func makeTempFolder() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("4KHDFileNamingTests-\(UUID().uuidString)", isDirectory: true)

@@ -9,6 +9,9 @@
 - 应用实机启动验证通过：网格渲染、详情加载、双击缩放往返、切换图片均正常。
 - 图集批量下载 + 下载管理器已实现（工具栏「保存」菜单、Window→Downloads 浮窗），引擎与调度逻辑有单元测试覆盖；菜单/浮窗交互尚未实机点击验证。
 - 内容区滚动位置记忆：开关详情面板 / 进出大图导致网格列数变化时，瀑布流布局记录滚动锚点并恢复（`WorkspaceThumbnailWaterfallLayout` 的 pendingScrollAnchor 机制，覆盖 Gallery/MissKon/Wallhaven；LocalLibrary 自带恢复逻辑）。
+- 下载体验：发起下载自动弹出管理窗口（`WorkspaceDownloadsPresenter` 通知，AppDelegate 观察）；WebP 图片自动转无损 PNG 落盘（`AlbumImageFormatConverter`，转换失败退回原数据）。
+- MissKon 右键菜单新增 MediaFire 项：详情页 HTML 解析提取 ouo.io 短链（Cloudflare 防护无法运行时跟随出真实链接），仅对当前详情图集显示。
+- 设置面板合并为单页（`WorkspacePreferencesViewController` 统一 NSGridView 排版 + 滚动容器），旧的内容/存储双页已删除。
 
 ## 本轮修复与优化摘要
 

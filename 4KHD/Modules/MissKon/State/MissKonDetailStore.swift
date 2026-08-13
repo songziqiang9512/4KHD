@@ -10,6 +10,8 @@ final class MissKonDetailStore {
     var isResolving = false
     var isResolutionComplete = false
     var errorMessage: String?
+    /// 当前图集的 MediaFire 下载链接(详情页 HTML 中提取,短链)。
+    var mediaFireDownloadURL: URL?
 
     private var resolvedPages: [URL: MissKonResolvedImagePage] = [:]
     private var failedPageURLs = Set<URL>()
@@ -52,12 +54,18 @@ final class MissKonDetailStore {
         errorMessage = nil
         imageSlots = []
         selectedSlotID = nil
+        mediaFireDownloadURL = nil
 
         currentItem = item
         knownPageURLs = item.pageURLs
         guard !knownPageURLs.isEmpty else { return }
         let cachedFirstPage = DetailPageImageCache.shared.page(for: knownPageURLs[0]).map {
-            MissKonResolvedImagePage(pageURL: $0.pageURL, imageURLs: $0.imageURLs, pageURLs: $0.pageURLs)
+            MissKonResolvedImagePage(
+                pageURL: $0.pageURL,
+                imageURLs: $0.imageURLs,
+                pageURLs: $0.pageURLs,
+                mediaFireURL: nil
+            )
         }
         if let cachedFirstPage {
             resolvedPages[cachedFirstPage.pageURL] = cachedFirstPage
@@ -166,6 +174,9 @@ final class MissKonDetailStore {
                 self.reconcileKnownPageURLs(with: page.pageURLs, requestedPageURL: pageURL)
                 self.resolvedPages[pageURL] = page
                 self.pageTasks[pageURL] = nil
+                if let mediaFireURL = page.mediaFireURL {
+                    self.mediaFireDownloadURL = mediaFireURL
+                }
                 self.mergeResolvedPage(page, pageURL: pageURL)
                 if prefetchNext > 0 {
                     self.schedulePrefetch(count: prefetchNext, after: pageURL)
