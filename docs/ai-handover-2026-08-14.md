@@ -99,6 +99,14 @@
 - MissKon 详情 `prepare` 对同 ID item 直接跳过，列表刷新替换同 ID item 对象时 detail 持有旧快照（影响小，未修）。
 - 测试宿主运行在沙盒内（容器 `com.songziqiang.-KHD`），调试日志写到 `FileManager.default.temporaryDirectory` 时在容器 tmp 下，不在宿主 /tmp。
 
+## 两轮审查已修复（第二轮）
+
+- 下载引擎 worklist 替换后的失败页不再被成功页的重新扫描反复解析（restartScan 在失败分支消费）。
+- Gallery 详情 pending 跳转：stepImage 无更多页时回退末位不悬挂 pending；用户主动选中已加载位置时清 pending，防止在途页到位把选中强制拉走。
+- 胶片条在占位槽被解析结果替换（knownURL 变化）时刷新可见槽缩略图。
+- 滚动锚点在内容替换（刷新/搜索/切换）时由宿主显式清除，防止旧锚点应用到数量相同的新内容。
+- 设置面板导入/清空收藏的 Task 改弱捕获 self；侧边栏默认展开 ID 修正为 `group:4KHD`。
+
 ## 验证命令
 
 ```bash
