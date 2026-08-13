@@ -122,6 +122,27 @@ final class FavoritesStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRemoveAllFavoritesPersistsEmptySnapshotAndPublishesChange() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let fileURL = root.appendingPathComponent("favorites.json")
+        try JSONEncoder().encode([Self.record]).write(to: fileURL)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "4KHDTests-\(UUID().uuidString)"))
+        let store = FavoritesStore(fileURL: fileURL, defaults: defaults)
+        await store.waitUntilLoaded()
+        var callbackCount = 0
+        store.onFavoritesChanged = { callbackCount += 1 }
+
+        try await store.removeAllFavorites()
+
+        XCTAssertTrue(store.favorites.isEmpty)
+        XCTAssertEqual(try JSONDecoder().decode([FavoriteRecord].self, from: Data(contentsOf: fileURL)), [])
+        XCTAssertEqual(callbackCount, 2)
+    }
+
+    @MainActor
     func testCorruptFavoritesFileRecoversFromBackup() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)

@@ -25,11 +25,17 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         b.controlSize = .regular
         return b
     }()
+    private let clearFavoritesButton: NSButton = {
+        let b = NSButton(title: "清空全部收藏...", target: nil, action: nil)
+        b.bezelStyle = .rounded
+        b.controlSize = .regular
+        return b
+    }()
     private let statusLabel = NSTextField(labelWithString: "")
     private let favoritesStatusLabel = NSTextField(labelWithString: "")
     private var clearTask: Task<Void, Never>?
 
-    let paneContentSize = NSSize(width: 470, height: 235)
+    let paneContentSize = NSSize(width: 470, height: 290)
 
     init(
         favoritesStore: FavoritesStore,
@@ -93,6 +99,8 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         exportFavoritesButton.action = #selector(exportFavorites(_:))
         importFavoritesButton.target = self
         importFavoritesButton.action = #selector(importFavorites(_:))
+        clearFavoritesButton.target = self
+        clearFavoritesButton.action = #selector(clearFavorites(_:))
 
         let favoritesDescLabel = NSTextField(labelWithString: "将所有线上模块的收藏图集导出为 JSON 文件，之后可从文件恢复。")
         favoritesDescLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -103,12 +111,21 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         favoritesButtonRow.alignment = .centerY
         favoritesButtonRow.spacing = 10
 
+        let clearFavoritesRow = NSStackView(views: [clearFavoritesButton])
+        clearFavoritesRow.orientation = .horizontal
+        clearFavoritesRow.alignment = .centerY
+        let clearFavoritesDescLabel = NSTextField(labelWithString: "清空会立即从所有线上模块移除收藏；建议先导出备份。")
+        clearFavoritesDescLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        clearFavoritesDescLabel.textColor = .secondaryLabelColor
+
         stackView.addArrangedSubview(row(label: "缓存上限", control: cacheLimitPopup))
         stackView.addArrangedSubview(descLabel)
         stackView.addArrangedSubview(buttonRow)
         stackView.addArrangedSubview(separator())
         stackView.addArrangedSubview(row(label: "收藏备份", control: favoritesButtonRow))
         stackView.addArrangedSubview(favoritesDescLabel)
+        stackView.addArrangedSubview(row(label: "清空收藏", control: clearFavoritesRow))
+        stackView.addArrangedSubview(clearFavoritesDescLabel)
         view = rootView
         refresh()
     }
@@ -117,6 +134,7 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         guard isViewLoaded else { return }
         cacheLimitPopup.selectItem(representedObject: OnlineCacheLimit.current)
         exportFavoritesButton.isEnabled = !favoritesStore.favorites.isEmpty
+        clearFavoritesButton.isEnabled = !favoritesStore.favorites.isEmpty
     }
 
     @objc private func cacheLimitChanged(_ sender: NSPopUpButton) {
@@ -195,9 +213,37 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
         }
     }
 
+    @objc private func clearFavorites(_ sender: NSButton) {
+        let count = favoritesStore.favorites.count
+        guard count > 0 else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "确定要清空全部收藏吗？"
+        alert.informativeText = "将从所有线上模块移除 \(count) 个收藏。此操作无法撤销，建议先导出备份。"
+        alert.addButton(withTitle: "清空收藏")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        setFavoritesActionsEnabled(false)
+        clearFavoritesButton.isEnabled = false
+        Task {
+            defer { setFavoritesActionsEnabled(true) }
+            do {
+                try await favoritesStore.removeAllFavorites()
+                refresh()
+                favoritesStatusLabel.stringValue = "已清空 \(count) 个收藏"
+                clearFavoritesStatusLater()
+            } catch {
+                favoritesStatusLabel.stringValue = "清空失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
     private func setFavoritesActionsEnabled(_ isEnabled: Bool) {
         importFavoritesButton.isEnabled = isEnabled
         exportFavoritesButton.isEnabled = isEnabled && !favoritesStore.favorites.isEmpty
+        clearFavoritesButton.isEnabled = isEnabled && !favoritesStore.favorites.isEmpty
     }
 
     private func row(label text: String, control: NSView) -> NSStackView {

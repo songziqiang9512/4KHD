@@ -43,7 +43,7 @@ final class FavoritesStore {
     private(set) var isLoaded = false
 
     @ObservationIgnored private static let defaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
-    @ObservationIgnored private nonisolated(unsafe) static let backupFileName = "favorites.json.bak"
+    @ObservationIgnored private nonisolated static let backupFileName = "favorites.json.bak"
     @ObservationIgnored private let favoritesFileURL: URL?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var loadTask: Task<Void, Never>?
@@ -167,6 +167,19 @@ final class FavoritesStore {
             updatedCount: updatedCount,
             skippedCount: skippedCount
         )
+    }
+
+    func removeAllFavorites() async throws {
+        await waitUntilLoaded()
+        let previousFavorites = favorites
+        try await persist([])
+        favorites = []
+        for favorite in previousFavorites {
+            if let detailURL = URL(string: favorite.detailURL) {
+                DetailPageImageCache.shared.setPersistent(false, forDetailURL: detailURL)
+            }
+        }
+        onFavoritesChanged?()
     }
 
     // MARK: - 持久化
