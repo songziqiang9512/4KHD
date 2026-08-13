@@ -4,9 +4,11 @@
 
 ## 当前状态（已验证）
 
-- Swift 6 Debug 构建通过，零代码警告；`4KHDTests` 全部通过。
+- Swift 6 Debug 构建通过，零代码警告；`4KHDTests` 全部通过（42 例）。
 - 生产代码纯 AppKit，无 SwiftUI；模块间无直接 import。
 - 应用实机启动验证通过：网格渲染、详情加载、双击缩放往返、切换图片均正常。
+- 图集批量下载 + 下载管理器已实现（工具栏「保存」菜单、Window→Downloads 浮窗），引擎与调度逻辑有单元测试覆盖；菜单/浮窗交互尚未实机点击验证。
+- 内容区滚动位置记忆：开关详情面板 / 进出大图导致网格列数变化时，瀑布流布局记录滚动锚点并恢复（`WorkspaceThumbnailWaterfallLayout` 的 pendingScrollAnchor 机制，覆盖 Gallery/MissKon/Wallhaven；LocalLibrary 自带恢复逻辑）。
 
 ## 本轮修复与优化摘要
 
@@ -48,6 +50,15 @@
 - Gallery 收藏分组表头展开/折叠改为单击手势（修复双击 toggle 两次抵消）；表头右键菜单快照回调防复用错位。
 - 本地列表搜索词变化但结果集不变时也刷新行高亮。
 
+## 图集批量下载（本轮新增）
+
+- 引擎:`Shared/Services/Download/` — `AlbumDownloadOrchestrator.run`(nonisolated 纯逻辑,逐页串行 resolve + 页内 3 路并发,失败重试一次,取消提前返回);`AlbumDownloadSource` 由 Gallery/MissKon 各提供工厂(解析器默认 MainActor,闭包标 `@MainActor`);`DownloadStore`(@MainActor @Observable)严格串行调度任务,`imageFetcher` 属性是测试注入点(生产 nil)。
+- 完整性保证:首页解析成功后以权威 pageURLs 整体替换 worklist 并从头扫描(入口页不是第 1 页也不漏不重);页解析失败自动重试一次;跨页重复图片按 URL 去重(分页边界常重复最后一张);同名图集并发下载经 `reservedFolderPaths` 分配独立目录。
+- 工具栏:onlineSave 改为 NSMenuToolbarItem(保存当前图片 / 保存整个图集…),`canSaveAlbum` 只在 Gallery/MissKon 快照存在;Wallhaven 保持单张语义。
+- 浮窗:`WorkspaceDownloadsWindowController`(utility 面板,关闭=隐藏 orderOut,任务继续);行状态 图标/标题/副标题/进度条(总数未知时不定态)/行尾按钮,右键菜单含「在 Finder 中显示」。
+- 取消语义:已下载文件保留;running 取消经 `activeJob.cancel()` + `registry.cancelAll()`;全部失败 → failed + 删空目录;重启不持久化任务。
+- Swift 6 注意:SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor 下,未标注结构体隐式 MainActor(成员 MainActor 隔离),不写显式 Sendable(编译器自动推断);引擎与 store 的边界靠 `await`/`Task { @MainActor }` 自动切换。
+
 ## 维护约束
 
 **新增**
@@ -74,7 +85,8 @@
 - Gallery latest 分页：真实页码链接优先、末页终止、无链接回退 +1（3 例）。
 - MissKon 分页 URL 尾斜杠归一（1 例）。
 - Wallhaven 收藏纯度从 subtitle 反查 + SFW 回退（2 例）。
-- 当前共 23 个测试全部通过。
+- 图集下载：编排器并发上限/重试/页失败继续/取消/目录失败/worklist 替换（6 例）、错页开头不重不漏/跨页去重/页解析重试（3 例）、文件名规整与冲突序号（3 例）、DownloadStore 串行调度/去重/取消/删空目录/清理（6 例）、同名图集独立目录（1 例）。
+- 当前共 42 个测试全部通过。
 
 ## 已知剩余风险
 
@@ -82,6 +94,10 @@
 - `HTMLRequestCoalescer` 调用者取消后底层 task 仍执行，同 URL 可能重复抓取一次（Gallery/MissKon 同构，影响小）。
 - Gallery latest 分页的末页判断依赖真实页面含页码链接；无链接的旧页面保持原 +1 行为，建议实机翻到末页确认一次。
 - 加载重试不传播原 ImageTask 的取消（重试已发起时用户取消不影响重试任务，结果会被 loadedURL guard 丢弃）。
+- 图集下载：工具栏菜单、目录选择面板、下载浮窗的行交互尚未实机点击验证（引擎/调度逻辑已测试覆盖）；取消竞态窗口（任务恰好完成时点取消）可能落为 completed 而非 cancelled。
+- 滚动锚点恢复为异步（下一个 runloop）执行，极端快速连续开合面板时可能有一次轻微位置偏差；列表模式行高固定不受影响。
+- MissKon 详情 `prepare` 对同 ID item 直接跳过，列表刷新替换同 ID item 对象时 detail 持有旧快照（影响小，未修）。
+- 测试宿主运行在沙盒内（容器 `com.songziqiang.-KHD`），调试日志写到 `FileManager.default.temporaryDirectory` 时在容器 tmp 下，不在宿主 /tmp。
 
 ## 验证命令
 
