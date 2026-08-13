@@ -65,8 +65,11 @@ final class RemoteImagePipeline {
         if let dataCache = try? DataCache(name: AppStorageFolders.imageCacheFolderName) {
             dataCache.sizeLimit = cacheLimit
             configuration.dataCache = dataCache
-            dataCache.sweep()
             self.dataCache = dataCache
+            // sweep 是同步磁盘遍历；放到后台，避免首次访问 shared（启动路径）时主线程卡顿。
+            DispatchQueue.global(qos: .utility).async {
+                dataCache.sweep()
+            }
         } else {
             self.dataCache = nil
         }
@@ -95,7 +98,10 @@ final class RemoteImagePipeline {
     func applyCacheLimit(_ limit: OnlineCacheLimit) {
         let bytes = limit.byteLimit
         dataCache?.sizeLimit = bytes
-        dataCache?.sweep()
+        // 清理放后台，改上限时 UI 不卡。
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.dataCache?.sweep()
+        }
     }
 
     func clearAllCaches() {

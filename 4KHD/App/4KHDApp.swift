@@ -48,6 +48,8 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         windowController?.saveStateToUserDefaults()
         inspectorWindowController?.saveState()
+        // 落盘防抖窗口内的详情页缓存变更，避免退出瞬间丢失。
+        DetailPageImageCache.shared.flush()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
