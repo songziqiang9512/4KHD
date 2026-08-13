@@ -18,6 +18,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     var filteredEntries: [Entry] = []
     private var observedImageIDs: [LocalImageItem.ID] = []
     private var lastAppliedListSignature: [LocalImageListRowSignature] = []
+    private var lastAppliedListSearchQuery = ""
     private var pendingScrollIndex: Int?
     private var metadataTask: Task<Void, Never>?
     private var isObserving = false
@@ -173,8 +174,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         case .list:
             setActiveView(scrollView)
             let signature = listSignature()
-            if signature != lastAppliedListSignature {
+            // 搜索词变化但结果集不变时也要刷新，避免旧搜索高亮残留。
+            let searchQuery = preferences.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if signature != lastAppliedListSignature || searchQuery != lastAppliedListSearchQuery {
                 lastAppliedListSignature = signature
+                lastAppliedListSearchQuery = searchQuery
                 tableView.reloadData()
             }
             syncTableSelection()

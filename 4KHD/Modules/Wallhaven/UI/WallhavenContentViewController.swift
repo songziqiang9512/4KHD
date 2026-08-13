@@ -143,8 +143,12 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
     }
 
     private func reloadVisibleListRows() {
+        // 范围覆盖到 footer 行：加载完成/出错时可见的 footer 状态就地刷新，不残留旧文案。
         let visibleRows = tableView.rows(in: tableView.visibleRect)
-        let rowRange = NSRange(location: visibleRows.location, length: min(visibleRows.length, library.wallpapers.count - visibleRows.location))
+        let totalRows = tableView.numberOfRows
+        guard visibleRows.location < totalRows else { return }
+        let upperBound = min(visibleRows.location + visibleRows.length, totalRows)
+        let rowRange = NSRange(location: visibleRows.location, length: upperBound - visibleRows.location)
         guard rowRange.length > 0 else { return }
         tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: IndexSet(integer: 0))
     }
@@ -220,6 +224,14 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         guard next != current, library.wallpapers.indices.contains(next) else { return true }
         library.select(library.wallpapers[next])
         return true
+    }
+
+    // 列表单击选中与网格一致：同步 library 选中，详情面板与方向键导航跟随。
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !isApplyingSelection else { return }
+        let row = tableView.selectedRow
+        guard library.wallpapers.indices.contains(row) else { return }
+        library.select(library.wallpapers[row])
     }
 
     // MARK: - NSTableViewDataSource

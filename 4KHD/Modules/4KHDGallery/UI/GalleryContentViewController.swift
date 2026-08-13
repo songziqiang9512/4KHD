@@ -573,9 +573,6 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         guard rows.indices.contains(row) else { return false }
         if case .item = rows[row] { return true }
-        if case .group(let id) = rows[row] {
-            toggleFavoriteGroup(id)
-        }
         return false
     }
 
@@ -598,6 +595,8 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
             if let group = rowGroups[id] {
                 view.configure(group: group, isExpanded: expandedFavoriteAuthorIDs.contains(id))
                 view.onRename = { [weak self] in self?.renameFavoriteGroup(group) }
+                // 展开/折叠走表头单击手势，避免 shouldSelectRow 里双击触发两次 toggle。
+                view.onToggle = { [weak self] in self?.toggleFavoriteGroup(id) }
             }
             return view
         case .item(let id):

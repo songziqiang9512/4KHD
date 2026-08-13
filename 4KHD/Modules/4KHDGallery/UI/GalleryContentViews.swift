@@ -94,6 +94,7 @@ final class GalleryFavoriteGroupHeaderView: NSTableCellView {
     static let reuseID = NSUserInterfaceItemIdentifier("GalleryFavoriteGroupHeaderView")
 
     var onRename: (() -> Void)?
+    var onToggle: (() -> Void)?
 
     private let chevron = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
@@ -117,14 +118,22 @@ final class GalleryFavoriteGroupHeaderView: NSTableCellView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
-        let item = NSMenuItem(title: "重命名目录", action: #selector(rename), keyEquivalent: "")
+        let item = NSMenuItem(title: "重命名目录", action: #selector(rename(_:)), keyEquivalent: "")
         item.target = self
+        // 菜单打开期间 cell 可能被复用；快照当时的回调，避免重命名错误分组。
+        if let onRename {
+            item.representedObject = RenameClosure(onRename)
+        }
         menu.addItem(item)
         return menu
     }
 
-    @objc private func rename() {
-        onRename?()
+    @objc private func rename(_ sender: NSMenuItem) {
+        (sender.representedObject as? RenameClosure)?.run()
+    }
+
+    @objc private func handleHeaderClick() {
+        onToggle?()
     }
 
     private func setupView() {
@@ -151,7 +160,17 @@ final class GalleryFavoriteGroupHeaderView: NSTableCellView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+
+        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(handleHeaderClick))
+        addGestureRecognizer(clickGesture)
     }
+}
+
+/// 让 NSMenuItem 携带任意闭包（representedObject 桥接）。
+private final class RenameClosure: NSObject {
+    private let closure: () -> Void
+    init(_ closure: @escaping () -> Void) { self.closure = closure }
+    func run() { closure() }
 }
 
 @MainActor

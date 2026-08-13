@@ -276,6 +276,14 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         return true
     }
 
+    // 列表单击选中与网格一致：同步 library 选中，详情面板与方向键导航跟随。
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !isApplyingSelection else { return }
+        let row = tableView.selectedRow
+        guard library.visibleItems.indices.contains(row) else { return }
+        library.select(library.visibleItems[row])
+    }
+
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {

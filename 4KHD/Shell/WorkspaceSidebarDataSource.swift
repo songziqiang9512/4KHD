@@ -150,6 +150,22 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         }
     }
 
+    /// 拖拽取消/失败时把实时重排过的根目录顺序恢复为拖拽前的快照。
+    func restoreLocalRootFolderOrder(_ ids: [LocalFolderNode.ID], in outlineView: NSOutlineView) {
+        let localGroup = localRootGroup()
+        guard var localRoots = childrenByNode[localGroup] else { return }
+        var folderByID: [LocalFolderNode.ID: WorkspaceSidebarNode] = [:]
+        for node in localRoots {
+            guard case .localFolder(let folder) = node else { continue }
+            folderByID[folder.id] = node
+        }
+        guard folderByID.count == ids.count else { return }
+        let restored = ids.compactMap { folderByID[$0] }
+        guard restored.count == ids.count else { return }
+        childrenByNode[localGroup] = restored
+        outlineView.reloadItem(localGroup)
+    }
+
     func liveReorderLocalRootFolder(
         id folderID: LocalFolderNode.ID,
         toDropIndex dropIndex: Int,

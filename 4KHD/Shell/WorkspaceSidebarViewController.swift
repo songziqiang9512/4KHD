@@ -417,6 +417,9 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private func finishLocalRootFolderDrag(operation: NSDragOperation) {
         if operation == .move {
             appContext.localLibraryStore.reorderRootFolders(ids: dataSource.currentLocalRootFolderIDs())
+        } else if let liveLocalRootFolderIDs {
+            // 取消/失败的拖拽：回滚实时重排，否则侧边栏顺序与 store 持久顺序失同步。
+            dataSource.restoreLocalRootFolderOrder(liveLocalRootFolderIDs, in: outlineView)
         }
         liveLocalRootFolderID = nil
         liveLocalRootFolderIDs = nil
@@ -455,7 +458,14 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             }
             return
         }
-        let row = outlineView.row(forItem: selectedNode)
+        var row = outlineView.row(forItem: selectedNode)
+        if row < 0 {
+            // 节点位于折叠分组内（如启动恢复路由）：沿路径展开后再选中，避免侧边栏无选中而内容区仍显示该路由。
+            for ancestor in path.dropLast() where !outlineView.isItemExpanded(ancestor) {
+                outlineView.expandItem(ancestor)
+            }
+            row = outlineView.row(forItem: selectedNode)
+        }
         guard row >= 0 else {
             if outlineView.selectedRow >= 0 {
                 outlineView.deselectAll(nil)
