@@ -514,7 +514,8 @@ final class WorkspaceToolbarContext {
     }
 
     func toggleFavorite(for moduleID: WorkspaceModuleID) {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 switch moduleID {
                 case .fourKHDGallery:

@@ -15,13 +15,18 @@ final class WorkspaceCoalescingQueue {
     private let interval: TimeInterval
     private let maxInterval: TimeInterval
     private var lastCallTime = Date.distantFuture
-    private var timer: Timer?
+    // Timer 的创建与使用都在 MainActor；标记 nonisolated 仅为允许 deinit 中 invalidate（线程安全）。
+    nonisolated(unsafe) private var timer: Timer?
     private var calls: [QueueCall] = []
 
     init(name: String, interval: TimeInterval = 0.05, maxInterval: TimeInterval = 2.0) {
         self.name = name
         self.interval = interval
         self.maxInterval = maxInterval
+    }
+
+    deinit {
+        timer?.invalidate()
     }
 
     func add(id: String, operation: @escaping @MainActor () -> Void) {

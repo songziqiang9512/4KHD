@@ -5,6 +5,7 @@ final class WorkspaceColumnHostController: NSViewController {
     private let respectsSafeAreaTop: Bool
     private let backgroundMaterial: NSVisualEffectView.Material?
     private var contentController: NSViewController?
+    private var vibrancyWrapperView: NSVisualEffectView?
 
     init(
         respectsSafeAreaTop: Bool = false,
@@ -30,6 +31,27 @@ final class WorkspaceColumnHostController: NSViewController {
         materialView.blendingMode = .withinWindow
         materialView.state = .active
         view = materialView
+
+        // Vibrancy wrapper 一次性创建并复用：内容控制器每次切换时只替换其子视图，
+        // 避免重复 addSubview 导致包装视图在宿主内无限累积。
+        let vibrancyView = NSVisualEffectView()
+        vibrancyView.material = backgroundMaterial
+        vibrancyView.blendingMode = .withinWindow
+        vibrancyView.state = .active
+        vibrancyView.isEmphasized = true
+        vibrancyView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(vibrancyView)
+        NSLayoutConstraint.activate([
+            vibrancyView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            vibrancyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            vibrancyView.topAnchor.constraint(
+                equalTo: respectsSafeAreaTop
+                    ? view.safeAreaLayoutGuide.topAnchor
+                    : view.topAnchor
+            ),
+            vibrancyView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        vibrancyWrapperView = vibrancyView
     }
 
     func setContentController(_ controller: NSViewController) {
@@ -45,35 +67,9 @@ final class WorkspaceColumnHostController: NSViewController {
         contentController = controller
         addChild(controller)
 
-        // Determine the container that will host the content view.
-        // When a background material is configured, insert a vibrancy wrapper
-        // so that text and controls in the content composite correctly over the
-        // translucent material.  Without the vibrancy layer labels and controls
-        // may appear washed out or have reduced legibility.
-        let container: NSView
-        if let backgroundMaterial {
-            let vibrancyView = NSVisualEffectView()
-            vibrancyView.material = backgroundMaterial
-            vibrancyView.blendingMode = .withinWindow
-            vibrancyView.state = .active
-            vibrancyView.isEmphasized = true
-            vibrancyView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(vibrancyView)
-            NSLayoutConstraint.activate([
-                vibrancyView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                vibrancyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                vibrancyView.topAnchor.constraint(
-                    equalTo: respectsSafeAreaTop
-                        ? view.safeAreaLayoutGuide.topAnchor
-                        : view.topAnchor
-                ),
-                vibrancyView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            ])
-            container = vibrancyView
-        } else {
-            container = view
-        }
-
+        // 背景材质存在时内容挂在 vibrancy 包装视图内，保证文字与控件在
+        // 半透明材质上的可读性。
+        let container: NSView = vibrancyWrapperView ?? view
         container.addSubview(controller.view)
         controller.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([

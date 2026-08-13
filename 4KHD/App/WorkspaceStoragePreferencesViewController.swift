@@ -172,7 +172,8 @@ final class WorkspaceStoragePreferencesViewController: NSViewController, Workspa
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         setFavoritesActionsEnabled(false)
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             defer { setFavoritesActionsEnabled(true) }
             do {
                 try await favoritesStore.exportFavorites(to: url)
