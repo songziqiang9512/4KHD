@@ -42,16 +42,17 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .latest: "sparkles"
         case .top30: "flame"
         case .cosplay: "theatermasks"
-        case .aiGenerated: "cpu"
-        case .otherxxx: "rectangle.stack"
-        case .xrUncensored: "viewfinder"
+        case .aiGenerated: "wand.and.stars"
+        // 语义不好定义的标签统一用与 XiaoYu 相同的人像图标。
+        case .otherxxx: "person.crop.square"
+        case .xrUncensored: "person.crop.square"
         case .bluecake: "birthday.cake"
-        case .pureMedia: "camera.filters"
-        case .xLevel: "chart.bar.xaxis"
+        case .pureMedia: "person.crop.square"
+        case .xLevel: "person.crop.square"
         case .xiaoyu: "person.crop.square"
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
-        case .huayang: "person.crop.rectangle.fill"
+        case .huayang: "camera.macro"
         case .favorites: "heart"
         }
     }
