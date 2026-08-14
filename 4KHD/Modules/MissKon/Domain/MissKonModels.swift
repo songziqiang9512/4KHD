@@ -9,6 +9,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     case xrUncensored
     case bluecake
     case pureMedia
+    case xLevel
     case xiaoyu
     case privatePhotoshoot
     case xiuren
@@ -27,6 +28,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .xrUncensored: "XR Uncensored"
         case .bluecake: "BLUECAKE"
         case .pureMedia: "Pure Media"
+        case .xLevel: "X-Level"
         case .xiaoyu: "XiaoYu"
         case .privatePhotoshoot: "私房摄影"
         case .xiuren: "秀人"
@@ -45,6 +47,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .xrUncensored: "viewfinder"
         case .bluecake: "birthday.cake"
         case .pureMedia: "camera.filters"
+        case .xLevel: "chart.bar.xaxis"
         case .xiaoyu: "person.crop.square"
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
@@ -63,6 +66,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .xrUncensored: URL(string: "https://misskon.com/tag/xr-uncensored/")
         case .bluecake: URL(string: "https://misskon.com/tag/bluecake/")
         case .pureMedia: URL(string: "https://misskon.com/tag/pure-media/")
+        case .xLevel: URL(string: "https://misskon.com/tag/x-level/")
         case .xiaoyu: URL(string: "https://misskon.com/tag/xiaoyu/")
         case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")
         case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")
