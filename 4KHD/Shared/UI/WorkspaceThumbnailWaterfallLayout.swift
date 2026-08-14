@@ -42,6 +42,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     /// 内容替换(reloadData/搜索/切换列表)时由宿主调用:丢弃已捕获的
     /// 滚动锚点,防止旧锚点被应用到数量恰好相同的新内容上。
     func clearPendingScrollAnchor() {
+
         pendingScrollAnchor = nil
         pendingScrollAnchorItemCount = nil
     }
@@ -153,6 +154,45 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     private var pendingScrollAnchor: IndexPath?
     private var pendingScrollAnchorItemCount: Int?
 
+    /// 面板开关动画期间 bounds 逐帧变化,prepare 可能因 metrics 未变而跳过恢复;
+    /// 这里在宽度变化时直接调度:等宽度稳定(动画结束)后强制布局并居中锚点卡片。
+    private var centerRestoreWorkItem: DispatchWorkItem?
+
+    private func scheduleCenterRestoreWhenWidthStable(targetWidth: CGFloat) {
+        guard pendingScrollAnchor != nil else { return }
+        centerRestoreWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, let collectionView = self.collectionView else { return }
+            // 宽度仍在变化(动画未结束):继续等。
+            if abs(collectionView.bounds.width - targetWidth) > 1 {
+                self.scheduleCenterRestoreWhenWidthStable(targetWidth: collectionView.bounds.width)
+                return
+            }
+            // 强制按最终宽度重建布局,保证锚点帧是最终布局的。
+            self.invalidateLayout()
+            collectionView.layoutSubtreeIfNeeded()
+            self.applyCenterRestore()
+        }
+        centerRestoreWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
+
+    /// 把锚点卡片居中到视口,并消费锚点。
+    private func applyCenterRestore() {
+        guard let anchor = pendingScrollAnchor,
+              let collectionView,
+              let clipView = collectionView.enclosingScrollView?.contentView else { return }
+        pendingScrollAnchor = nil
+        pendingScrollAnchorItemCount = nil
+        guard let attrs = layoutAttributesForItem(at: anchor) else { return }
+        let viewportHeight = clipView.bounds.height
+        guard viewportHeight > 1 else { return }
+        let targetY = max(0, attrs.frame.midY - viewportHeight / 2)
+        let maxY = max(0, collectionViewContentSize.height - viewportHeight)
+        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(targetY, maxY)))
+        collectionView.enclosingScrollView?.reflectScrolledClipView(clipView)
+    }
+
     /// 记录锚点:优先当前选中卡片(用户视线所在,不依赖惰性生成的 cache)。
     private func captureScrollAnchor() {
         guard let collectionView else { return }
@@ -185,23 +225,12 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     private func scheduleScrollAnchorRestore() {
         guard let anchor = pendingScrollAnchor else { return }
         let capturedItemCount = pendingScrollAnchorItemCount
-        pendingScrollAnchor = nil
-        pendingScrollAnchorItemCount = nil
         DispatchQueue.main.async { [weak self, weak collectionView] in
             guard let self,
                   let collectionView,
-                  let clipView = collectionView.enclosingScrollView?.contentView else { return }
-            // 期间内容被替换(刷新/搜索/切换)时锚点失效,放弃恢复。
-            guard capturedItemCount == collectionView.numberOfItems(inSection: 0),
+                  capturedItemCount == collectionView.numberOfItems(inSection: 0),
                   capturedItemCount != nil else { return }
-            // layoutAttributesForItem 会触发生成到锚点卡片的布局,保证 frame 精确。
-            guard let attrs = self.layoutAttributesForItem(at: anchor) else { return }
-            let viewportHeight = clipView.bounds.height
-            guard viewportHeight > 1 else { return }
-            let targetY = max(0, attrs.frame.midY - viewportHeight / 2)
-            let maxY = max(0, self.collectionViewContentSize.height - viewportHeight)
-            clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(targetY, maxY)))
-            collectionView.enclosingScrollView?.reflectScrolledClipView(clipView)
+            self.applyCenterRestore()
         }
     }
 
@@ -279,6 +308,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         let widthChanged = abs(collectionView.bounds.width - newBounds.width) > 0.5
         if widthChanged {
             captureScrollAnchor()
+            scheduleCenterRestoreWhenWidthStable(targetWidth: newBounds.width)
         }
         return widthChanged
     }
