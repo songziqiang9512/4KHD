@@ -14,7 +14,6 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     case privatePhotoshoot
     case xiuren
     case huayang
-    case favorites
 
     var id: String { rawValue }
 
@@ -33,7 +32,6 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .privatePhotoshoot: "私房摄影"
         case .xiuren: "秀人"
         case .huayang: "花漾"
-        case .favorites: "收藏"
         }
     }
 
@@ -53,7 +51,6 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
         case .huayang: "camera.macro"
-        case .favorites: "heart"
         }
     }
 
@@ -72,7 +69,6 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")
         case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")
         case .huayang: URL(string: "https://misskon.com/tag/huayang/")
-        case .favorites: nil
         }
     }
 

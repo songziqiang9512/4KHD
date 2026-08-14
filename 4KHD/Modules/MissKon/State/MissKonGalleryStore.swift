@@ -12,16 +12,20 @@ final class MissKonGalleryStore {
         self.feed = feed
         self.detail = detail
         self.favorites = favorites
-        // Wire feed selection changes to detail preparation (no network until detail visible).
+        // Wire feed selection changes to detail preparation.
+        // 选中即解析首页:MediaFire 等元信息不依赖详情面板打开即可用;
+        // 首页已缓存时 resolve 不产生网络请求。
         feed.onSelectionChanged = { [weak detail] item in
             if let item {
                 detail?.prepare(item: item)
+                detail?.resolve(item: item)
             } else {
                 detail?.clear()
             }
         }
         if let item = feed.selectedItem {
             detail.prepare(item: item)
+            detail.resolve(item: item)
         } else {
             detail.clear()
         }
@@ -40,6 +44,7 @@ final class MissKonGalleryStore {
             feed.selectedItemID = newValue
             if let item = feed.selectedItem {
                 detail.prepare(item: item)
+                detail.resolve(item: item)
             } else {
                 detail.clear()
             }
@@ -81,11 +86,5 @@ final class MissKonGalleryStore {
 
     func toggleFavorite(for item: MissKonItem) async throws {
         try await favorites.toggle(MissKonFavoritesBridge.record(from: item))
-    }
-
-    /// Refreshes the favorites list from FavoritesStore when external
-    /// changes (e.g. import) may have added or removed records.
-    func refreshFavoritesIfNeeded() {
-        feed.refreshFavoritesIfNeeded()
     }
 }

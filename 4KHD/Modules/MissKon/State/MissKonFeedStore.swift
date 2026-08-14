@@ -52,8 +52,6 @@ final class MissKonFeedStore {
     /// Called when the selected item changes, so the detail store can stay in sync.
     @ObservationIgnored var onSelectionChanged: ((MissKonItem?) -> Void)?
 
-    private let favoritesStore: FavoritesStore
-
     private static var cacheDirectory: URL? {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
         return appSupport.appendingPathComponent("4KHD/MissKon", isDirectory: true)
@@ -63,8 +61,7 @@ final class MissKonFeedStore {
         cacheDirectory?.appendingPathComponent("feed-cache.json")
     }
 
-    init(favoritesStore: FavoritesStore) {
-        self.favoritesStore = favoritesStore
+    init() {
         let cacheFileURL = Self.cacheFileURL
         cacheLoadTask = Task { [weak self] in
             let snapshot = await Task.detached(priority: .utility) {
@@ -185,10 +182,6 @@ final class MissKonFeedStore {
     // MARK: - Network
 
     func refreshFromNetwork() {
-        if !section.isNetworkBacked {
-            if section == .favorites { restoreSectionCache() }
-            return
-        }
         guard didLoadCache else {
             pendingNetworkRefresh = true
             return
@@ -495,21 +488,9 @@ final class MissKonFeedStore {
         searchText = ""
         nextSearchPageURL = nil
         restoreSectionCache()
-        if section == .favorites {
-            Task { [weak self] in
-                guard let self else { return }
-                await favoritesStore.reloadFromDisk()
-                guard self.section == .favorites else { return }
-                self.refreshFavoritesIfNeeded()
-            }
-        }
     }
 
     func restoreSectionCache(allowNetworkRefresh: Bool = true) {
-        if section == .favorites {
-            refreshFavoritesIfNeeded()
-            return
-        }
         guard didLoadCache else { return }
         if let cached = cachedItems[self.section], !cached.isEmpty {
             allItems = cached
@@ -553,33 +534,6 @@ final class MissKonFeedStore {
             if allowNetworkRefresh {
                 refreshFromNetwork()
             }
-        }
-    }
-
-    /// Always rebuilds favorites from FavoritesStore so import / external
-    /// mutations are reflected immediately.  When the user is not currently
-    /// viewing the favorites section only `cachedItems` is invalidated so
-    /// the next visit picks up fresh data.
-    func refreshFavoritesIfNeeded() {
-        // Always clear cached section data for .favorites so a later switch
-        // loads fresh data from FavoritesStore instead of stale cache.
-        cachedItems[.favorites] = nil
-        cachedNextPageURLs[.favorites] = nil
-        cacheTimestamps[.favorites] = nil
-
-        guard section == .favorites else { return }
-        let items = MissKonFavoritesBridge.missKonItems(from: favoritesStore.favorites)
-        allItems = items
-        visibleItems = items
-        nextPageURL = nil
-        canLoadMoreList = false
-        feedErrorMessage = nil
-        let previousID = selectedItemID
-        if selectedItemID == nil || !items.contains(where: { $0.id == selectedItemID }) {
-            selectedItemID = items.first?.id
-        }
-        if selectedItemID != previousID {
-            onSelectionChanged?(selectedItemID.flatMap { id in items.first { $0.id == id } })
         }
     }
 

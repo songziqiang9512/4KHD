@@ -131,12 +131,12 @@ final class WorkspaceCommandValidator {
         guard let menuItem = item as? NSMenuItem else { return }
         let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
         guard fields.canFavorite else {
-            menuItem.title = "Favorite"
+            menuItem.title = "收藏"
             menuItem.state = .off
             return
         }
         let isFavorite = fields.isFavorite
-        menuItem.title = isFavorite ? "Unfavorite" : "Favorite"
+        menuItem.title = isFavorite ? "取消收藏" : "收藏"
         menuItem.state = isFavorite ? .on : .off
     }
 
@@ -183,7 +183,7 @@ final class WorkspaceCommandValidator {
         isCollapsed: Bool
     ) {
         guard let menuItem = item as? NSMenuItem else { return }
-        menuItem.title = isCollapsed ? "Show Sidebar" : "Hide Sidebar"
+        menuItem.title = isCollapsed ? "显示侧边栏" : "隐藏侧边栏"
         menuItem.state = isCollapsed ? .off : .on
     }
 
@@ -192,7 +192,7 @@ final class WorkspaceCommandValidator {
         isCollapsed: Bool
     ) {
         guard let menuItem = item as? NSMenuItem else { return }
-        menuItem.title = isCollapsed ? "Show Detail" : "Hide Detail"
+        menuItem.title = isCollapsed ? "显示详情区" : "隐藏详情区"
         menuItem.state = isCollapsed ? .off : .on
     }
 
@@ -201,7 +201,7 @@ final class WorkspaceCommandValidator {
         isImmersive: Bool
     ) {
         guard let menuItem = item as? NSMenuItem else { return }
-        menuItem.title = isImmersive ? "Exit Immersive Mode" : "Enter Immersive Mode"
+        menuItem.title = isImmersive ? "退出大图模式" : "进入大图模式"
         menuItem.state = isImmersive ? .on : .off
     }
 }

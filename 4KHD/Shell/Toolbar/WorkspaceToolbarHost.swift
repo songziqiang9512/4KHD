@@ -24,6 +24,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let wallhavenSave = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenSave")
         static let wallhavenInfo = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenInfo")
         static let wallhavenBack = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenBack")
+        static let favoritesFilter = NSToolbarItem.Identifier("WorkspaceToolbar.favoritesFilter")
     }
 
     private let appContext: WorkspaceAppContext
@@ -34,6 +35,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var localGridColumnsControl: NSSegmentedControl?
     private weak var localSortItem: NSMenuToolbarItem?
     private weak var wallhavenFilterItem: NSMenuToolbarItem?
+    private weak var favoritesFilterItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
     private weak var favoriteItem: NSToolbarItem?
     private weak var resetZoomItem: NSToolbarItem?
@@ -107,6 +109,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.wallhavenSave,
             ItemID.wallhavenInfo,
             ItemID.wallhavenBack,
+            ItemID.favoritesFilter,
             ItemID.search
         ]
     }
@@ -128,16 +131,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.localSort)
             identifiers.append(ItemID.importFolder)
         }
-        if currentModuleID == .missKon || currentModuleID == .fourKHDGallery || currentModuleID == .wallhaven {
+        if currentModuleID == .missKon || currentModuleID == .fourKHDGallery || currentModuleID == .wallhaven || currentModuleID == .favorites {
             identifiers.append(ItemID.localGridColumns)
         }
         if currentModuleID == .wallhaven {
             identifiers.append(ItemID.wallhavenFilters)
         }
-        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .wallhaven {
+        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .wallhaven || currentModuleID == .favorites {
             identifiers.append(ItemID.favorite)
         }
-        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon {
+        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .favorites {
             identifiers.append(ItemID.onlineSave)
             identifiers.append(ItemID.onlineInfo)
         }
@@ -157,6 +160,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.share,
             ItemID.detailPane
         ]
+        if currentModuleID == .favorites {
+            identifiers.append(ItemID.favoritesFilter)
+        }
         if currentModuleID != .wallhaven {
             identifiers.append(ItemID.filmstrip)
         }
@@ -347,6 +353,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             wallhavenFilterItem = item
             updateWallhavenFilterItem()
             return item
+        case ItemID.favoritesFilter:
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "筛选"
+            item.paletteLabel = "筛选"
+            item.image = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: "筛选")
+            item.visibilityPriority = .standard
+            favoritesFilterItem = item
+            updateFavoritesFilterItem()
+            return item
         case ItemID.onlineSave:
             let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "保存"
@@ -436,6 +451,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             canSaveCurrentImage
         case ItemID.wallhavenInfo:
             true
+        case ItemID.favoritesFilter:
+            true
         default:
             true
         }
@@ -475,6 +492,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             appContext.toolbarContext.adjustWallhavenGridColumns(delta: delta)
         case .fourKHDGallery:
             appContext.toolbarContext.adjustGalleryGridColumns(delta: delta)
+        case .favorites:
+            appContext.toolbarContext.adjustGridColumns(delta: delta, for: .favorites)
         default:
             appContext.toolbarContext.adjustLocalGridColumns(delta: delta)
         }
@@ -598,6 +617,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .local(let s):    _ = s.layout; _ = s.sortField; _ = s.sortDirection
         case .missKon(let s):  _ = s.layout
         case .wallhaven(let s): _ = s.layout
+        case .favorites(let s): _ = s.layout; _ = appContext.favoritesModuleStore.filter
         }
     }
 
@@ -614,6 +634,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         updateDetailActionsItem()
         updateOnlineSaveItem()
         updateWallhavenFilterItem()
+        updateFavoritesFilterItem()
         updateShareItem()
         configureDetailPaneItem(detailPaneItem)
         validateVisibleItems()
@@ -757,6 +778,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             snapshot.canSaveAlbum
         case .missKon(let snapshot):
             snapshot.canSaveAlbum
+        case .favorites(let snapshot):
+            snapshot.canSaveAlbum
         case .local, .wallhaven:
             false
         }
@@ -861,7 +884,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
-        case .fourKHDGallery, .missKon:
+        case .fourKHDGallery, .missKon, .favorites:
             break
         }
         return menu
@@ -871,11 +894,14 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         let menu = NSMenu(title: "保存")
         menu.autoenablesItems = false
 
-        let saveImageItem = NSMenuItem(title: "保存当前图片", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
-        saveImageItem.target = self
-        saveImageItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存当前图片")
-        saveImageItem.isEnabled = canSaveCurrentImage
-        menu.addItem(saveImageItem)
+        // 收藏模块无逐张原图解析,只提供「保存整个图集」。
+        if currentModuleID != .favorites {
+            let saveImageItem = NSMenuItem(title: "保存当前图片", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+            saveImageItem.target = self
+            saveImageItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存当前图片")
+            saveImageItem.isEnabled = canSaveCurrentImage
+            menu.addItem(saveImageItem)
+        }
 
         let saveAlbumItem = NSMenuItem(title: "保存整个图集…", action: #selector(saveGalleryItem(_:)), keyEquivalent: "")
         saveAlbumItem.target = self
@@ -993,6 +1019,36 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func updateWallhavenFilterItem() {
         guard currentModuleID == .wallhaven, let wallhavenFilterItem else { return }
         wallhavenFilterItem.menu = makeWallhavenFilterMenu()
+    }
+
+    // MARK: - Favorites filter menu
+
+    private func makeFavoritesFilterMenu() -> NSMenu {
+        let menu = NSMenu(title: "筛选")
+        menu.autoenablesItems = false
+        for filter in FavoriteSourceFilter.allCases {
+            let item = NSMenuItem(title: filter.title, action: #selector(favoritesSelectFilter(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = filter
+            item.state = appContext.favoritesModuleStore.filter == filter ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    private func updateFavoritesFilterItem() {
+        guard currentModuleID == .favorites, let favoritesFilterItem else { return }
+        favoritesFilterItem.menu = makeFavoritesFilterMenu()
+    }
+
+    @objc private func favoritesSelectFilter(_ sender: NSMenuItem) {
+        guard let filter = sender.representedObject as? FavoriteSourceFilter else { return }
+        appContext.favoritesModuleStore.filter = filter
+        // 同步路由(itemID = filter rawValue):切走再切回时筛选不丢失,并随路由持久化。
+        appContext.routeController.select(
+            WorkspaceRoute(moduleID: .favorites, itemID: filter.rawValue)
+        )
+        refresh()
     }
 
     @objc private func wallhavenSelectCategory(_ sender: NSMenuItem) {

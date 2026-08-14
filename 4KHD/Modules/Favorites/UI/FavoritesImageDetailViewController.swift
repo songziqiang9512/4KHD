@@ -1,15 +1,18 @@
 import AppKit
 import Observation
 
+/// 收藏详情区:与 MissKon/4KHD 详情一致的大图查看区——
+/// 缩放、上/下张、计数、状态、胶片条、沉浸模式、键盘导航。
 @MainActor
-final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusable {
-    private let library: MissKonGalleryStore
+final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocusable {
+    private let moduleStore: FavoritesModuleStore
+    private let detailStore: FavoritesDetailStore
     private let immersive: ImmersiveController
     private let detailPane: WorkspaceDetailPaneController
-    private let detailInteraction: MissKonDetailInteractionController
+    private let detailInteraction: FavoritesDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
-    private let imageView = MissKonZoomableImageView()
-    private let filmstripView = MissKonFilmstripView()
+    private let imageView = FavoritesZoomableImageView()
+    private let filmstripView = FavoritesFilmstripView()
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
     private let previousButton = DetailNavigationButton(symbolName: "chevron.left", accessibilityDescription: "上一张")
     private let nextButton = DetailNavigationButton(symbolName: "chevron.right", accessibilityDescription: "下一张")
@@ -19,22 +22,25 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     private let statusLabel = NSTextField(labelWithString: "")
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var isObserving = false
-    private var currentItemID: MissKonItem.ID?
-    private var currentSlotID: MissKonImageSlot.ID?
+    private var currentRecordID: FavoriteRecord.ID?
+    private var currentSlotID: FavoritesImageSlot.ID?
     private var currentImageURL: URL?
     private var isDetailReady = false
     private var detailFailed = false
     private var resetTokenSeen = UUID()
-    private let reloadQueue = WorkspaceCoalescingQueue(name: "MissKonDetail Reload", interval: 0.05, maxInterval: 0.1)
+    private var hasAppeared = false
+    private let reloadQueue = WorkspaceCoalescingQueue(name: "FavoritesDetail Reload", interval: 0.05, maxInterval: 0.1)
 
     init(
-        library: MissKonGalleryStore,
+        moduleStore: FavoritesModuleStore,
+        detailStore: FavoritesDetailStore,
         immersive: ImmersiveController,
         detailPane: WorkspaceDetailPaneController,
-        detailInteraction: MissKonDetailInteractionController,
+        detailInteraction: FavoritesDetailInteractionController,
         filmstripVisibility: FilmstripVisibilityController
     ) {
-        self.library = library
+        self.moduleStore = moduleStore
+        self.detailStore = detailStore
         self.immersive = immersive
         self.detailPane = detailPane
         self.detailInteraction = detailInteraction
@@ -42,7 +48,9 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         super.init(nibName: nil, bundle: nil)
     }
 
-    @available(*, unavailable) required init?(coder: NSCoder) { nil }
+    @available(*, unavailable) required init?(coder _: NSCoder) {
+        nil
+    }
 
     override func loadView() {
         let root = WorkspaceDetailRootView()
@@ -63,7 +71,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             self?.reloadDetail()
         }
         filmstripView.onSelect = { [weak self] index in
-            self?.library.detail.selectSlot(at: index)
+            self?.detailStore.selectSlot(at: index)
         }
         reloadDetail()
         observeState()
@@ -78,7 +86,6 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         }
         view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
     }
-    private var hasAppeared = false
 
     func focus() {
         view.window?.makeFirstResponderUnlessDescendantIsFirstResponder(view)
@@ -157,7 +164,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             filmstripView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             filmstripView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filmstripView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            filmstripHeightConstraint
+            filmstripHeightConstraint,
         ])
     }
 
@@ -165,12 +172,12 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         guard !isObserving else { return }
         isObserving = true
         withObservationTracking {
-            _ = library.currentItem?.id
-            _ = library.selectedSlotID
-            _ = library.imageSlots
-            _ = library.isResolving
-            _ = library.errorMessage
-            _ = library.favorites.favorites.last?.id
+            _ = moduleStore.selectedRecordID
+            _ = detailStore.currentRecord?.id
+            _ = detailStore.selectedSlotID
+            _ = detailStore.imageSlots
+            _ = detailStore.isResolving
+            _ = detailStore.errorMessage
             _ = detailInteraction.resetToken
             _ = detailInteraction.saveMessage
             _ = immersive.isImmersive
@@ -187,8 +194,15 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     }
 
     private func reloadDetail() {
-        guard let item = library.currentItem else {
-            currentItemID = nil
+        let record = moduleStore.selectedRecord
+
+        // 选中变化时重建 detail 状态。
+        if record?.id != detailStore.currentRecord?.id {
+            detailStore.prepare(record: record)
+        }
+
+        guard let record else {
+            currentRecordID = nil
             currentSlotID = nil
             currentImageURL = nil
             detailFailed = false
@@ -204,11 +218,15 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
-        // 开始/恢复解析(resolve 幂等:在途任务、已全部解析、失败时均 no-op)。
-        // 面板关闭只取消后续页预取,重开面板时由此恢复解析链。
+        let source = FavoriteSource.source(for: record)
+        imageView.requestConfigurator = source?.imageRequestConfigurator
+        filmstripView.requestConfigurator = source?.imageRequestConfigurator
+
+        // 打开详情后开始/恢复解析(resolve 幂等:在途任务、已全部解析、失败时均 no-op)。
+        // 面板关闭会取消后续页预取,重开面板时由此恢复解析链。
         if shouldLoadDetailContent,
-           library.errorMessage == nil {
-            library.detail.resolve(item: item)
+           detailStore.errorMessage == nil {
+            detailStore.resolve()
         }
 
         guard shouldLoadDetailContent else {
@@ -217,23 +235,22 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             detailFailed = false
             imageView.setImageURL(nil)
             RemoteImagePipeline.shared.stopDetailPrefetching()
-            // 只停后续页加载,保留选中即解析的首页任务(MediaFire 链接提取)。
-            library.detail.cancelPrefetching()
+            detailStore.cancelResolution()
             isDetailReady = false
             return
         }
 
-        let slots = library.imageSlots
-        let resolutionFailed = library.errorMessage != nil
-            && library.resolvedPageCount == 0
-            && !library.isResolving
+        let slots = detailStore.imageSlots
+        let resolutionFailed = detailStore.errorMessage != nil
+            && detailStore.resolvedPageCount == 0
+            && !detailStore.isResolving
 
         if slots.isEmpty || resolutionFailed {
             if resolutionFailed {
                 detailFailed = true
                 imageView.isHidden = false
                 imageView.showFailure { [weak self] in
-                    self?.library.detail.retry()
+                    self?.detailStore.retry()
                 }
                 emptyLabel.isHidden = true
             } else {
@@ -244,7 +261,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             nextButton.isHidden = true
             counterChrome.isHidden = true
             statusChrome.isHidden = false
-            statusLabel.stringValue = library.isResolving ? "解析中..." : (library.errorMessage ?? "")
+            statusLabel.stringValue = detailStore.isResolving ? "解析中..." : (detailStore.errorMessage ?? "")
             filmstripView.isHidden = true
             updateFilmstripLayout(showsFilmstrip: false)
             return
@@ -257,20 +274,20 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         nextButton.isHidden = false
         counterChrome.isHidden = false
 
-        let selectedID = library.selectedSlotID ?? slots.first?.id
+        let selectedID = detailStore.selectedSlotID ?? slots.first?.id
         let selectedIndex = selectedID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
         let selectedSlot = slots[selectedIndex]
 
         previousButton.isEnabled = selectedIndex > 0
         nextButton.isEnabled = selectedIndex < slots.count - 1
 
-        if currentItemID != item.id {
-            currentItemID = item.id
+        if currentRecordID != record.id {
+            currentRecordID = record.id
             detailInteraction.saveMessage = ""
             isDetailReady = false
             RemoteImagePipeline.shared.stopDetailPrefetching()
-            // Show cover image immediately while detail resolves
-            if let coverURL = item.coverURL {
+            // 解析期间先显示封面。
+            if let coverURL = record.coverURL.flatMap(URL.init(string:)) {
                 imageView.setImageURL(coverURL)
             }
         }
@@ -282,20 +299,19 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             if let url {
                 imageView.setImageURL(url, preservesCurrentImageUntilLoaded: imageView.imageView.image != nil)
             }
-            // Prefetch adjacent images for smoother navigation
+            // 预取相邻图片,翻页更顺滑。
             let start = max(selectedIndex - 2, 0)
             let end = min(selectedIndex + 2, slots.count - 1)
-            let adjacentURLs = slots[start...end].compactMap { $0.knownURL }
+            let adjacentURLs = slots[start ... end].compactMap { $0.knownURL }
             RemoteImagePipeline.shared.prefetchDetailImages(adjacentURLs)
 
-            // If user clicked a placeholder slot, eagerly load its page.
+            // 点中了占位 slot:按需加载其页。
             if selectedSlot.knownURL == nil {
-                library.detail.ensurePageLoadedForSlot(at: selectedIndex)
+                detailStore.ensurePageLoadedForSlot(at: selectedIndex)
             }
         }
 
-        // Trigger next page load when approaching the end of resolved images.
-        library.detail.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
+        detailStore.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
 
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
         statusLabel.stringValue = detailStatusText
@@ -338,16 +354,16 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
 
     private var detailStatusText: String {
         if detailFailed { return "解析失败" }
-        if let errorMessage = library.errorMessage { return errorMessage }
+        if let errorMessage = detailStore.errorMessage { return errorMessage }
         switch detailInteraction.saveMessage {
         case "保存中", "已保存", "保存失败":
             return detailInteraction.saveMessage
         default:
             break
         }
-        if library.isResolving {
-            let pages = library.resolvedPageCount
-            let images = library.resolvedImageCount
+        if detailStore.isResolving {
+            let pages = detailStore.resolvedPageCount
+            let images = detailStore.resolvedImageCount
             if pages > 0 { return "解析中 (\(pages) 页, \(images) 张)" }
             return "解析中"
         }
@@ -355,10 +371,10 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         return ""
     }
 
-    @objc func saveImage(_ sender: Any?) {
+    @objc func saveImage(_: Any?) {
         guard let url = currentImageURL else { return }
-        let filename = url.lastPathComponent
-        detailInteraction.save(imageURL: url, filename: filename)
+        let source = detailStore.currentRecord.flatMap(FavoriteSource.source(for:))
+        detailInteraction.save(imageURL: url, filename: url.lastPathComponent, source: source)
     }
 
     func handleKeyDown(_ event: NSEvent) -> Bool {
@@ -375,22 +391,24 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     }
 
     @objc private func previousImage() {
-        library.detail.selectSlot(at: max((library.selectedSlotID.flatMap { id in library.imageSlots.firstIndex { $0.id == id } } ?? 0) - 1, 0))
+        let slots = detailStore.imageSlots
+        let current = detailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
+        detailStore.selectSlot(at: max(current - 1, 0))
     }
 
     @objc private func nextImage() {
-        let slots = library.imageSlots
-        let current = library.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-        library.detail.selectSlot(at: min(current + 1, slots.count - 1))
+        let slots = detailStore.imageSlots
+        let current = detailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
+        detailStore.selectSlot(at: min(current + 1, slots.count - 1))
     }
 
     private func selectAdjacent(delta: Int) -> Bool {
-        let slots = library.imageSlots
+        let slots = detailStore.imageSlots
         guard !slots.isEmpty else { return false }
-        let current = library.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
+        let current = detailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
         let next = min(max(current + delta, 0), slots.count - 1)
         guard next != current else { return true }
-        library.detail.selectSlot(at: next)
+        detailStore.selectSlot(at: next)
         return true
     }
 }

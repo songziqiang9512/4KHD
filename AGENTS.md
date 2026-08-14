@@ -61,7 +61,7 @@
 | 在线图库 | `MissKon` | misskon.com 标签/热门浏览、详情 HTML 解析、渐进式图片加载 |
 | 在线图库 | `Wallhaven` | wallhaven.cc API v1 搜索浏览、分类/排序/比例/分辨率筛选、纯度门控、上传者浏览、本地收藏、详情缓存 |
 | 本地图片 | `LocalLibrary` | 本地目录导入、扫描、metadata 读取 |
-| 收藏 | `Favorites` | 收藏记录与分组，独立于业务模块 |
+| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
 
 ## 4. 共享能力清单
 
@@ -96,6 +96,15 @@
 结构方向发生实质变化时，必须同步更新 `AGENTS.md`、`README.md` 和 `docs/ai-handover-*.md`。
 
 ## 7. 当前状态与开发注意事项
+
+### 统一收藏模块（在线收藏）
+
+- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven，rawValue 作路由 itemID）
+- 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整
+- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动：Gallery 记录走 `DetailPageHTMLResolver`、MissKon 记录走 `MissKonDetailResolver` 渐进解析，Wallhaven 记录单图（封面）
+- **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图加载必须按来源设置 `imageRequestConfigurator`（各模块防盗链 Referer）
+- 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
+- Gallery/MissKon 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
 
 ### MissKon 模块
 

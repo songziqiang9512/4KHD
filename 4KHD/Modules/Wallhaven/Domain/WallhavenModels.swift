@@ -57,21 +57,18 @@ struct Wallpaper: Identifiable, Codable, Hashable {
 
 enum WallhavenSection: String, CaseIterable, Identifiable {
     case browse
-    case favorites
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .browse: "浏览"
-        case .favorites: "收藏"
         }
     }
 
     var sidebarSystemImage: String {
         switch self {
         case .browse: "photo.stack"
-        case .favorites: "heart.rectangle"
         }
     }
 }

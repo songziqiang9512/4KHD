@@ -14,7 +14,7 @@ enum MissKonDetailResolver {
                 pageURL: cached.pageURL,
                 imageURLs: cached.imageURLs,
                 pageURLs: cached.pageURLs,
-                mediaFireURL: nil
+                mediaFireURL: cached.mediaFireURL
             )
         }
 
@@ -37,7 +37,12 @@ enum MissKonDetailResolver {
             pageURLs: pageURLs,
             mediaFireURL: mediaFireURL
         )
-        DetailPageImageCache.shared.store(pageURL: page.pageURL, imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+        DetailPageImageCache.shared.store(
+            pageURL: page.pageURL,
+            imageURLs: page.imageURLs,
+            pageURLs: page.pageURLs,
+            mediaFireURL: page.mediaFireURL
+        )
         return page
     }
 

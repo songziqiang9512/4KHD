@@ -7,6 +7,7 @@ enum WorkspaceSidebarNode: Hashable {
     case wallhaven(WallhavenSection)
     case localAllImages(count: Int)
     case localFolder(LocalFolderNode)
+    case favoritesModule
 
     var title: String {
         switch self {
@@ -22,6 +23,8 @@ enum WorkspaceSidebarNode: Hashable {
             "我的图片"
         case .localFolder(let folder):
             folder.title
+        case .favoritesModule:
+            "在线收藏"
         }
     }
 
@@ -39,6 +42,8 @@ enum WorkspaceSidebarNode: Hashable {
             "local:allImages"
         case .localFolder(let folder):
             "localFolder:\(folder.id)"
+        case .favoritesModule:
+            "favorites:all"
         }
     }
 

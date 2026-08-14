@@ -64,12 +64,15 @@ final class MissKonDetailStore {
                 pageURL: $0.pageURL,
                 imageURLs: $0.imageURLs,
                 pageURLs: $0.pageURLs,
-                mediaFireURL: nil
+                mediaFireURL: $0.mediaFireURL
             )
         }
         if let cachedFirstPage {
             resolvedPages[cachedFirstPage.pageURL] = cachedFirstPage
             reconcileKnownPageURLs(with: cachedFirstPage.pageURLs, requestedPageURL: cachedFirstPage.pageURL)
+            if let mediaFireURL = cachedFirstPage.mediaFireURL {
+                mediaFireDownloadURL = mediaFireURL
+            }
         }
 
         // When imageCount==0 we can't trust pageCount, so seed a safe minimum.
@@ -119,8 +122,32 @@ final class MissKonDetailStore {
         guard !knownPageURLs.isEmpty else { return }
         isResolving = true
         // Only prefetch if first page hasn't been resolved yet.
-        let firstResolved = resolvedPages.keys.contains(knownPageURLs[0])
-        loadPage(knownPageURLs[0], prefetchNext: firstResolved ? 0 : 2)
+        if resolvedPages.keys.contains(knownPageURLs[0]) {
+            // 首页已解析(缓存命中):继续加载下一页;没有可加载页时结束解析状态,
+            // 避免单页缓存的图集卡在「解析中」。
+            loadNextUnresolvedPage()
+            if pageTasks.isEmpty {
+                isResolving = false
+            }
+            return
+        }
+        loadPage(knownPageURLs[0], prefetchNext: 2)
+    }
+
+    /// 详情面板关闭时停止后续页的链式/预取加载,但保留首页解析任务
+    /// (选中即解析的首页承载 MediaFire 链接提取等元信息)。
+    func cancelPrefetching() {
+        guard let firstPageURL = knownPageURLs.first else {
+            cancelAllPageTasks()
+            return
+        }
+        for (pageURL, task) in pageTasks where pageURL != firstPageURL {
+            task.cancel()
+            pageTasks[pageURL] = nil
+        }
+        if pageTasks.isEmpty {
+            isResolving = false
+        }
     }
 
     /// User navigated to a slot — load its page if not yet resolved.

@@ -139,7 +139,8 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         counterLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let filmstripHeightConstraint = filmstripView.heightAnchor.constraint(equalToConstant: 112)
+        // 初始高度 0:切换模块首帧不占位,reloadDetail 首次调用时再按全局状态(有动画地)展开。
+        let filmstripHeightConstraint = filmstripView.heightAnchor.constraint(equalToConstant: 0)
         let imageTopSafeAreaConstraint = imageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         let imageTopFullBleedConstraint = imageView.topAnchor.constraint(equalTo: view.topAnchor)
         self.filmstripHeightConstraint = filmstripHeightConstraint

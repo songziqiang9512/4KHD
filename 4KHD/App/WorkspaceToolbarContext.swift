@@ -6,6 +6,7 @@ enum WorkspaceToolbarSnapshot {
     case local(LocalSnapshot)
     case missKon(MissKonSnapshot)
     case wallhaven(WallhavenSnapshot)
+    case favorites(FavoritesSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -68,6 +69,23 @@ enum WorkspaceToolbarSnapshot {
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
+        let canResetZoom: Bool
+        let canShare: Bool
+        let isFilmstripPresented: Bool
+    }
+
+    /// 统一收藏模块:收藏按钮恒为「取消收藏」语义。
+    struct FavoritesSnapshot {
+        let searchText: String
+        let layout: FavoritesContentLayout
+        let canFavorite: Bool
+        let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveImage: Bool
+        let canSaveAlbum: Bool
         let canResetZoom: Bool
         let canShare: Bool
         let isFilmstripPresented: Bool
@@ -146,6 +164,19 @@ enum WorkspaceToolbarSnapshot {
                 canShare: s.canShare, isFilmstripPresented: false,
                 hasSelection: s.canShare
             )
+        case .favorites(let s):
+            CommonFields(
+                moduleName: "在线收藏", searchText: s.searchText,
+                isRefreshing: false,
+                canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                hasSelection: s.canShare
+            )
         }
     }
 
@@ -158,6 +189,8 @@ enum WorkspaceToolbarSnapshot {
         case .missKon(let snapshot):
             snapshot.layout == .list
         case .wallhaven(let snapshot):
+            snapshot.layout == .list
+        case .favorites(let snapshot):
             snapshot.layout == .list
         }
     }
@@ -186,9 +219,9 @@ enum WorkspaceCurrentReference {
     var copyMenuTitle: String {
         switch self {
         case .web:
-            return "Copy Link"
+            return "复制链接"
         case .file:
-            return "Copy Path"
+            return "复制路径"
         }
     }
 
@@ -219,6 +252,10 @@ final class WorkspaceToolbarContext {
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
+    private let favoritesModuleStore: FavoritesModuleStore
+    private let favoritesPreferences: FavoritesContentPreferences
+    private let favoritesDetailStore: FavoritesDetailStore
+    private let favoritesDetailInteraction: FavoritesDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
     private let detailPaneController: WorkspaceDetailPaneController
     private let downloadStore: DownloadStore
@@ -237,6 +274,10 @@ final class WorkspaceToolbarContext {
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
+        favoritesModuleStore: FavoritesModuleStore,
+        favoritesPreferences: FavoritesContentPreferences,
+        favoritesDetailStore: FavoritesDetailStore,
+        favoritesDetailInteraction: FavoritesDetailInteractionController,
         filmstripVisibility: FilmstripVisibilityController,
         detailPaneController: WorkspaceDetailPaneController,
         downloadStore: DownloadStore,
@@ -254,6 +295,10 @@ final class WorkspaceToolbarContext {
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
+        self.favoritesModuleStore = favoritesModuleStore
+        self.favoritesPreferences = favoritesPreferences
+        self.favoritesDetailStore = favoritesDetailStore
+        self.favoritesDetailInteraction = favoritesDetailInteraction
         self.filmstripVisibility = filmstripVisibility
         self.detailPaneController = detailPaneController
         self.downloadStore = downloadStore
@@ -365,6 +410,35 @@ final class WorkspaceToolbarContext {
                     canShare: effective != nil
                 )
             )
+        case .favorites:
+            let selectedRecord = favoritesModuleStore.selectedRecord
+            let source = selectedRecord.flatMap(FavoriteSource.source(for:))
+            let canSaveAlbum = source == .gallery || source == .missKon
+            let slots = favoritesDetailStore.imageSlots
+            let selectedIndex = favoritesDetailStore.selectedSlotID.flatMap { id in
+                slots.firstIndex { $0.id == id }
+            } ?? 0
+            let canAdjustGridColumns = favoritesPreferences.layout == .grid
+                && !detailPaneController.isPresented
+            return .favorites(
+                .init(
+                    searchText: favoritesModuleStore.searchText,
+                    layout: favoritesPreferences.layout,
+                    canFavorite: selectedRecord != nil,
+                    isFavorite: selectedRecord != nil,
+                    canIncreaseGridColumns: canAdjustGridColumns
+                        && favoritesPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: canAdjustGridColumns
+                        && favoritesPreferences.canDecreaseGridColumns,
+                    canSelectPreviousImage: selectedIndex > 0,
+                    canSelectNextImage: selectedIndex >= 0 && selectedIndex < slots.count - 1,
+                    canSaveImage: favoritesDetailStore.selectedSlot?.knownURL != nil,
+                    canSaveAlbum: canSaveAlbum,
+                    canResetZoom: favoritesDetailStore.selectedSlot != nil,
+                    canShare: selectedRecord != nil,
+                    isFilmstripPresented: filmstripVisibility.isPresented
+                )
+            )
         }
     }
 
@@ -390,6 +464,12 @@ final class WorkspaceToolbarContext {
                wallhavenStore.activeSearchQuery != nil {
                 wallhavenStore.clearSearch()
             }
+        case .favorites:
+            favoritesModuleStore.searchText = text
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               favoritesModuleStore.activeSearchQuery != nil {
+                favoritesModuleStore.clearSearch()
+            }
         }
     }
 
@@ -403,6 +483,8 @@ final class WorkspaceToolbarContext {
             setMissKonLayout(isList ? .list : .grid)
         case .wallhaven:
             setWallhavenLayout(isList ? .list : .grid)
+        case .favorites:
+            favoritesPreferences.layout = isList ? .list : .grid
         }
     }
 
@@ -416,6 +498,10 @@ final class WorkspaceToolbarContext {
             adjustMissKonGridColumns(delta: delta)
         case .wallhaven:
             adjustWallhavenGridColumns(delta: delta)
+        case .favorites:
+            guard favoritesPreferences.layout == .grid,
+                  !detailPaneController.isPresented else { return }
+            favoritesPreferences.adjustGridColumns(delta: delta)
         }
     }
 
@@ -429,6 +515,8 @@ final class WorkspaceToolbarContext {
             missKonStore.submitSearch(missKonStore.searchText)
         case .wallhaven:
             wallhavenStore.submitSearch(wallhavenStore.searchText)
+        case .favorites:
+            favoritesModuleStore.submitSearch()
         }
     }
 
@@ -481,6 +569,12 @@ final class WorkspaceToolbarContext {
             missKonStore.refreshFromNetwork()
         case .wallhaven:
             wallhavenStore.refreshFromNetwork()
+        case .favorites:
+            // 重读磁盘快照后,visibleRecords 经观察链自动重建。
+            Task { [weak self] in
+                guard let self else { return }
+                await favoritesModuleStore.favoritesStore.reloadFromDisk()
+            }
         }
     }
 
@@ -504,6 +598,10 @@ final class WorkspaceToolbarContext {
             return missKonStore.currentItem.map { [$0.detailURL] } ?? []
         case .wallhaven:
             return wallhavenStore.selectedWallpaper.map { [$0.sourcePageUrl] } ?? []
+        case .favorites:
+            return favoritesModuleStore.selectedRecord
+                .flatMap { URL(string: $0.detailURL) }
+                .map { [$0] } ?? []
         }
     }
 
@@ -517,6 +615,10 @@ final class WorkspaceToolbarContext {
             return missKonStore.currentItem.map { .web($0.detailURL) }
         case .wallhaven:
             return wallhavenStore.selectedWallpaper.map { .web($0.sourcePageUrl) }
+        case .favorites:
+            return favoritesModuleStore.selectedRecord
+                .flatMap { URL(string: $0.detailURL) }
+                .map { .web($0) }
         }
     }
 
@@ -536,6 +638,13 @@ final class WorkspaceToolbarContext {
                     try await wallhavenStore.toggleFavorite(for: wallpaper)
                 case .localLibrary:
                     return
+                case .favorites:
+                    // 收藏列表里的收藏项已处于收藏态,toggle 即取消收藏。
+                    guard let record = favoritesModuleStore.selectedRecord,
+                          let recordURL = URL(string: record.detailURL) else { return }
+                    let matched = favoritesModuleStore.favoritesStore.favorites
+                        .first { $0.detailURL == recordURL.absoluteString } ?? record
+                    try await favoritesModuleStore.favoritesStore.toggle(matched)
                 }
             } catch {
                 let alert = makeAppAlert(
@@ -570,6 +679,14 @@ final class WorkspaceToolbarContext {
             let next = min(max(current + delta, 0), wallpapers.count - 1)
             guard next != current else { return }
             wallhavenStore.select(wallpapers[next])
+        case .favorites:
+            guard delta != 0 else { return }
+            let slots = favoritesDetailStore.imageSlots
+            guard !slots.isEmpty else { return }
+            let current = favoritesDetailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
+            let next = min(max(current + delta, 0), slots.count - 1)
+            guard next != current else { return }
+            favoritesDetailStore.selectSlot(at: next)
         }
     }
 
@@ -590,6 +707,11 @@ final class WorkspaceToolbarContext {
         case .wallhaven:
             guard let wallpaper = wallhavenStore.effectiveSelectedWallpaper else { return }
             wallhavenDetailInteraction.saveWallpaper(wallpaper)
+        case .favorites:
+            guard let slot = favoritesDetailStore.selectedSlot,
+                  let url = slot.knownURL else { return }
+            let source = favoritesModuleStore.selectedRecord.flatMap(FavoriteSource.source(for:))
+            favoritesDetailInteraction.save(imageURL: url, filename: url.lastPathComponent, source: source)
         }
     }
 
@@ -602,6 +724,18 @@ final class WorkspaceToolbarContext {
         case .missKon:
             guard let item = missKonStore.currentItem else { return }
             result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
+        case .favorites:
+            guard let record = favoritesModuleStore.selectedRecord else { return }
+            switch FavoriteSource.source(for: record) {
+            case .gallery:
+                guard let item = favoritesModuleStore.galleryItem(for: record) else { return }
+                result = downloadStore.enqueueAlbumChoosingFolder(source: .gallery(item))
+            case .missKon:
+                guard let item = favoritesModuleStore.missKonItem(for: record) else { return }
+                result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
+            case .wallhaven, nil:
+                return
+            }
         case .localLibrary, .wallhaven:
             return
         }
@@ -631,6 +765,8 @@ final class WorkspaceToolbarContext {
             missKonDetailInteraction.resetZoom()
         case .wallhaven:
             wallhavenDetailInteraction.resetZoom()
+        case .favorites:
+            favoritesDetailInteraction.resetZoom()
         }
     }
 

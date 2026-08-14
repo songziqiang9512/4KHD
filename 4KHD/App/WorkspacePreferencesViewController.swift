@@ -60,47 +60,58 @@ final class WorkspacePreferencesViewController: NSViewController {
 
         configureControls()
 
-        let grid = NSGridView()
-        grid.rowSpacing = 10
-        grid.columnSpacing = 12
-        grid.column(at: 0).xPlacement = .trailing
-        grid.column(at: 1).xPlacement = .leading
+        // 每行从左到右:标签居左,控件居右(右对齐),行宽铺满。
+        // 每个职责分组之间用分隔线隔开,分组标题居中。
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
 
-        var rows: [[NSView]] = []
-        rows.append([sectionHeader("显示")])
-        rows.append(gridRow(label: "布局", control: layoutPopup))
-        rows.append([sectionHeader("本地图库")])
-        rows.append(gridRow(label: "排序", control: localSortFieldPopup))
-        rows.append(gridRow(label: "方向", control: localSortDirectionPopup))
-        rows.append([sectionHeader("侧边栏")])
-        rows.append([showAdvancedModulesCheckbox])
-        rows.append([separator])
-        rows.append([sectionHeader("缓存")])
-        rows.append(gridRow(label: "缓存上限", control: cacheLimitPopup))
-        rows.append([descriptionLabel("包含图片缓存、详情页缓存、模块缓存及临时文件")])
-        rows.append([buttonRow([clearCacheButton, cacheStatusLabel], spacing: 12)])
-        rows.append([separator])
-        rows.append([sectionHeader("收藏")])
-        rows.append([buttonRow([exportFavoritesButton, importFavoritesButton, favoritesStatusLabel], spacing: 10)])
-        rows.append([descriptionLabel("将所有线上模块的收藏图集导出为 JSON 文件，之后可从文件恢复。")])
-        rows.append([buttonRow([clearFavoritesButton], spacing: 10)])
-        rows.append([descriptionLabel("清空会立即从所有线上模块移除收藏；建议先导出备份。")])
+        addRow(separator, to: stack)
+        addRow(sectionHeader("显示"), to: stack)
+        addRow(formRow(label: "布局", control: layoutPopup), to: stack)
+        addRow(separator, to: stack)
+        addRow(sectionHeader("本地图库"), to: stack)
+        addRow(formRow(label: "排序", control: localSortFieldPopup), to: stack)
+        addRow(formRow(label: "方向", control: localSortDirectionPopup), to: stack)
+        addRow(separator, to: stack)
+        addRow(sectionHeader("侧边栏"), to: stack)
+        addRow(showAdvancedModulesCheckbox, to: stack)
+        addRow(separator, to: stack)
+        addRow(sectionHeader("缓存"), to: stack)
+        addRow(formRow(label: "缓存上限", control: cacheLimitPopup), to: stack)
+        addRow(descriptionLabel("包含图片缓存、详情页缓存、模块缓存及临时文件"), to: stack)
+        addRow(buttonRow([clearCacheButton, cacheStatusLabel], spacing: 12), to: stack)
+        addRow(separator, to: stack)
+        addRow(sectionHeader("收藏"), to: stack)
+        addRow(buttonRow([exportFavoritesButton, importFavoritesButton, favoritesStatusLabel], spacing: 10), to: stack)
+        addRow(descriptionLabel("将所有线上模块的收藏图集导出为 JSON 文件，之后可从文件恢复。"), to: stack)
+        addRow(buttonRow([clearFavoritesButton], spacing: 10), to: stack)
+        addRow(descriptionLabel("清空会立即从所有线上模块移除收藏；建议先导出备份。"), to: stack)
 
-        for row in rows {
-            grid.addRow(with: row)
-        }
-
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        documentView.addSubview(grid)
+        documentView.addSubview(stack)
+        stack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
-            grid.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -24),
-            grid.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 20),
-            grid.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -20),
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -20),
             documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            // 内容不足一屏时撑满可视高度,让内容从顶部开始排(否则内容贴底,顶部出现空白)。
+            documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
         ])
 
         refresh()
+    }
+
+    /// 行宽铺满整个设置面板。
+    private func addRow(_ row: NSView, to stack: NSStackView) {
+        stack.addArrangedSubview(row)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+        ])
     }
 
     func refresh() {
@@ -187,6 +198,7 @@ final class WorkspacePreferencesViewController: NSViewController {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 13, weight: .semibold)
         label.textColor = .secondaryLabelColor
+        label.alignment = .center
         return label
     }
 
@@ -197,11 +209,19 @@ final class WorkspacePreferencesViewController: NSViewController {
         return label
     }
 
-    private func gridRow(label text: String, control: NSView) -> [NSView] {
+    private func formRow(label text: String, control: NSView) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.alignment = .right
         label.font = .systemFont(ofSize: NSFont.systemFontSize)
-        return [label, control]
+
+        // spacer 撑满中间,把控件推到最右。
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let row = NSStackView(views: [label, spacer, control])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        return row
     }
 
     private func buttonRow(_ views: [NSView], spacing: CGFloat) -> NSView {

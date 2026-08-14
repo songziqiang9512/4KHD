@@ -4,9 +4,12 @@
 
 ## 当前状态（已验证）
 
-- Swift 6 Debug 构建通过，零代码警告；`4KHDTests` 全部通过（42 例）。
+- 版本 1.8.0（build 180），已推送远端并打 tag `build-1.8.0`。
+- Swift 6 Debug 构建通过；`4KHDTests` 全部通过（50 例）。已知一处既有 warning（`WorkspaceSidebarDataSource.swift:158` `var localRoots` 未变更），非本轮引入。
 - 生产代码纯 AppKit，无 SwiftUI；模块间无直接 import。
 - 应用实机启动验证通过：网格渲染、详情加载、双击缩放往返、切换图片均正常。
+- **统一收藏模块（在线收藏）**：侧边栏「本地」下方分组，汇总 4KHD/MissKon/Wallhaven 三模块收藏；交互与 MissKon/4KHD 一致（瀑布流网格共享卡片/列表/双击详情/搜索/列数/胶片条/沉浸）；详情区为大图查看区（FavoritesDetailStore 按来源走 DetailPageHTMLResolver/MissKonDetailResolver 渐进解析，Wallhaven 单图）；工具栏与 MissKon/4KHD 同款按钮。各模块内旧收藏 section 已移除；旧收藏数据按 detailURL host 自动兼容。已实机验证：模块加载、网格渲染、详情大图、设置面板、菜单汉化；hover/双击/胶片条等交互细节待用户点击验证。
+- MissKon MediaFire：短链随详情页缓存落盘（`DetailPageImageCache.Entry.mediaFireURL`，旧缓存数据兼容），且选中项即解析首页——封面右键菜单无需先打开详情面板即可见 MediaFire 项。
 - 图集批量下载 + 下载管理器已实现（工具栏「保存」菜单、Window→Downloads 浮窗），引擎与调度逻辑有单元测试覆盖；菜单/浮窗交互尚未实机点击验证。
 - 内容区滚动位置记忆：开关详情面板 / 进出大图导致网格列数变化时，瀑布流布局记录滚动锚点并恢复（`WorkspaceThumbnailWaterfallLayout` 的 pendingScrollAnchor 机制，覆盖 Gallery/MissKon/Wallhaven；LocalLibrary 自带恢复逻辑）。
 - 下载体验：发起下载自动弹出管理窗口（`WorkspaceDownloadsPresenter` 通知，AppDelegate 观察）；WebP 图片自动转无损 PNG 落盘（`AlbumImageFormatConverter`，转换失败退回原数据）。
@@ -16,6 +19,7 @@
 ## 本轮修复与优化摘要
 
 **崩溃 / 卡死**
+- 设置面板崩溃：`NSGridView.column(at:)` 在空网格（未加行前）上访问抛 NSRangeException（macOS 26 行为变化，对象是设置面板单页合并遗留）；列对齐配置已移到 `addRow` 之后。
 - Gallery 列表首行按上箭头 `rows[-1]` 越界崩溃（已夹取并加空数组 guard）。
 - 详情图同 URL 重试被 `loadedURL` guard 挡住、失败占位永不清除（Gallery/MissKon/Wallhaven 三处 setImageURL guard 放宽为“URL 相同且已有图才跳过”；RemoteImageView 同款修复）。
 - Gallery 切换板块不取消在途任务，`isRefreshingList` 永久卡 true（section.didSet 现取消列表/搜索任务并重置状态）。
@@ -42,6 +46,7 @@
 - 网格缩略图按 `resolvedColumnWidth × backingScale` 动态解码（512–1536px），列数少的大卡片不再放大 512px 糊图。
 
 **体验**
+- 菜单栏全部自定义菜单项汉化（含快捷键说明窗口、WorkspaceCommandValidator 动态标题、copyMenuTitle）；undo/redo 用自定义 selector 转发以保留中文标题（系统会覆盖 undo:/redo: 项的标题）；系统注入项（Close All、AutoFill、Arrange in Front 等）跟随系统语言，无法控制。
 - 详情图加载完成 0.15s 淡入（缓存命中/保留旧图路径不 fade）；缩略图同款。
 - 详情图双击放大 2x / 还原 fit（基类实现，四个详情视图共享）。
 - 未选中图片时“上一张/下一张”菜单禁用（MissKon/Wallhaven）。
@@ -50,7 +55,7 @@
 - MissKon/Wallhaven 列表单击行同步选中（详情面板与方向键跟随，与网格一致）。
 - 侧边栏：本地根目录拖拽取消会回滚实时重排；折叠分组内的路由节点会先展开再选中。
 - Wallhaven 列表 footer 状态就地刷新，不残留旧错误文案。
-- Gallery 收藏分组表头展开/折叠改为单击手势（修复双击 toggle 两次抵消）；表头右键菜单快照回调防复用错位。
+- Gallery 收藏作者分组/重命名功能已随收藏 section 移除下线（UserDefaults 数据无害保留）。
 - 本地列表搜索词变化但结果集不变时也刷新行高亮。
 
 ## 图集批量下载（本轮新增）

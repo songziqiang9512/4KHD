@@ -25,7 +25,6 @@ enum MissKonFavoritesBridge {
             return nil
         }
         let section = MissKonSection(rawValue: record.sourceID) ?? .latest
-        guard section != .favorites else { return nil }
 
         let coverURL = record.coverURL.flatMap(URL.init(string:))
         let pageURLs = pageURLs(detailURL: detailURL, pageCount: record.pageCount)

@@ -10,7 +10,7 @@ final class FourKHDGalleryStore {
     let favorites: FavoritesStore
 
     init(favorites: FavoritesStore) {
-        let feed = GalleryFeedStore(favoritesStore: favorites)
+        let feed = GalleryFeedStore()
         let detail = GalleryDetailStore()
         self.favorites = favorites
         self.feed = feed
@@ -109,11 +109,6 @@ final class FourKHDGalleryStore {
 
     func toggleFavorite(for item: GalleryItem) async throws {
         try await favorites.toggle(GalleryFavoritesBridge.record(from: item))
-    }
-
-    func refreshFavoritesIfNeeded() {
-        guard feed.section == .favorites else { return }
-        feed.selectFirstItemIfNeeded(force: true)
     }
 
     func isCached(_ item: GalleryItem) -> Bool {

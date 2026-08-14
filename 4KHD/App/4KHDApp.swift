@@ -71,6 +71,16 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// 转发 undo:/redo: 走响应链。菜单项直接用系统 selector 时,
+    /// AppKit 会自动把标题替换成系统语言的 "Undo"/"Redo"。
+    @objc func undoFromMenu(_ sender: Any?) {
+        NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+    }
+
+    @objc func redoFromMenu(_ sender: Any?) {
+        NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+    }
+
     @objc func showPreferences(_ sender: Any?) {
         guard let appContext else { return }
         if preferencesWindowController == nil {
@@ -131,6 +141,21 @@ final class FourKHDAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+extension FourKHDAppDelegate: NSMenuItemValidation {
+    /// 转发项显式绑定 target 后不再走响应链自动校验;
+    /// 手动按响应链是否存在 undo:/redo: 响应者决定启用状态。
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(FourKHDAppDelegate.undoFromMenu(_:)):
+            return NSApp.target(forAction: Selector(("undo:")), to: nil, from: nil) != nil
+        case #selector(FourKHDAppDelegate.redoFromMenu(_:)):
+            return NSApp.target(forAction: Selector(("redo:")), to: nil, from: nil) != nil
+        default:
+            return true
+        }
+    }
+}
+
 private enum MainMenuBuilder {
     static func install() {
         let mainMenu = NSMenu()
@@ -149,7 +174,7 @@ private enum MainMenuBuilder {
         let menu = NSMenu(title: appName)
 		menu.addItem(
 			NSMenuItem(
-				title: "About \(appName)",
+				title: "关于 \(appName)",
 				action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
 				keyEquivalent: ""
 			)
@@ -163,28 +188,28 @@ private enum MainMenuBuilder {
 		menu.addItem(updateItem)
 		menu.addItem(.separator())
         let settingsItem = NSMenuItem(
-            title: "Settings...",
+            title: "设置…",
             action: #selector(FourKHDAppDelegate.showPreferences(_:)),
             keyEquivalent: ","
         )
         settingsItem.target = NSApp.delegate as AnyObject?
         menu.addItem(settingsItem)
         menu.addItem(.separator())
-        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
-        let servicesMenu = NSMenu(title: "Services")
+        let servicesItem = NSMenuItem(title: "服务", action: nil, keyEquivalent: "")
+        let servicesMenu = NSMenu(title: "服务")
         servicesItem.submenu = servicesMenu
         menu.addItem(servicesItem)
         NSApp.servicesMenu = servicesMenu
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
-                title: "Hide \(appName)",
+                title: "隐藏 \(appName)",
                 action: #selector(NSApplication.hide(_:)),
                 keyEquivalent: "h"
             )
         )
         let hideOthers = NSMenuItem(
-            title: "Hide Others",
+            title: "隐藏其他",
             action: #selector(NSApplication.hideOtherApplications(_:)),
             keyEquivalent: "h"
         )
@@ -192,7 +217,7 @@ private enum MainMenuBuilder {
         menu.addItem(hideOthers)
         menu.addItem(
             NSMenuItem(
-                title: "Show All",
+                title: "全部显示",
                 action: #selector(NSApplication.unhideAllApplications(_:)),
                 keyEquivalent: ""
             )
@@ -200,7 +225,7 @@ private enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
-                title: "Quit \(appName)",
+                title: "退出 \(appName)",
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q"
             )
@@ -211,66 +236,66 @@ private enum MainMenuBuilder {
 
     private static func fileMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "File")
+        let menu = NSMenu(title: "文件")
         menu.addItem(
             NSMenuItem(
-                title: "Import Folder...",
+                title: "导入目录…",
                 action: #selector(WorkspaceSplitViewController.importLocalFolder(_:)),
                 keyEquivalent: "o"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Favorite",
+                title: "收藏",
                 action: #selector(WorkspaceSplitViewController.toggleCurrentFavorite(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Open Original",
+                title: "打开原网页",
                 action: #selector(WorkspaceSplitViewController.openCurrentReference(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Get Info",
+                title: "显示简介",
                 action: #selector(WorkspaceSplitViewController.showCurrentInspector(_:)),
                 keyEquivalent: "i"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Save Image...",
+                title: "保存图片…",
                 action: #selector(WorkspaceSplitViewController.saveCurrentImage(_:)),
                 keyEquivalent: "s"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Quick Look",
+                title: "快速预览",
                 action: #selector(WorkspaceSplitViewController.quickLookCurrentFile(_:)),
                 keyEquivalent: "y"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Reveal in Finder",
+                title: "在 Finder 中显示",
                 action: #selector(WorkspaceSplitViewController.revealCurrentFileInFinder(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Set Desktop Wallpaper",
+                title: "设为桌面壁纸",
                 action: #selector(WorkspaceSplitViewController.setCurrentFileAsDesktopWallpaper(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Share...",
+                title: "共享…",
                 action: #selector(WorkspaceSplitViewController.shareCurrentContent(_:)),
                 keyEquivalent: ""
             )
@@ -278,7 +303,7 @@ private enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
-                title: "Close",
+                title: "关闭",
                 action: #selector(NSWindow.performClose(_:)),
                 keyEquivalent: "w"
             )
@@ -289,23 +314,35 @@ private enum MainMenuBuilder {
 
     private static func editMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "Edit")
-        menu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
-        menu.addItem(NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"))
+        let menu = NSMenu(title: "编辑")
+        let undoItem = NSMenuItem(
+            title: "撤销",
+            action: #selector(FourKHDAppDelegate.undoFromMenu(_:)),
+            keyEquivalent: "z"
+        )
+        undoItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(undoItem)
+        let redoItem = NSMenuItem(
+            title: "重做",
+            action: #selector(FourKHDAppDelegate.redoFromMenu(_:)),
+            keyEquivalent: "Z"
+        )
+        redoItem.target = NSApp.delegate as AnyObject?
+        menu.addItem(redoItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
-        menu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        menu.addItem(NSMenuItem(title: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        menu.addItem(NSMenuItem(title: "拷贝", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         menu.addItem(NSMenuItem(
-            title: "Copy Link",
+            title: "复制链接",
             action: #selector(WorkspaceSplitViewController.copyCurrentReference(_:)),
             keyEquivalent: ""
         ))
-        menu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
-        menu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        menu.addItem(NSMenuItem(title: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        menu.addItem(NSMenuItem(title: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
-                title: "Find",
+                title: "查找",
                 action: #selector(WorkspaceSplitViewController.moveFocusToSearchField(_:)),
                 keyEquivalent: "f"
             )
@@ -316,38 +353,38 @@ private enum MainMenuBuilder {
 
     private static func viewMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "View")
+        let menu = NSMenu(title: "显示")
         menu.addItem(
             NSMenuItem(
-                title: "Toggle Toolbar",
+                title: "切换工具栏",
                 action: #selector(NSWindow.toggleToolbarShown(_:)),
                 keyEquivalent: "t"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Refresh",
+                title: "刷新",
                 action: #selector(WorkspaceSplitViewController.refreshCurrentContent(_:)),
                 keyEquivalent: "r"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Actual Size",
+                title: "实际大小",
                 action: #selector(WorkspaceSplitViewController.resetCurrentZoom(_:)),
                 keyEquivalent: "0"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Previous Image",
+                title: "上一张图片",
                 action: #selector(WorkspaceSplitViewController.selectPreviousImage(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Next Image",
+                title: "下一张图片",
                 action: #selector(WorkspaceSplitViewController.selectNextImage(_:)),
                 keyEquivalent: ""
             )
@@ -358,21 +395,21 @@ private enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
-                title: "Toggle Sidebar",
+                title: "切换侧边栏",
                 action: #selector(WorkspaceSplitViewController.toggleWorkspaceSidebar(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Toggle Detail",
+                title: "切换详情区",
                 action: #selector(WorkspaceSplitViewController.toggleWorkspaceDetailPane(_:)),
                 keyEquivalent: "\\"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Enter Immersive Mode",
+                title: "进入大图模式",
                 action: #selector(WorkspaceSplitViewController.toggleImmersiveMode(_:)),
                 keyEquivalent: ""
             )
@@ -380,21 +417,21 @@ private enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
-                title: "Focus Sidebar",
+                title: "聚焦侧边栏",
                 action: #selector(WorkspaceSplitViewController.navigateToSidebar(_:)),
                 keyEquivalent: "1"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Focus Content",
+                title: "聚焦内容区",
                 action: #selector(WorkspaceSplitViewController.navigateToContent(_:)),
                 keyEquivalent: "2"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Focus Detail",
+                title: "聚焦详情区",
                 action: #selector(WorkspaceSplitViewController.navigateToDetail(_:)),
                 keyEquivalent: "3"
             )
@@ -404,15 +441,15 @@ private enum MainMenuBuilder {
     }
 
     private static func layoutMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: "Layout")
+        let item = NSMenuItem(title: "布局", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "布局")
         menu.addItem(NSMenuItem(
-            title: "List",
+            title: "列表",
             action: #selector(WorkspaceSplitViewController.setContentListLayout(_:)),
             keyEquivalent: ""
         ))
         menu.addItem(NSMenuItem(
-            title: "Grid",
+            title: "网格",
             action: #selector(WorkspaceSplitViewController.setContentGridLayout(_:)),
             keyEquivalent: ""
         ))
@@ -421,15 +458,15 @@ private enum MainMenuBuilder {
     }
 
     private static func gridColumnsMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Grid Columns", action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: "Grid Columns")
+        let item = NSMenuItem(title: "网格列数", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "网格列数")
         menu.addItem(NSMenuItem(
-            title: "Increase Columns",
+            title: "增加列数",
             action: #selector(WorkspaceSplitViewController.increaseLocalGridColumns(_:)),
             keyEquivalent: "-"
         ))
         menu.addItem(NSMenuItem(
-            title: "Decrease Columns",
+            title: "减少列数",
             action: #selector(WorkspaceSplitViewController.decreaseLocalGridColumns(_:)),
             keyEquivalent: "="
         ))
@@ -438,8 +475,8 @@ private enum MainMenuBuilder {
     }
 
     private static func localSortMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Sort Local Images", action: nil, keyEquivalent: "")
-        let menu = NSMenu(title: "Sort Local Images")
+        let item = NSMenuItem(title: "本地图片排序", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "本地图片排序")
         for field in LocalImageSortField.allCases {
             let menuItem = NSMenuItem(
                 title: field.title,
@@ -465,31 +502,31 @@ private enum MainMenuBuilder {
 
     private static func windowMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "Window")
+        let menu = NSMenu(title: "窗口")
         menu.addItem(
             NSMenuItem(
-                title: "Minimize",
+                title: "最小化",
                 action: #selector(NSWindow.performMiniaturize(_:)),
                 keyEquivalent: "m"
             )
         )
         menu.addItem(
             NSMenuItem(
-                title: "Zoom",
+                title: "缩放",
                 action: #selector(NSWindow.performZoom(_:)),
                 keyEquivalent: ""
             )
         )
         menu.addItem(.separator())
         let mainWindowItem = NSMenuItem(
-            title: "Main Window",
+            title: "主窗口",
             action: #selector(FourKHDAppDelegate.showMainWindow(_:)),
             keyEquivalent: ""
         )
         mainWindowItem.target = NSApp.delegate as AnyObject?
         menu.addItem(mainWindowItem)
         let inspectorItem = NSMenuItem(
-            title: "Inspector",
+            title: "信息",
             action: #selector(FourKHDAppDelegate.showInspector(_:)),
             keyEquivalent: "i"
         )
@@ -497,21 +534,15 @@ private enum MainMenuBuilder {
         inspectorItem.target = NSApp.delegate as AnyObject?
         menu.addItem(inspectorItem)
         let downloadsItem = NSMenuItem(
-            title: "Downloads",
+            title: "下载",
             action: #selector(FourKHDAppDelegate.showDownloadsWindow(_:)),
             keyEquivalent: "d"
         )
         downloadsItem.keyEquivalentModifierMask = [.command, .option]
         downloadsItem.target = NSApp.delegate as AnyObject?
         menu.addItem(downloadsItem)
-        menu.addItem(.separator())
-        menu.addItem(
-            NSMenuItem(
-                title: "Bring All to Front",
-                action: #selector(NSApplication.arrangeInFront(_:)),
-                keyEquivalent: ""
-            )
-        )
+        // windowsMenu 会由系统自动注入「全部前置」等标准窗口项(标题跟随系统语言),
+        // 不要自行添加 arrangeInFront,避免重复。
         item.submenu = menu
         NSApp.windowsMenu = menu
         return item
@@ -519,9 +550,9 @@ private enum MainMenuBuilder {
 
     private static func helpMenuItem() -> NSMenuItem {
         let item = NSMenuItem()
-        let menu = NSMenu(title: "Help")
+        let menu = NSMenu(title: "帮助")
         let keyboardItem = NSMenuItem(
-            title: "Keyboard Shortcuts",
+            title: "键盘快捷键",
             action: #selector(FourKHDAppDelegate.showKeyboardShortcutsWindow(_:)),
             keyEquivalent: "?"
         )
@@ -529,14 +560,14 @@ private enum MainMenuBuilder {
         menu.addItem(keyboardItem)
         menu.addItem(.separator())
         let supportFolderItem = NSMenuItem(
-            title: "Open Application Support Folder",
+            title: "打开应用支持目录",
             action: #selector(FourKHDAppDelegate.openApplicationSupportFolder(_:)),
             keyEquivalent: ""
         )
         supportFolderItem.target = NSApp.delegate as AnyObject?
         menu.addItem(supportFolderItem)
         let imageCacheItem = NSMenuItem(
-            title: "Open Image Cache Folder",
+            title: "打开图片缓存目录",
             action: #selector(FourKHDAppDelegate.openImageCacheFolder(_:)),
             keyEquivalent: ""
         )

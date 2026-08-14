@@ -340,6 +340,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             systemName = section.sidebarSystemImage
         case .wallhaven(let section):
             systemName = section.sidebarSystemImage
+        case .favoritesModule:
+            systemName = "heart"
         }
         let image = NSImage(systemSymbolName: systemName, accessibilityDescription: node.title)
         image?.isTemplate = true
@@ -369,6 +371,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .missKon, itemID: section.rawValue)
         case .wallhaven(let section):
             selectedRoute = WorkspaceRoute(moduleID: .wallhaven, itemID: section.rawValue)
+        case .favoritesModule:
+            selectedRoute = WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
         case .group:
             selectedRoute = nil
         }
@@ -510,6 +514,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             route.itemID == folder.id
         case (.localLibrary, .localAllImages):
             route.itemID == LocalLibraryStore.allImagesFolderID
+        case (.favorites, .favoritesModule):
+            true
         default:
             false
         }

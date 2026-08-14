@@ -11,6 +11,8 @@ final class WorkspaceAppContext {
     let wallhavenStore: WallhavenGalleryStore
     let localLibraryStore: LocalLibraryStore
     let favoritesStore: FavoritesStore
+    let favoritesModuleStore: FavoritesModuleStore
+    let favoritesPreferences: FavoritesContentPreferences
     let toolbarContext: WorkspaceToolbarContext
     let downloadStore: DownloadStore
     @ObservationIgnored private let importRootFolderAction: () -> Void
@@ -24,6 +26,8 @@ final class WorkspaceAppContext {
         wallhavenStore: WallhavenGalleryStore,
         localLibraryStore: LocalLibraryStore,
         favoritesStore: FavoritesStore,
+        favoritesModuleStore: FavoritesModuleStore,
+        favoritesPreferences: FavoritesContentPreferences,
         toolbarContext: WorkspaceToolbarContext,
         downloadStore: DownloadStore,
         importRootFolderAction: @escaping () -> Void
@@ -36,6 +40,8 @@ final class WorkspaceAppContext {
         self.wallhavenStore = wallhavenStore
         self.localLibraryStore = localLibraryStore
         self.favoritesStore = favoritesStore
+        self.favoritesModuleStore = favoritesModuleStore
+        self.favoritesPreferences = favoritesPreferences
         self.toolbarContext = toolbarContext
         self.downloadStore = downloadStore
         self.importRootFolderAction = importRootFolderAction

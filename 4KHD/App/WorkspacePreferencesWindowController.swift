@@ -44,11 +44,8 @@ final class WorkspacePreferencesWindowController: NSWindowController {
                 }
                 return failures
             },
-            onFavoritesImported: {
-                appContext.galleryStore.refreshFavoritesIfNeeded()
-                appContext.missKonStore.refreshFavoritesIfNeeded()
-                appContext.wallhavenStore.refreshFavoritesIfNeeded()
-            }
+            // 统一收藏模块直接观察 FavoritesStore,导入后列表自动重建。
+            onFavoritesImported: {}
         )
         self.preferencesViewController = preferencesViewController
 

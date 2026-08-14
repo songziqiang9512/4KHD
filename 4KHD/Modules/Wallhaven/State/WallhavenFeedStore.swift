@@ -56,7 +56,6 @@ final class WallhavenFeedStore {
     private let apiClient: WallhavenAPIClient
     let accountStore: WallhavenAccountStore
     private let preferences: WallhavenContentPreferences
-    private let favoritesStore: FavoritesStore
 
     /// Cache for resolved wallpaper details so favorites/collections don't re-fetch /w/{id} every time.
     private var detailCache: [String: Wallpaper] = [:]
@@ -93,12 +92,10 @@ final class WallhavenFeedStore {
 
     init(apiClient: WallhavenAPIClient? = nil,
          accountStore: WallhavenAccountStore,
-         preferences: WallhavenContentPreferences,
-         favoritesStore: FavoritesStore) {
+         preferences: WallhavenContentPreferences) {
         self.apiClient = apiClient ?? WallhavenAPIClient()
         self.accountStore = accountStore
         self.preferences = preferences
-        self.favoritesStore = favoritesStore
         self.category = preferences.preferredCategory
         self.sorting = preferences.preferredSorting
         self.resolution = preferences.preferredResolution
@@ -251,14 +248,6 @@ final class WallhavenFeedStore {
         searchText = ""
         section = newSection
         restoreSectionCache()
-        if newSection == .favorites {
-            Task { [weak self] in
-                guard let self else { return }
-                await favoritesStore.reloadFromDisk()
-                guard self.section == .favorites else { return }
-                self.refreshFavorites()
-            }
-        }
     }
 
     func refreshFromNetwork() {
@@ -310,10 +299,6 @@ final class WallhavenFeedStore {
                     self.inFlightUploaderPage = nil
                 }
             }
-            return
-        }
-        if section == .favorites {
-            refreshFavorites()
             return
         }
         if let query = activeSearchQuery, !query.isEmpty {
@@ -377,7 +362,6 @@ final class WallhavenFeedStore {
             loadMoreUploaderWorks()
             return
         }
-        guard section != .favorites else { return }
         if activeSearchQuery != nil {
             loadMoreSearchIfNeeded()
             return
@@ -546,10 +530,6 @@ final class WallhavenFeedStore {
     }
 
     func restoreSectionCache() {
-        if section == .favorites {
-            refreshFavorites()
-            return
-        }
         if let cached = cachedWallpapers[section], !cached.isEmpty {
             wallpapers = cached
             (currentPage, lastPage, seed) = cachedPages[section] ?? (1, 1, nil)
@@ -574,39 +554,6 @@ final class WallhavenFeedStore {
             canLoadMoreList = false
             refreshFromNetwork()
         }
-    }
-
-    // MARK: - Favorites
-
-    private func refreshFavorites() {
-        isRefreshingList = true
-        feedErrorMessage = nil
-        currentPage = 1
-        lastPage = 1
-        seed = nil
-        let records = favoritesStore.favorites.filter { $0.sourceID == "wallhaven" }
-        let items = WallhavenFavoritesBridge.wallpapers(from: records)
-        wallpapers = items
-        canLoadMoreList = false
-        isRefreshingList = false
-        let previousID = selectedWallpaperID
-        if selectedWallpaperID == nil || !items.contains(where: { $0.id == selectedWallpaperID }) {
-            selectedWallpaperID = items.first?.id
-        }
-        if selectedWallpaperID != previousID {
-            onSelectionChanged?(selectedWallpaperID.flatMap { id in items.first { $0.id == id } })
-        }
-    }
-
-    /// Call when favorites change externally, to refresh the list if currently viewing favorites.
-    func refreshFavoritesIfNeeded() {
-        // Always clear caches so a later switch to .favorites picks up
-        // fresh data from FavoritesStore after import / external mutation.
-        cachedWallpapers[.favorites] = nil
-        cachedPages[.favorites] = nil
-        cacheTimestamps[.favorites] = nil
-        guard section == .favorites, !isBrowsingUploader else { return }
-        refreshFavorites()
     }
 
     // MARK: - Uploader browsing

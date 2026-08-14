@@ -155,6 +155,15 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             applyWallhaven(wallpaper: wallpaper)
+        case .favorites:
+            metadataTask?.cancel()
+            observedImageID = nil
+            currentMetadata = nil
+            guard let record = appContext.favoritesModuleStore.selectedRecord else {
+                applyEmptyState(module: "Favorites")
+                return
+            }
+            applyFavoriteRecord(record)
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 observedImageID = nil
@@ -321,6 +330,25 @@ private final class WorkspaceInspectorViewController: NSViewController {
         pathValue.stringValue = item.detailURL.absoluteString
     }
 
+    private func applyFavoriteRecord(_ record: FavoriteRecord) {
+        titleLabel.stringValue = record.title
+        moduleLabel.stringValue = "Favorites"
+        primaryLabel.stringValue = "Source"
+        resolutionValue.stringValue = FavoriteSource.source(for: record)?.title ?? "-"
+        secondaryLabel.stringValue = "Images"
+        fileSizeValue.stringValue = "\(record.imageCount)"
+        formatLabel.stringValue = "Pages"
+        formatValue.stringValue = "\(record.pageCount)"
+        tertiaryLabel.stringValue = "Subtitle"
+        modifiedValue.stringValue = record.subtitle.nilIfEmpty ?? "-"
+        quaternaryLabel.stringValue = "Favorite"
+        availabilityIconView.isHidden = true
+        availabilityTextField.stringValue = "Yes"
+        availabilityTextField.textColor = .secondaryLabelColor
+        pathLabel.stringValue = "URL"
+        pathValue.stringValue = record.detailURL
+    }
+
     private func resetAvailability() {
         availabilityIconView.image = nil
         availabilityIconView.isHidden = true
@@ -380,6 +408,8 @@ private final class WorkspaceInspectorViewController: NSViewController {
             _ = appContext.missKonStore.favorites.favorites
             _ = appContext.wallhavenStore.selectedWallpaperID
             _ = appContext.wallhavenStore.favorites.favorites
+            _ = appContext.favoritesModuleStore.selectedRecordID
+            _ = appContext.favoritesModuleStore.selectedRecord
             _ = appContext.localLibraryStore.roots
             _ = appContext.localLibraryStore.selectedFolderID
             _ = appContext.localLibraryStore.selectedImageIndex

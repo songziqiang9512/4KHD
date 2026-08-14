@@ -88,10 +88,4 @@ final class WallhavenGalleryStore {
     func toggleFavorite(for wallpaper: Wallpaper) async throws {
         try await favorites.toggle(WallhavenFavoritesBridge.record(from: wallpaper))
     }
-
-    /// Refreshes the favorites list from FavoritesStore when external
-    /// changes (e.g. import) may have added or removed records.
-    func refreshFavoritesIfNeeded() {
-        feed.refreshFavoritesIfNeeded()
-    }
 }

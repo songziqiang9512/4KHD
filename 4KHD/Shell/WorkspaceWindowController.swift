@@ -115,6 +115,8 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
                 return "Wallhaven"
             }
             return "\(section.title) - Wallhaven"
+        case .favorites:
+            return "在线收藏"
         }
     }
 }

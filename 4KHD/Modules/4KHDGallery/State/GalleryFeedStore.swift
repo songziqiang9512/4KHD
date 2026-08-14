@@ -18,14 +18,6 @@ final class GalleryFeedStore {
             isRefreshingList = false
             selectFirstItemIfNeeded(force: true)
             refreshSectionIfNeeded()
-            if section == .favorites {
-                Task { [weak self] in
-                    guard let self else { return }
-                    await favoritesStore.reloadFromDisk()
-                    guard self.section == .favorites else { return }
-                    self.selectFirstItemIfNeeded(force: true)
-                }
-            }
         }
     }
     var selectedItemID: GalleryItem.ID?
@@ -48,17 +40,10 @@ final class GalleryFeedStore {
     /// 由 `FourKHDGalleryStore` 注入；feed 负责把当前选中 item 快照传出去，避免协调者再回读派生状态。
     @ObservationIgnored var onSelectionChanged: ((GalleryItem?) -> Void)?
 
-    private let favoritesStore: FavoritesStore
-
-    init(favoritesStore: FavoritesStore) {
-        self.favoritesStore = favoritesStore
-    }
-
     // MARK: - 派生
 
     var allItems: [GalleryItem] {
         if activeSearchQuery != nil { return searchItems }
-        if section == .favorites { return GalleryFavoritesBridge.galleryItems(from: favoritesStore.favorites) }
         return library.items(in: section)
     }
 
@@ -69,7 +54,6 @@ final class GalleryFeedStore {
     var canLoadMoreList: Bool {
         if visibleCount < allItems.count { return true }
         if activeSearchQuery != nil { return searchNextPageURL != nil }
-        if section == .favorites { return false }
         return listNextPageURLs[section] != nil
     }
 

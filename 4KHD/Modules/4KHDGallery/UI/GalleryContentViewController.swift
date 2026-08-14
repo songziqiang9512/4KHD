@@ -4,7 +4,6 @@ import Observation
 @MainActor
 final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     enum Row: Hashable {
-        case group(String)
         case item(GalleryItem.ID)
         case footer
     }
@@ -18,9 +17,6 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private var activeView: NSView?
     var rows: [Row] = []
     var rowItems: [GalleryItem.ID: GalleryItem] = [:]
-    private var rowGroups: [String: FavoriteAuthorGroup] = [:]
-    var expandedFavoriteAuthorIDs = Set<String>()
-    var favoriteAuthorOverrides: [String: String] = [:]
     private var isObserving = false
     private var isApplyingSelection = false
     private var lastAppliedRows: [Row] = []
@@ -125,7 +121,6 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     func reloadContent() {
-        favoriteAuthorOverrides = loadFavoriteAuthorOverrides()
         rebuildRows()
         capturePendingScrollItemIfSwitchingLayout()
 
@@ -234,9 +229,6 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isObserving = false
-                if self.library.section != .favorites {
-                    self.expandedFavoriteAuthorIDs.removeAll()
-                }
                 self.reloadQueue.add(id: "reload") { [weak self] in
                     self?.reloadContent()
                 }
@@ -249,32 +241,13 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         library.feedErrorMessage != nil || library.isRefreshingList || library.canLoadMoreList || !library.visibleItems.isEmpty
     }
 
-    var shouldGroupFavorites: Bool {
-        library.section == .favorites && library.activeSearchQuery == nil
-    }
-
     private func rebuildRows() {
         rows = []
         rowItems = [:]
-        rowGroups = [:]
 
-        if shouldGroupFavorites {
-            let groups = favoriteAuthorGroups
-            for group in groups {
-                rows.append(.group(group.id))
-                rowGroups[group.id] = group
-                if expandedFavoriteAuthorIDs.contains(group.id) {
-                    for item in group.items {
-                        rows.append(.item(item.id))
-                        rowItems[item.id] = item
-                    }
-                }
-            }
-        } else {
-            for item in library.visibleItems {
-                rows.append(.item(item.id))
-                rowItems[item.id] = item
-            }
+        for item in library.visibleItems {
+            rows.append(.item(item.id))
+            rowItems[item.id] = item
         }
 
         if shouldShowFooter {
@@ -282,90 +255,11 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         }
     }
 
-    var favoriteAuthorGroups: [FavoriteAuthorGroup] {
-        groupedFavoriteItems()
-            .map { author, items in
-                FavoriteAuthorGroup(
-                    author: author,
-                    items: items.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-                )
-            }
-            .sorted { lhs, rhs in
-                lhs.author.localizedStandardCompare(rhs.author) == .orderedAscending
-            }
-    }
-
-    private func groupedFavoriteItems() -> [String: [GalleryItem]] {
-        let overrides = favoriteAuthorOverrides
-        let automaticItems = library.visibleItems.filter { overrides[$0.detailURL.absoluteString] == nil }
-        var grouped = FavoriteAuthorNameParser.group(automaticItems)
-
-        for item in library.visibleItems {
-            guard let override = overrides[item.detailURL.absoluteString] else { continue }
-            let author = normalizedFavoriteAuthorOverride(override)
-            grouped[author, default: []].append(item)
-        }
-        return grouped
-    }
-
-    private func toggleFavoriteGroup(_ id: String) {
-        let oldRows = rows
-        if expandedFavoriteAuthorIDs.contains(id) {
-            expandedFavoriteAuthorIDs.remove(id)
-        } else {
-            expandedFavoriteAuthorIDs.insert(id)
-        }
-        rebuildRows()
-        if tableScrollView.superview != nil {
-            animateTableRowChange(from: oldRows, to: rows)
-        } else {
-            lastAppliedRows = rows
-        }
-    }
-
-    private func animateTableRowChange(from oldRows: [Row], to newRows: [Row]) {
-        // Compute rows to remove: old-row elements that no longer exist in the new row set.
-        let removedIndexes = oldRows.enumerated().filter { !newRows.contains($0.element) }.map(\.offset)
-        // Compute rows to insert: new-row elements that did not exist in the old row set.
-        let insertedIndexes = newRows.enumerated().filter { !oldRows.contains($0.element) }.map(\.offset)
-        let removedSet = IndexSet(removedIndexes)
-        let insertedSet = IndexSet(insertedIndexes)
-
-        guard !removedSet.isEmpty || !insertedSet.isEmpty else {
-            lastAppliedRows = newRows
-            return
-        }
-
-        // When both removals and insertions are needed, the insertion indexes
-        // from newRows may not correctly map to the table's pre-update state.
-        // This is not a simple expand/collapse (which only produces one type
-        // of change), so fall back to a full reload to avoid animation jitter.
-        if !removedSet.isEmpty, !insertedSet.isEmpty {
-            lastAppliedRows = newRows
-            tableView.reloadData()
-            return
-        }
-
-        lastAppliedRows = newRows
-        tableView.beginUpdates()
-        if !removedSet.isEmpty {
-            tableView.removeRows(at: removedSet, withAnimation: .slideUp)
-        }
-        if !insertedSet.isEmpty {
-            tableView.insertRows(at: insertedSet, withAnimation: .slideDown)
-        }
-        tableView.endUpdates()
-    }
-
     private func loadMoreIfNeeded(for row: Int) {
         guard rows.indices.contains(row) else { return }
         switch rows[row] {
         case .item(let id):
             if id == library.visibleItems.last?.id {
-                library.loadMoreListIfNeeded()
-            }
-        case .group(let id):
-            if id == favoriteAuthorGroups.last?.id {
                 library.loadMoreListIfNeeded()
             }
         case .footer:
@@ -397,14 +291,6 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         var signature: [Int: GalleryVisibleListRowSignature] = [:]
         for row in visibleRows.location..<(visibleRows.location + visibleRows.length) where rows.indices.contains(row) {
             switch rows[row] {
-            case .group(let id):
-                signature[row] = GalleryVisibleListRowSignature(
-                    row: rows[row],
-                    title: rowGroups[id]?.author ?? "",
-                    subtitle: "\(rowGroups[id]?.items.count ?? 0)",
-                    isFavorite: false,
-                    isCached: false
-                )
             case .item(let id):
                 guard let item = rowItems[id] else { continue }
                 signature[row] = GalleryVisibleListRowSignature(
@@ -471,72 +357,6 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         detailPane.setPresented(true)
     }
 
-    private func renameFavoriteGroup(_ group: FavoriteAuthorGroup) {
-        guard let newAuthor = promptForFavoriteGroupName(currentName: group.author) else { return }
-        var overrides = favoriteAuthorOverrides
-        for item in group.items {
-            overrides[item.detailURL.absoluteString] = newAuthor
-        }
-        saveFavoriteAuthorOverrides(overrides)
-        expandedFavoriteAuthorIDs.remove(group.id)
-        expandedFavoriteAuthorIDs.insert(newAuthor.lowercased())
-        reloadContent()
-    }
-
-    private func promptForFavoriteGroupName(currentName: String) -> String? {
-        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        textField.stringValue = currentName
-
-        let alert = makeAppAlert(
-            title: "重命名收藏目录",
-            message: "目录名会应用到当前目录下的所有收藏图集。",
-            buttons: ["保存", "取消"],
-            accessoryView: textField
-        )
-        alert.applyAppDialogStyle()
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let newAuthor = normalizedFavoriteAuthorOverride(textField.stringValue)
-        guard !newAuthor.isEmpty else { return nil }
-        return newAuthor
-    }
-
-    private func loadFavoriteAuthorOverrides() -> [String: String] {
-        let defaultsKey = "com.songziqiang.4khd.favoriteAuthorOverrides.v1"
-        guard let json = UserDefaults.standard.string(forKey: defaultsKey),
-              let data = json.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return [:]
-        }
-        return decoded
-    }
-
-    func setFavoriteAuthorOverride(_ author: String, for item: GalleryItem) {
-        var overrides = favoriteAuthorOverrides
-        overrides[item.detailURL.absoluteString] = normalizedFavoriteAuthorOverride(author)
-        saveFavoriteAuthorOverrides(overrides)
-    }
-
-    func removeFavoriteAuthorOverride(for item: GalleryItem) {
-        var overrides = favoriteAuthorOverrides
-        overrides[item.detailURL.absoluteString] = nil
-        saveFavoriteAuthorOverrides(overrides)
-    }
-
-    private func saveFavoriteAuthorOverrides(_ overrides: [String: String]) {
-        let defaultsKey = "com.songziqiang.4khd.favoriteAuthorOverrides.v1"
-        guard let data = try? JSONEncoder().encode(overrides),
-              let json = String(data: data, encoding: .utf8) else { return }
-        UserDefaults.standard.set(json, forKey: defaultsKey)
-        favoriteAuthorOverrides = overrides
-    }
-
-    private func normalizedFavoriteAuthorOverride(_ author: String) -> String {
-        let normalized = author
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? "未知作者" : normalized
-    }
 }
 
 private struct GalleryVisibleListRowSignature: Equatable {
@@ -555,8 +375,6 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard rows.indices.contains(row) else { return 96 }
         switch rows[row] {
-        case .group:
-            return 32
         case .item:
             return 96
         case .footer:
@@ -565,9 +383,7 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
     }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
-        guard rows.indices.contains(row) else { return false }
-        if case .group = rows[row] { return true }
-        return false
+        false
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
@@ -589,16 +405,6 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
         guard rows.indices.contains(row) else { return nil }
         loadMoreIfNeeded(for: row)
         switch rows[row] {
-        case .group(let id):
-            let view = tableView.makeView(withIdentifier: GalleryFavoriteGroupHeaderView.reuseID, owner: self)
-                as? GalleryFavoriteGroupHeaderView ?? GalleryFavoriteGroupHeaderView()
-            if let group = rowGroups[id] {
-                view.configure(group: group, isExpanded: expandedFavoriteAuthorIDs.contains(id))
-                view.onRename = { [weak self] in self?.renameFavoriteGroup(group) }
-                // 展开/折叠走表头单击手势，避免 shouldSelectRow 里双击触发两次 toggle。
-                view.onToggle = { [weak self] in self?.toggleFavoriteGroup(id) }
-            }
-            return view
         case .item(let id):
             let view = tableView.makeView(withIdentifier: GalleryListRowView.reuseID, owner: self)
                 as? GalleryListRowView ?? GalleryListRowView()

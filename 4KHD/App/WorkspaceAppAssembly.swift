@@ -4,24 +4,22 @@ enum WorkspaceAppAssembly {
     @MainActor
     static func makeAppContext() -> WorkspaceAppContext {
         let favoritesStore = FavoritesStore()
+        let favoritesModuleStore = FavoritesModuleStore(favoritesStore: favoritesStore)
+        let favoritesPreferences = FavoritesContentPreferences()
+        let favoritesDetailStore = FavoritesDetailStore()
+        let favoritesDetailInteraction = FavoritesDetailInteractionController()
         let fourKHDGalleryStore = FourKHDGalleryStore(favorites: favoritesStore)
         let galleryPreferences = GalleryContentPreferences()
         let galleryDetailInteraction = GalleryDetailInteractionController()
-        let missKonFeedStore = MissKonFeedStore(favoritesStore: favoritesStore)
+        let missKonFeedStore = MissKonFeedStore()
         let missKonDetailStore = MissKonDetailStore()
         let missKonStore = MissKonGalleryStore(feed: missKonFeedStore, detail: missKonDetailStore, favorites: favoritesStore)
         let missKonPreferences = MissKonContentPreferences()
         let missKonDetailInteraction = MissKonDetailInteractionController()
         let wallhavenAccountStore = WallhavenAccountStore()
         let wallhavenPreferences = WallhavenContentPreferences()
-        let wallhavenFeedStore = WallhavenFeedStore(accountStore: wallhavenAccountStore, preferences: wallhavenPreferences, favoritesStore: favoritesStore)
+        let wallhavenFeedStore = WallhavenFeedStore(accountStore: wallhavenAccountStore, preferences: wallhavenPreferences)
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
-        favoritesStore.onFavoritesChanged = {
-            [weak fourKHDGalleryStore, weak missKonStore, weak wallhavenStore] in
-            fourKHDGalleryStore?.refreshFavoritesIfNeeded()
-            missKonStore?.refreshFavoritesIfNeeded()
-            wallhavenStore?.refreshFavoritesIfNeeded()
-        }
         let wallhavenDetailInteraction = WallhavenDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
         let localPreferences = LocalLibraryContentPreferences()
@@ -46,6 +44,10 @@ enum WorkspaceAppAssembly {
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
+            favoritesModuleStore: favoritesModuleStore,
+            favoritesPreferences: favoritesPreferences,
+            favoritesDetailStore: favoritesDetailStore,
+            favoritesDetailInteraction: favoritesDetailInteraction,
             filmstripVisibility: filmstripVisibility,
             importRootFolderAction: importRootFolderAction
         )
@@ -62,6 +64,10 @@ enum WorkspaceAppAssembly {
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
+            favoritesModuleStore: favoritesModuleStore,
+            favoritesPreferences: favoritesPreferences,
+            favoritesDetailStore: favoritesDetailStore,
+            favoritesDetailInteraction: favoritesDetailInteraction,
             filmstripVisibility: filmstripVisibility,
             detailPaneController: detailPaneController,
             downloadStore: downloadStore,
@@ -82,6 +88,8 @@ enum WorkspaceAppAssembly {
             wallhavenStore: wallhavenStore,
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
+            favoritesModuleStore: favoritesModuleStore,
+            favoritesPreferences: favoritesPreferences,
             toolbarContext: toolbarContext,
             downloadStore: downloadStore,
             importRootFolderAction: importRootFolderAction
@@ -102,6 +110,10 @@ enum WorkspaceAppAssembly {
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
+        favoritesModuleStore: FavoritesModuleStore,
+        favoritesPreferences: FavoritesContentPreferences,
+        favoritesDetailStore: FavoritesDetailStore,
+        favoritesDetailInteraction: FavoritesDetailInteractionController,
         filmstripVisibility: FilmstripVisibilityController,
         importRootFolderAction: @escaping () -> Void
     ) -> WorkspaceModuleRegistry {
@@ -261,6 +273,41 @@ enum WorkspaceAppAssembly {
                     bootstrap: {
                         wallhavenStore.bootstrapIfNeeded()
                     }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .favorites,
+                    displayName: "Favorites",
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
+                    },
+                    makeContentController: { context in
+                        FavoritesContentViewController(
+                            moduleStore: favoritesModuleStore,
+                            preferences: favoritesPreferences,
+                            detailPane: context.detailPaneController
+                        )
+                    },
+                    makeDetailController: { context in
+                        FavoritesImageDetailViewController(
+                            moduleStore: favoritesModuleStore,
+                            detailStore: favoritesDetailStore,
+                            immersive: context.immersive,
+                            detailPane: context.detailPaneController,
+                            detailInteraction: favoritesDetailInteraction,
+                            filmstripVisibility: filmstripVisibility
+                        )
+                    },
+                    normalizeRoute: { route in
+                        let filter = FavoriteSourceFilter(rawValue: route.itemID) ?? .all
+                        return WorkspaceRoute(moduleID: .favorites, itemID: filter.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let filter = FavoriteSourceFilter(rawValue: route.itemID) else { return }
+                        if favoritesModuleStore.filter != filter {
+                            favoritesModuleStore.filter = filter
+                        }
+                    },
+                    bootstrap: {}
                 )
             ]
         )

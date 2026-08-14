@@ -18,11 +18,6 @@ extension GalleryContentViewController {
             representedObject: item
         ))
 
-        if shouldGroupFavorites,
-           let group = rowGroup(containing: item) {
-            addFavoriteGroupMenuItems(to: menu, item: item, currentGroup: group)
-        }
-
         menu.addItem(.separator())
         menu.addItem(menuItem(
             "打开原网页",
@@ -63,19 +58,6 @@ extension GalleryContentViewController {
         }
     }
 
-    @objc func moveFavoriteFromMenu(_ sender: NSMenuItem) {
-        guard let command = sender.representedObject as? FavoriteMoveCommand else { return }
-        setFavoriteAuthorOverride(command.targetAuthor, for: command.item)
-        expandedFavoriteAuthorIDs.insert(command.targetAuthor.lowercased())
-        reloadContent()
-    }
-
-    @objc func restoreFavoriteGroupingFromMenu(_ sender: NSMenuItem) {
-        guard let item = sender.representedObject as? GalleryItem else { return }
-        removeFavoriteAuthorOverride(for: item)
-        reloadContent()
-    }
-
     @objc func openOriginalPageFromMenu(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         NSWorkspace.shared.open(url)
@@ -89,36 +71,6 @@ extension GalleryContentViewController {
     @objc func shareDetailURLFromMenu(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         SharingPresenter.show(items: [url], of: view, preferredEdge: .maxX)
-    }
-
-    private func addFavoriteGroupMenuItems(
-        to menu: NSMenu,
-        item: GalleryItem,
-        currentGroup: FavoriteAuthorGroup
-    ) {
-        let targetGroups = favoriteAuthorGroups.filter { $0.id != currentGroup.id }
-        if !targetGroups.isEmpty {
-            let moveItem = NSMenuItem(title: "移动到目录", action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for target in targetGroups {
-                let itemMenu = menuItem(
-                    target.author,
-                    action: #selector(moveFavoriteFromMenu(_:)),
-                    representedObject: FavoriteMoveCommand(item: item, targetAuthor: target.author)
-                )
-                submenu.addItem(itemMenu)
-            }
-            menu.setSubmenu(submenu, for: moveItem)
-            menu.addItem(moveItem)
-        }
-
-        if favoriteAuthorOverrides[item.detailURL.absoluteString] != nil {
-            menu.addItem(menuItem(
-                "恢复自动分类",
-                action: #selector(restoreFavoriteGroupingFromMenu(_:)),
-                representedObject: item
-            ))
-        }
     }
 
     private func menuItem(
@@ -142,21 +94,5 @@ extension GalleryContentViewController {
         pasteboard.clearContents()
         pasteboard.setString(urlString, forType: .URL)
         pasteboard.setString(urlString, forType: .string)
-    }
-
-    private func rowGroup(containing item: GalleryItem) -> FavoriteAuthorGroup? {
-        favoriteAuthorGroups.first { group in
-            group.items.contains { $0.id == item.id }
-        }
-    }
-}
-
-final class FavoriteMoveCommand: NSObject {
-    let item: GalleryItem
-    let targetAuthor: String
-
-    init(item: GalleryItem, targetAuthor: String) {
-        self.item = item
-        self.targetAuthor = targetAuthor
     }
 }

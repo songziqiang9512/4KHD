@@ -44,8 +44,10 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         childrenByNode[online] = GallerySection.allCases.map(WorkspaceSidebarNode.gallery)
         childrenByNode[misskon] = MissKonSection.allCases.map(WorkspaceSidebarNode.missKon)
         childrenByNode[wallhaven] = WallhavenSection.allCases.map(WorkspaceSidebarNode.wallhaven)
+        // 在线收藏作为「本地」分组的子节点,紧跟在「我的图片」下方。
         var localChildren: [WorkspaceSidebarNode] = [
-            .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount })
+            .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount }),
+            .favoritesModule
         ]
         localChildren.append(contentsOf: localRoots.map { makeFolderNode($0.tree) })
         childrenByNode[local] = localChildren
@@ -153,8 +155,12 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     /// 拖拽取消/失败时把实时重排过的根目录顺序恢复为拖拽前的快照。
     func restoreLocalRootFolderOrder(_ ids: [LocalFolderNode.ID], in outlineView: NSOutlineView) {
         let localGroup = localRootGroup()
-        guard var localRoots = childrenByNode[localGroup] else { return }
+        guard let localRoots = childrenByNode[localGroup] else { return }
         var folderByID: [LocalFolderNode.ID: WorkspaceSidebarNode] = [:]
+        let nonFolderNodes = localRoots.filter { node in
+            if case .localFolder = node { return false }
+            return true
+        }
         for node in localRoots {
             guard case .localFolder(let folder) = node else { continue }
             folderByID[folder.id] = node
@@ -162,7 +168,8 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         guard folderByID.count == ids.count else { return }
         let restored = ids.compactMap { folderByID[$0] }
         guard restored.count == ids.count else { return }
-        childrenByNode[localGroup] = restored
+        // 保留「我的图片」「在线收藏」等非目录节点,只回滚目录部分。
+        childrenByNode[localGroup] = nonFolderNodes + restored
         outlineView.reloadItem(localGroup)
     }
 

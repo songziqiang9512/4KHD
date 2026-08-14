@@ -5,7 +5,7 @@ final class WorkspaceKeyboardShortcutsWindowController: NSWindowController {
     init() {
         let viewController = WorkspaceKeyboardShortcutsViewController()
         let window = NSWindow(contentViewController: viewController)
-        window.title = "Keyboard Shortcuts"
+        window.title = "键盘快捷键"
         window.styleMask = [.titled, .closable, .resizable]
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
@@ -36,36 +36,36 @@ private final class WorkspaceKeyboardShortcutsViewController: NSViewController {
 
     private let groups: [ShortcutGroup] = [
         ShortcutGroup(
-            title: "App",
+            title: "应用",
             shortcuts: [
-                Shortcut(title: "Settings", keys: "⌘,"),
-                Shortcut(title: "Keyboard Shortcuts", keys: "⌘?"),
-                Shortcut(title: "Close Window", keys: "⌘W"),
-                Shortcut(title: "Quit", keys: "⌘Q")
+                Shortcut(title: "设置", keys: "⌘,"),
+                Shortcut(title: "键盘快捷键", keys: "⌘?"),
+                Shortcut(title: "关闭窗口", keys: "⌘W"),
+                Shortcut(title: "退出", keys: "⌘Q")
             ]
         ),
         ShortcutGroup(
-            title: "Content",
+            title: "内容",
             shortcuts: [
-                Shortcut(title: "Import Folder", keys: "⌘O"),
-                Shortcut(title: "Find", keys: "⌘F"),
-                Shortcut(title: "Refresh", keys: "⌘R"),
-                Shortcut(title: "Save Image", keys: "⌘S"),
-                Shortcut(title: "Quick Look", keys: "⌘Y"),
-                Shortcut(title: "Copy", keys: "⌘C")
+                Shortcut(title: "导入目录", keys: "⌘O"),
+                Shortcut(title: "查找", keys: "⌘F"),
+                Shortcut(title: "刷新", keys: "⌘R"),
+                Shortcut(title: "保存图片", keys: "⌘S"),
+                Shortcut(title: "快速预览", keys: "⌘Y"),
+                Shortcut(title: "拷贝", keys: "⌘C")
             ]
         ),
         ShortcutGroup(
-            title: "View",
+            title: "显示",
             shortcuts: [
-                Shortcut(title: "Toggle Toolbar", keys: "⌘T"),
-                Shortcut(title: "Actual Size", keys: "⌘0"),
-                Shortcut(title: "Increase Local Grid Columns", keys: "⌘-"),
-                Shortcut(title: "Decrease Local Grid Columns", keys: "⌘="),
-                Shortcut(title: "Toggle Detail", keys: "⌘\\"),
-                Shortcut(title: "Focus Sidebar", keys: "⌘1"),
-                Shortcut(title: "Focus Content", keys: "⌘2"),
-                Shortcut(title: "Focus Detail", keys: "⌘3")
+                Shortcut(title: "切换工具栏", keys: "⌘T"),
+                Shortcut(title: "实际大小", keys: "⌘0"),
+                Shortcut(title: "增加网格列数", keys: "⌘-"),
+                Shortcut(title: "减少网格列数", keys: "⌘="),
+                Shortcut(title: "切换详情区", keys: "⌘\\"),
+                Shortcut(title: "聚焦侧边栏", keys: "⌘1"),
+                Shortcut(title: "聚焦内容区", keys: "⌘2"),
+                Shortcut(title: "聚焦详情区", keys: "⌘3")
             ]
         )
     ]
