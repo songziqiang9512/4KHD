@@ -59,7 +59,9 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
     private let downloadStore: DownloadStore
     private let tableView = WorkspaceTableView()
     private let scrollView = NSScrollView()
+    private let emptyIconView = NSImageView()
     private let emptyLabel = NSTextField(labelWithString: "无下载任务")
+    private let emptyHintLabel = NSTextField(labelWithString: "从工具栏「保存」菜单选择「保存整个图集…」开始")
     private let cancelAllButton = NSButton(title: "取消全部", target: nil, action: nil)
     private let clearFinishedButton = NSButton(title: "清除已完成", target: nil, action: nil)
     private let refreshQueue = WorkspaceCoalescingQueue(
@@ -97,7 +99,9 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
     func reloadData() {
         let hasTasks = !tasks.isEmpty
         scrollView.isHidden = !hasTasks
+        emptyIconView.isHidden = hasTasks
         emptyLabel.isHidden = hasTasks
+        emptyHintLabel.isHidden = hasTasks
         cancelAllButton.isEnabled = tasks.contains { $0.status == .queued || $0.status == .running }
         clearFinishedButton.isEnabled = tasks.contains { $0.status.isTerminal }
         tableView.reloadData()
@@ -122,7 +126,8 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
         tableView.headerView = nil
-        tableView.rowHeight = 56
+        tableView.rowHeight = 64
+        tableView.intercellSpacing = NSSize(width: 0, height: 2)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.allowsEmptySelection = true
@@ -135,25 +140,38 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
 
-        emptyLabel.font = .systemFont(ofSize: 13)
+        emptyIconView.image = NSImage(
+            systemSymbolName: "arrow.down.circle",
+            accessibilityDescription: "无下载任务"
+        )?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 44, weight: .light))
+        emptyIconView.contentTintColor = .tertiaryLabelColor
+        emptyLabel.font = .systemFont(ofSize: 14, weight: .medium)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
+        emptyHintLabel.font = .systemFont(ofSize: 11)
+        emptyHintLabel.textColor = .tertiaryLabelColor
+        emptyHintLabel.alignment = .center
+
+        let emptyStack = NSStackView(views: [emptyIconView, emptyLabel, emptyHintLabel])
+        emptyStack.orientation = .vertical
+        emptyStack.alignment = .centerX
+        emptyStack.spacing = 8
 
         let stack = NSStackView(views: [buttonRow, scrollView])
         stack.orientation = .vertical
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
-        view.addSubview(emptyLabel)
-        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyStack)
+        emptyStack.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
+            emptyStack.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            emptyStack.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
     }
 
@@ -308,6 +326,7 @@ private final class DownloadTaskRowView: NSTableCellView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let progressIndicator = NSProgressIndicator()
+    private let percentageLabel = NSTextField(labelWithString: "")
     private let actionButton = NSButton(title: "", target: nil, action: nil)
 
     init() {
@@ -321,9 +340,6 @@ private final class DownloadTaskRowView: NSTableCellView {
     }
 
     private func buildView() {
-        statusIconView.translatesAutoresizingMaskIntoConstraints = false
-        statusIconView.contentTintColor = .secondaryLabelColor
-
         titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -331,11 +347,7 @@ private final class DownloadTaskRowView: NSTableCellView {
         subtitleLabel.font = .systemFont(ofSize: 11)
         subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
-
-        let textStack = NSStackView(views: [titleLabel, subtitleLabel])
-        textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 2
+        subtitleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         progressIndicator.style = .bar
         progressIndicator.controlSize = .small
@@ -345,26 +357,43 @@ private final class DownloadTaskRowView: NSTableCellView {
         progressIndicator.doubleValue = 0
         progressIndicator.translatesAutoresizingMaskIntoConstraints = false
 
+        percentageLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        percentageLabel.textColor = .secondaryLabelColor
+        percentageLabel.alignment = .right
+        percentageLabel.widthAnchor.constraint(equalToConstant: 44).isActive = true
+
         actionButton.bezelStyle = .rounded
         actionButton.controlSize = .small
         actionButton.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = NSStackView(views: [statusIconView, textStack, progressIndicator, actionButton])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 8
+        // 第一行:图标 + 标题 + 行尾按钮。
+        let titleRow = NSStackView(views: [statusIconView, titleLabel, actionButton])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.spacing = 8
+
+        // 第二行:副标题 + 进度条 + 百分比。
+        let progressRow = NSStackView(views: [subtitleLabel, progressIndicator, percentageLabel])
+        progressRow.orientation = .horizontal
+        progressRow.alignment = .centerY
+        progressRow.spacing = 8
+
+        let stack = NSStackView(views: [titleRow, progressRow])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-            statusIconView.widthAnchor.constraint(equalToConstant: 16),
-            statusIconView.heightAnchor.constraint(equalToConstant: 16),
-            progressIndicator.widthAnchor.constraint(equalToConstant: 140),
-            actionButton.widthAnchor.constraint(equalToConstant: 52),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            statusIconView.widthAnchor.constraint(equalToConstant: 18),
+            statusIconView.heightAnchor.constraint(equalToConstant: 18),
+            progressIndicator.widthAnchor.constraint(equalToConstant: 150),
+            actionButton.widthAnchor.constraint(equalToConstant: 52)
         ])
     }
 
@@ -376,10 +405,7 @@ private final class DownloadTaskRowView: NSTableCellView {
         target: AnyObject?,
         action: Selector
     ) {
-        statusIconView.image = NSImage(
-            systemSymbolName: statusSymbol(for: task.status),
-            accessibilityDescription: nil
-        )
+        statusIconView.image = statusImage(for: task.status)
         titleLabel.stringValue = task.title
         subtitleLabel.stringValue = subtitle
         toolTip = task.detailURL.absoluteString
@@ -388,11 +414,14 @@ private final class DownloadTaskRowView: NSTableCellView {
         if task.status == .running, total == 0 {
             progressIndicator.isIndeterminate = true
             progressIndicator.startAnimation(nil)
+            percentageLabel.stringValue = "…"
         } else {
             progressIndicator.stopAnimation(nil)
             progressIndicator.isIndeterminate = false
             progressIndicator.maxValue = max(Double(total), 1)
             progressIndicator.doubleValue = total > 0 ? Double(task.completedCount) : 0
+            let percent = total > 0 ? Int((Double(task.completedCount) / Double(total) * 100).rounded()) : 0
+            percentageLabel.stringValue = total > 0 ? "\(percent)%" : ""
         }
 
         actionButton.title = actionTitle
@@ -401,18 +430,28 @@ private final class DownloadTaskRowView: NSTableCellView {
         actionButton.action = action
     }
 
-    private func statusSymbol(for status: DownloadStore.TaskStatus) -> String {
+    /// 状态图标带语义色:进行中蓝、完成绿、失败橙、等待/取消灰。
+    private func statusImage(for status: DownloadStore.TaskStatus) -> NSImage? {
+        let symbolName: String
+        let color: NSColor
         switch status {
         case .queued:
-            "clock"
+            symbolName = "clock"
+            color = .secondaryLabelColor
         case .running:
-            "arrow.down.circle"
+            symbolName = "arrow.down.circle.fill"
+            color = .controlAccentColor
         case .completed:
-            "checkmark.circle"
+            symbolName = "checkmark.circle.fill"
+            color = .systemGreen
         case .failed:
-            "exclamationmark.triangle"
+            symbolName = "exclamationmark.triangle.fill"
+            color = .systemOrange
         case .cancelled:
-            "xmark.circle"
+            symbolName = "xmark.circle.fill"
+            color = .secondaryLabelColor
         }
+        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color]))
     }
 }

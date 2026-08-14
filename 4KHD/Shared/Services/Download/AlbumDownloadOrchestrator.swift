@@ -2,6 +2,7 @@ import Foundation
 import Nuke
 
 enum AlbumDownloadEvent {
+    /// imageCount 为该页去重后实际要下载的张数(跨页重复不计)。
     case pageResolved(pageIndex: Int, pageCount: Int, imageCount: Int)
     case pageFailed(pageIndex: Int, pageCount: Int)
     case imageSucceeded(pageIndex: Int, fileURL: URL)
@@ -89,10 +90,10 @@ enum AlbumDownloadOrchestrator {
                 didReplaceWorklist = true
                 restartScan = true
             }
-            emit(.pageResolved(pageIndex: pageIndex, pageCount: worklist.count, imageCount: page.imageURLs.count))
-
             // 跨页重复的图片只下载一次。
             let pageImageURLs = page.imageURLs.filter { handledImageURLs.insert($0.absoluteString).inserted }
+
+            emit(.pageResolved(pageIndex: pageIndex, pageCount: worklist.count, imageCount: pageImageURLs.count))
 
             let chunkSize = max(maxConcurrentImages, 1)
             var offset = 0

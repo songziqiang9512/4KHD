@@ -42,6 +42,9 @@ final class DownloadStoreTests: XCTestCase {
         XCTAssertEqual(store.tasks[1].status, .completed)
         XCTAssertEqual(store.tasks[0].completedCount, 1)
         XCTAssertEqual(store.tasks[1].completedCount, 1)
+        // 终态 totalCount 等于真实张数(completed + failed),进度条到达 100%。
+        XCTAssertEqual(store.tasks[0].totalCount, store.tasks[0].completedCount + store.tasks[0].failedCount)
+        XCTAssertEqual(store.tasks[1].totalCount, store.tasks[1].completedCount + store.tasks[1].failedCount)
     }
 
     // MARK: - 同 detailURL 去重

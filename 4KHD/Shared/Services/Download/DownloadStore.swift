@@ -51,6 +51,9 @@ final class DownloadStore {
     /// 会话内已分配的目标目录路径:同名图集并发下载时各得各的目录,
     /// 不会因为目录尚不存在/为空而复用同一目录互相覆盖。
     @ObservationIgnored private var reservedFolderPaths = Set<String>()
+    /// 进度推算用的每任务累计值(去重后张数 / 已解析页数)。
+    @ObservationIgnored private var resolvedImageTotals: [UUID: Int] = [:]
+    @ObservationIgnored private var resolvedPageCounts: [UUID: Int] = [:]
 
     // MARK: - 入队
 
@@ -108,6 +111,8 @@ final class DownloadStore {
             tasks[index].status = .cancelled
             tasks[index].finishedAt = Date()
             sources[id] = nil
+            resolvedImageTotals[id] = nil
+            resolvedPageCounts[id] = nil
             reservedFolderPaths.remove(tasks[index].destinationFolderURL.path)
         case .running:
             activeJob?.cancel()
@@ -143,7 +148,11 @@ final class DownloadStore {
         finishedTasks.forEach { reservedFolderPaths.remove($0.destinationFolderURL.path) }
         let finishedIDs = finishedTasks.map(\.id)
         tasks.removeAll { $0.status.isTerminal }
-        finishedIDs.forEach { sources[$0] = nil }
+        finishedIDs.forEach { id in
+            sources[id] = nil
+            resolvedImageTotals[id] = nil
+            resolvedPageCounts[id] = nil
+        }
     }
 
     /// 应用退出时调用:中断当前任务与在飞请求,不清理列表与文件。
@@ -193,8 +202,17 @@ final class DownloadStore {
               tasks[index].status == .running else { return }
         var task = tasks[index]
         switch event {
-        case .pageResolved:
-            break
+        case .pageResolved(_, let pageCount, let imageCount):
+            // 按已解析页的去重张数推算总张数(剩余页按当前平均估算),
+            // 比入队时的 estimatedImageCount 更接近真实值;任务终结时
+            // finishTask 会用精确值覆盖,保证进度条最终到达 100%。
+            resolvedImageTotals[id, default: 0] += imageCount
+            resolvedPageCounts[id, default: 0] += 1
+            let resolvedImages = resolvedImageTotals[id, default: 0]
+            let resolvedPages = resolvedPageCounts[id, default: 1]
+            let remainingPages = max(pageCount - resolvedPages, 0)
+            let averagePerPage = max(resolvedImages / resolvedPages, 1)
+            task.totalCount = max(task.totalCount, resolvedImages + remainingPages * averagePerPage)
         case .pageFailed:
             task.failedPageCount += 1
         case .imageSucceeded:
@@ -215,6 +233,8 @@ final class DownloadStore {
         task.completedCount = summary.completedCount
         task.failedCount = summary.failedCount
         task.failedPageCount = summary.failedPageCount
+        // 精确终值:进度条以真实张数为分母,全部成功即 100%。
+        task.totalCount = task.completedCount + task.failedCount
         task.finishedAt = Date()
         if let folderCreationError = summary.folderCreationError {
             task.errorMessage = folderCreationError
@@ -230,6 +250,8 @@ final class DownloadStore {
         }
         tasks[index] = task
         sources[id] = nil
+        resolvedImageTotals[id] = nil
+        resolvedPageCounts[id] = nil
         reservedFolderPaths.remove(task.destinationFolderURL.path)
         pumpQueue()
     }
