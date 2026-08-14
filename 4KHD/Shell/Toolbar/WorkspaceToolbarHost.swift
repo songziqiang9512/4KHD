@@ -894,14 +894,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         let menu = NSMenu(title: "保存")
         menu.autoenablesItems = false
 
-        // 收藏模块无逐张原图解析,只提供「保存整个图集」。
-        if currentModuleID != .favorites {
-            let saveImageItem = NSMenuItem(title: "保存当前图片", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
-            saveImageItem.target = self
-            saveImageItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存当前图片")
-            saveImageItem.isEnabled = canSaveCurrentImage
-            menu.addItem(saveImageItem)
-        }
+        let saveImageItem = NSMenuItem(title: "保存当前图片", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
+        saveImageItem.target = self
+        saveImageItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存当前图片")
+        saveImageItem.isEnabled = canSaveCurrentImage
+        menu.addItem(saveImageItem)
 
         let saveAlbumItem = NSMenuItem(title: "保存整个图集…", action: #selector(saveGalleryItem(_:)), keyEquivalent: "")
         saveAlbumItem.target = self

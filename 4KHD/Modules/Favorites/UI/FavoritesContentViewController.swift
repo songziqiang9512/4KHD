@@ -176,7 +176,10 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
                 gridView.update(
                     records: records,
                     selectedRecordID: moduleStore.selectedRecordID,
-                    searchQuery: moduleStore.activeSearchQuery
+                    searchQuery: moduleStore.activeSearchQuery,
+                    minimumColumnCount: FavoritesContentPreferences.minimumGridColumnCount,
+                    maximumColumnCount: preferences.gridColumnCount,
+                    preferredCardMinimumWidth: 136
                 )
             } else {
                 gridView.refreshMetadata(

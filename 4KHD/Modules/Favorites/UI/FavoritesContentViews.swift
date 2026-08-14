@@ -246,6 +246,9 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private var lastAppliedIDs: [FavoriteRecord.ID] = []
     private var lastLayoutWidth: CGFloat = 0
     private var aspectRatiosByRecordID: [FavoriteRecord.ID: CGFloat] = [:]
+    private var minimumColumnCount: Int?
+    private var maximumColumnCount: Int?
+    private var preferredCardMinimumWidth: CGFloat = 136
     private let thumbnailPrefetchController = WorkspaceThumbnailPrefetchController<FavoriteRecord.ID>()
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "FavoritesGridAspectRatio", interval: 0.03, maxInterval: 0.1
@@ -293,7 +296,10 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     func update(
         records: [FavoriteRecord],
         selectedRecordID: FavoriteRecord.ID?,
-        searchQuery: String?
+        searchQuery: String?,
+        minimumColumnCount: Int? = nil,
+        maximumColumnCount: Int? = nil,
+        preferredCardMinimumWidth: CGFloat = 136
     ) {
         let previousItemIDs = lastAppliedIDs
         let previousSelectedRecordID = self.selectedRecordID
@@ -303,6 +309,9 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         self.records = records
         self.selectedRecordID = selectedRecordID
         self.searchQuery = searchQuery
+        self.minimumColumnCount = minimumColumnCount
+        self.maximumColumnCount = maximumColumnCount
+        self.preferredCardMinimumWidth = preferredCardMinimumWidth
 
         let sizeChanged = updateItemSize()
         if sizeChanged || contentChanged {
@@ -459,8 +468,14 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private func updateItemSize() -> Bool {
         let visibleWidth = gridScrollView.contentView.bounds.width > 0 ? gridScrollView.contentView.bounds.width : bounds.width
         let widthChanged = abs(visibleWidth - lastLayoutWidth) > 0.5
-        guard widthChanged else { return false }
+        let prefChanged = gridLayout.preferredCardMinimumWidth != preferredCardMinimumWidth
+            || gridLayout.minimumColumnCount != minimumColumnCount
+            || gridLayout.maximumColumnCount != maximumColumnCount
+        guard widthChanged || prefChanged else { return false }
         lastLayoutWidth = visibleWidth
+        gridLayout.minimumColumnCount = minimumColumnCount
+        gridLayout.maximumColumnCount = maximumColumnCount
+        gridLayout.preferredCardMinimumWidth = preferredCardMinimumWidth
         performWithoutAnimation { gridLayout.invalidateLayout() }
         return true
     }
