@@ -129,8 +129,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
            oldMetrics.columns == metrics.columns,
            !cache.isEmpty {
             updateCachedFrames(metrics: metrics, oldMetrics: oldMetrics)
-            // 列数没变的宽度调整不塌缩内容,滚动位置自然保持,锚点作废。
-            pendingScrollAnchor = nil
+            // 列数没变但列宽变了,行高与内容高度都会变,同样按锚点恢复可视位置。
+            scheduleScrollAnchorRestore()
             return
         }
 
@@ -147,38 +147,41 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         scheduleScrollAnchorRestore()
     }
 
-    // MARK: - 滚动锚点(列数变化时保持可视位置)
+    // MARK: - 滚动锚点(面板开关/宽度变化时保持可视位置)
 
-    private var pendingScrollAnchor: (indexPath: IndexPath, offset: CGFloat)?
+    /// 锚点 = 卡片 indexPath + 该卡片顶部到视口顶部的距离(topGap)。
+    private var pendingScrollAnchor: (indexPath: IndexPath, topGap: CGFloat)?
     private var pendingScrollAnchorItemCount: Int?
 
-    /// 记录"与可视区顶部相交的卡片"(或其间隙后的第一张)及其相对偏移。
+    /// 记录锚点:优先当前选中卡片(用户视线所在,不依赖惰性生成的 cache);
+    /// 无选中时退回视口顶部可见的第一张卡片。
     private func captureScrollAnchor() {
         guard let collectionView else { return }
         let visibleRect = collectionView.visibleRect
         guard visibleRect.height > 1 else { return }
-        let probeY = visibleRect.minY + 1
-        for attrs in cache {
-            guard let indexPath = attrs.indexPath,
-                  attrs.frame.minY <= probeY,
-                  attrs.frame.maxY > probeY else { continue }
-            pendingScrollAnchor = (indexPath, attrs.frame.minY - visibleRect.minY)
-            pendingScrollAnchorItemCount = collectionView.numberOfItems(inSection: 0)
+
+        let itemCount = collectionView.numberOfItems(inSection: 0)
+        // layoutAttributesForItem 会按旧布局惰性生成帧,保证锚点帧精确。
+        if let selectedIndexPath = collectionView.selectionIndexPaths.first,
+           let attrs = layoutAttributesForItem(at: selectedIndexPath) {
+            let topGap = visibleRect.maxY - attrs.frame.maxY
+            pendingScrollAnchor = (selectedIndexPath, topGap)
+            pendingScrollAnchorItemCount = itemCount
             return
         }
-        // 顶部落在卡片间隙:对齐其下第一张卡片的顶部。
+        // 视口顶部可见的第一张卡片(与视口顶部对齐)。
         for attrs in cache {
             guard let indexPath = attrs.indexPath,
                   attrs.frame.maxY > visibleRect.minY else { continue }
-            pendingScrollAnchor = (indexPath, 0)
-            pendingScrollAnchorItemCount = collectionView.numberOfItems(inSection: 0)
+            pendingScrollAnchor = (indexPath, visibleRect.maxY - attrs.frame.maxY)
+            pendingScrollAnchorItemCount = itemCount
             return
         }
         pendingScrollAnchor = nil
         pendingScrollAnchorItemCount = nil
     }
 
-    /// 整表重建完成后异步恢复滚动,避免在布局 pass 中修改几何。
+    /// 整表重建后异步恢复滚动,避免在布局 pass 中修改几何。
     /// 内容量变化的刷新(切换列表/搜索)不 capture,自然没有锚点。
     private func scheduleScrollAnchorRestore() {
         guard let anchor = pendingScrollAnchor else { return }
@@ -194,7 +197,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
                   capturedItemCount != nil else { return }
             // layoutAttributesForItem 会触发生成到锚点卡片的布局,保证 frame 精确。
             guard let attrs = self.layoutAttributesForItem(at: anchor.indexPath) else { return }
-            let targetY = max(0, attrs.frame.minY - anchor.offset)
+            // 锚点卡片顶部距视口顶部的距离保持不变。
+            let targetY = max(0, attrs.frame.maxY + anchor.topGap - clipView.bounds.height)
             let maxY = max(0, self.collectionViewContentSize.height - clipView.bounds.height)
             clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(targetY, maxY)))
             collectionView.enclosingScrollView?.reflectScrolledClipView(clipView)
