@@ -7,6 +7,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     case aiGenerated
     case otherxxx
     case xrUncensored
+    case bluecake
+    case pureMedia
     case xiaoyu
     case privatePhotoshoot
     case xiuren
@@ -23,6 +25,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .aiGenerated: "AI 增强"
         case .otherxxx: "OtherXXX"
         case .xrUncensored: "XR Uncensored"
+        case .bluecake: "BLUECAKE"
+        case .pureMedia: "Pure Media"
         case .xiaoyu: "XiaoYu"
         case .privatePhotoshoot: "私房摄影"
         case .xiuren: "秀人"
@@ -39,6 +43,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .aiGenerated: "cpu"
         case .otherxxx: "rectangle.stack"
         case .xrUncensored: "viewfinder"
+        case .bluecake: "birthday.cake"
+        case .pureMedia: "camera.filters"
         case .xiaoyu: "person.crop.square"
         case .privatePhotoshoot: "camera.aperture"
         case .xiuren: "person.crop.rectangle"
@@ -55,6 +61,8 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
         case .aiGenerated: URL(string: "https://misskon.com/tag/ai-enhanced/")
         case .otherxxx: URL(string: "https://misskon.com/tag/otherxxx/")
         case .xrUncensored: URL(string: "https://misskon.com/tag/xr-uncensored/")
+        case .bluecake: URL(string: "https://misskon.com/tag/bluecake/")
+        case .pureMedia: URL(string: "https://misskon.com/tag/pure-media/")
         case .xiaoyu: URL(string: "https://misskon.com/tag/xiaoyu/")
         case .privatePhotoshoot: URL(string: "https://misskon.com/tag/private-photoshoot/")
         case .xiuren: URL(string: "https://misskon.com/tag/xiuren/")
