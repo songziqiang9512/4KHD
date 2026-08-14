@@ -419,6 +419,8 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         gridLayout.columnSpacing = 8
         gridLayout.rowSpacing = 10
         gridLayout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        // 收藏网格没有 loading footer,最后一项是真实卡片,不能按 footer 布局。
+        gridLayout.treatsLastItemAsFooter = false
         gridLayout.aspectRatioProvider = { [weak self] indexPath in
             guard let self, self.records.indices.contains(indexPath.item) else { return 16.0 / 9.0 }
             let record = self.records[indexPath.item]

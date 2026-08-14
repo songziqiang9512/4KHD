@@ -8,6 +8,15 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     }
     var minAspectRatio: CGFloat = 0.25 { didSet { invalidateIfChanged(oldValue, minAspectRatio) } }
     var maxAspectRatio: CGFloat = 3.0 { didSet { invalidateIfChanged(oldValue, maxAspectRatio) } }
+    /// 最后一个 item 是否按 footer(横跨整行、固定高度)布局。
+    /// 带 loading footer 的网格(Gallery/MissKon)为 true;无 footer 的网格(收藏)为 false。
+    var treatsLastItemAsFooter: Bool = true {
+        didSet {
+            guard oldValue != treatsLastItemAsFooter else { return }
+            cacheInvalidatedByRatioChange = true
+            invalidateLayout()
+        }
+    }
     var minimumColumnCount: Int? { didSet { if oldValue != minimumColumnCount { invalidateLayout() } } }
     var maximumColumnCount: Int? { didSet { if oldValue != maximumColumnCount { invalidateLayout() } } }
     var preferredCardMinimumWidth: CGFloat = 136 {
@@ -196,7 +205,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         var heights = [CGFloat](repeating: metrics.sectionInset.top, count: metrics.columns)
         let isFooterAtIndex = { (indexPath: IndexPath?) -> Bool in
             guard let indexPath else { return false }
-            return self.itemCount > 0 && indexPath.item == self.itemCount - 1
+            return self.treatsLastItemAsFooter && self.itemCount > 0 && indexPath.item == self.itemCount - 1
         }
         let sortedCache = cache.sorted { a, b in
             guard let ia = a.indexPath, let ib = b.indexPath else { return false }
@@ -313,7 +322,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
     private func appendNextItem(metrics: LayoutMetrics) {
         let indexPath = IndexPath(item: nextItemIndex, section: 0)
-        let isFooter = itemCount > 0 && nextItemIndex == itemCount - 1
+        let isFooter = treatsLastItemAsFooter && itemCount > 0 && nextItemIndex == itemCount - 1
         nextItemIndex += 1
 
         let x: CGFloat
