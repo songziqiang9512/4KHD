@@ -86,6 +86,18 @@
   验收：每个已知 Sparkle 组件及 host 均断言 Developer ID Application authority 与 secure timestamp，深度签名、host entitlement 和 Apple 公证全部通过。
   结果：新增 `sign_sparkle_for_distribution.sh` 执行精确 inner-to-outer 重签；`verify_release_app.sh` 对六个签名目标增加 Developer ID 与时间戳断言。最终 Apple 公证结果由 1.8.6 重试流水线验证。
 
+- [x] **REL-010 发布校验文件泄漏 CI 内部路径，下载后无法直接验证**
+  证据：1.8.6 的 `.sha256` 内容记录 `build/4KHD-...dmg`；公开 DMG 的实际 SHA-256 与 GitHub digest、校验文件哈希一致，但把 DMG 与校验文件下载到同一目录后执行 `shasum -c` 会因不存在 `build/` 子目录失败。
+  修复目标：校验文件只记录 DMG basename，不依赖 runner 工作目录。
+  验收：从公开 release 下载两个文件到任意同一目录，直接 `shasum -a 256 -c` 通过。
+  结果：发布工作流改为单独计算 digest，并用 `basename "$dmg_path"` 写入校验文件；1.8.7 公开资产执行直接校验作为最终门禁。
+
+- [x] **REL-011 普通 CI 在无开发证书 runner 上无法构建 XCTest**
+  证据：新 `ci.yml` 的前三次 push 均在 `4KHDTests` 构建阶段报 “No signing certificate Mac Development found”；同一源码在导入 Developer ID 后的发布测试和本地 ad-hoc 测试均通过。
+  修复目标：只读 CI 的 Debug 测试显式使用 ad-hoc 手动签名，不依赖仓库发布证书；Release 编译继续禁止签名。
+  验收：干净 GitHub macOS runner 的 Test Debug、unsigned Release、AppKit 扫描和 patch hygiene 全部通过。
+  结果：CI Test Debug 增加 `CODE_SIGN_STYLE=Manual`、`CODE_SIGN_IDENTITY=-` 和空 `DEVELOPMENT_TEAM`；1.8.7 push CI 作为最终远端验证。
+
 ## B. 用户数据与持久权限
 
 - [x] **DATA-001 保存到源文件会先把源文件移入废纸篓**
@@ -406,4 +418,5 @@ FourKHDAppDelegate
 - 2026-08-23：用户报告 4KHD“最新”滚动无法加载下一页。定位为首页全站 SEO `/page/N` 与栏目 Query Block `?query-3-page=N` 并存时选错分页链；改为优先且仅接受数值型 Query Block 分页，冲突 fixture、回退 fixture、定向状态机测试和实机连续多页滚动通过，用户复测确认恢复。
 - 2026-08-23：1.8.6 首次远端发布演练在版本校验阶段发现 `chmod +x script/*.sh` 先于 clean-tree 断言，导致四个既有脚本的 mode-only diff 被误判为源码不干净；将脚本权限调整移到不可变版本/标签/clean-tree 校验之后，失败运行未接触签名或创建 release。
 - 2026-08-23：1.8.6 第二次远端发布通过测试、证书导入、签名构建与 App 权限门禁，但 Apple 公证精确拒绝 Sparkle 四个 ad-hoc helper。按 Sparkle 官方顺序新增专用重签脚本，并把 Developer ID authority/secure timestamp 纳入最终 App 门禁；失败运行仍未创建 tag/release。
+- 2026-08-23：1.8.6 第三次流水线全部通过并发布；公开 DMG 独立下载后通过实际哈希、签名、公证、staple、Gatekeeper、版本/权限/Sparkle helper 与 EdDSA appcast 验证。独立复核另发现 `.sha256` 记录 CI 内部 `build/` 路径，以及普通 CI 误要求 Mac Development 证书；两项均修复并递增到 1.8.7 做不可变重发。
 - 2026-08-23：最终 Debug/Release 构建、82 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩实际流水线生成的最终签名/公证 DMG、N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。

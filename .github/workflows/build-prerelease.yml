@@ -233,7 +233,8 @@ jobs:
             "$APP_NAME" \
             "${{ steps.version.outputs.version }}" \
             "${{ steps.version.outputs.build_version }}"
-          shasum -a 256 "$dmg_path" | awk '{print $1 "  " $2}' > "${dmg_path}.sha256"
+          dmg_digest="$(shasum -a 256 "$dmg_path" | awk '{print $1}')"
+          printf '%s  %s\n' "$dmg_digest" "$(basename "$dmg_path")" > "${dmg_path}.sha256"
 
       - name: Generate release notes
         id: notes
