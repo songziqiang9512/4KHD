@@ -175,7 +175,6 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             _ = localLibrary.roots
             _ = immersive.isImmersive
             _ = detailInteraction.resetToken
-            _ = detailInteraction.saveMessage
             _ = filmstripVisibility.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
@@ -187,11 +186,29 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
                 self.observeState()
             }
         }
+        observeSaveMessage()
+    }
+
+    /// 保存状态变化只刷新保存状态标签,不走完整 reload 路径。
+    private func observeSaveMessage() {
+        withObservationTracking {
+            _ = detailInteraction.saveMessage
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateSaveStatus()
+                self.observeSaveMessage()
+            }
+        }
     }
 
     private func reloadDetail() {
+        // selectedImages/selectedImage/selectedImageIndex 各自触发 store 的树遍历与派生计算,
+        // 开头取一次局部变量,整个 reload 内复用。
         let selectedImages = localLibrary.selectedImages
-        guard let image = localLibrary.selectedImage else {
+        let selectedImageIndex = localLibrary.selectedImageIndex
+        let selectedImage = localLibrary.selectedImage
+        guard let image = selectedImage else {
             currentImageID = nil
             zoomableImageView.setImageURL(nil)
             emptyLabel.isHidden = false
@@ -206,8 +223,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         emptyLabel.isHidden = true
         previousButton.isHidden = false
         nextButton.isHidden = false
-        previousButton.isEnabled = localLibrary.selectedImageIndex > 0
-        nextButton.isEnabled = localLibrary.selectedImageIndex < localLibrary.selectedImages.count - 1
+        previousButton.isEnabled = selectedImageIndex > 0
+        nextButton.isEnabled = selectedImageIndex < selectedImages.count - 1
 
         let isSameImage = currentImageID == image.id
         if !isSameImage {
@@ -219,8 +236,8 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
             zoomableImageView.setImageURL(image.url)
         }
 
-        filmstripView.update(images: selectedImages, selectedIndex: localLibrary.selectedImageIndex)
-        updateFilmstripVisibility()
+        filmstripView.update(images: selectedImages, selectedIndex: selectedImageIndex)
+        updateFilmstripVisibility(selectedImages: selectedImages)
         if detailInteraction.resetToken != resetTokenSeen {
             resetTokenSeen = detailInteraction.resetToken
             zoomableImageView.resetZoom()
@@ -228,8 +245,9 @@ final class LocalImageDetailViewController: NSViewController, WorkspaceFocusable
         updateSaveStatus()
     }
 
-    private func updateFilmstripVisibility() {
-        let shouldShow = filmstripVisibility.isPresented && !localLibrary.selectedImages.isEmpty
+    private func updateFilmstripVisibility(selectedImages: [LocalImageItem]? = nil) {
+        let images = selectedImages ?? localLibrary.selectedImages
+        let shouldShow = filmstripVisibility.isPresented && !images.isEmpty
         updateFilmstripLayout(shouldShow: shouldShow)
     }
 

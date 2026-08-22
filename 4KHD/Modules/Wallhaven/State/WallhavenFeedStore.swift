@@ -60,6 +60,7 @@ final class WallhavenFeedStore {
     /// Cache for resolved wallpaper details so favorites/collections don't re-fetch /w/{id} every time.
     private var detailCache: [String: Wallpaper] = [:]
     @ObservationIgnored private var detailCacheLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var detailCacheSaveWorkItem: DispatchWorkItem?
     @ObservationIgnored private let detailCacheWriteQueue = DispatchQueue(
         label: "com.songziqiang.4khd.wallhaven-detail-cache",
         qos: .utility
@@ -212,6 +213,8 @@ final class WallhavenFeedStore {
     func clearCache() async throws {
         detailCacheLoadTask?.cancel()
         detailCacheLoadTask = nil
+        detailCacheSaveWorkItem?.cancel()
+        detailCacheSaveWorkItem = nil
         invalidateListRequests()
         cancelAllTasks()
         resetInFlightMarkers()
@@ -784,7 +787,19 @@ final class WallhavenFeedStore {
 
     private static let maxDetailCacheEntries = 500
 
+    /// 合并写盘:相邻壁纸快速切换会连续解析详情,1.5s 防抖内只全量写一次。
     private func saveDetailCache() {
+        detailCacheSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.detailCacheSaveWorkItem = nil
+            self.writeDetailCacheToDisk()
+        }
+        detailCacheSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+    }
+
+    private func writeDetailCacheToDisk() {
         // Prune oldest entries if over the limit before saving.
         if detailCache.count > Self.maxDetailCacheEntries {
             let sorted = detailCache.sorted { lhs, rhs in

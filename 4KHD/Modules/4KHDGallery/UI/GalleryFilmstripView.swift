@@ -30,8 +30,12 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
 
     func update(slots: [ImageSlot], selectedIndex: Int, showsLoadingTile: Bool) {
         let previousSelectedIndex = self.selectedIndex
-        let slotIDsChanged = self.slots.map(\.id) != slots.map(\.id)
-        let slotContentChanged = contentSignature(self.slots) != contentSignature(slots)
+        // 先比 count 再逐项比较,避免全量构造 "id|url" 字符串数组。
+        // count 不同时与原 map/contentSignature 数组比较语义一致(必为变化)。
+        let slotIDsChanged = self.slots.count != slots.count
+            || !zip(self.slots, slots).allSatisfy { $0.id == $1.id }
+        let slotContentChanged = self.slots.count != slots.count
+            || !zip(self.slots, slots).allSatisfy { $0.id == $1.id && $0.knownURL == $1.knownURL }
         let loadingTileChanged = self.showsLoadingTile != showsLoadingTile
         let countChanged = (slots.count + (showsLoadingTile ? 1 : 0)) != (self.slots.count + (self.showsLoadingTile ? 1 : 0))
         self.slots = slots
@@ -54,10 +58,6 @@ final class GalleryFilmstripView: NSView, NSCollectionViewDataSource, NSCollecti
         if selectionChanged {
             scrollToSelectedItem()
         }
-    }
-
-    private func contentSignature(_ slots: [ImageSlot]) -> [String] {
-        slots.map { $0.id + "|" + ($0.knownURL?.absoluteString ?? "") }
     }
 
     func numberOfSections(in collectionView: NSCollectionView) -> Int {

@@ -40,6 +40,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     }
 
     private var cache: [NSCollectionViewLayoutAttributes] = []
+    /// cache 按 frame.minY 排序的副本，滚动热路径复用；cache 内容或 frame 变化时失效。
+    private var cacheSortedByMinY: [NSCollectionViewLayoutAttributes]?
     private var columnHeights: [CGFloat] = []
     private var nextItemIndex = 0
     private var itemCount = 0
@@ -115,6 +117,20 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             }
         }
 
+        // 加载更多(append-only)场景：几何参数未变、仅 itemCount 增加时保留已生成部分，
+        // 从断点继续生成，避免每次触底加载都全量清空重排。
+        if !cacheInvalidatedByRatioChange,
+           let oldMetrics = layoutMetrics,
+           metrics.itemCount > oldMetrics.itemCount,
+           isAppendOnlyUpdate(metrics, from: oldMetrics) {
+            layoutMetrics = metrics
+            itemCount = newItemCount
+            estimatedContentHeight = estimateContentHeight(metrics: metrics)
+            didLayoutAllItems = false
+            updateContentHeight(metrics: metrics)
+            return
+        }
+
         guard layoutMetrics != metrics else { return }
 
         if let oldMetrics = layoutMetrics,
@@ -128,6 +144,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         layoutMetrics = metrics
         itemCount = newItemCount
         cache.removeAll(keepingCapacity: true)
+        cacheSortedByMinY = nil
         columnHeights = [CGFloat](repeating: inset.top, count: columns)
         nextItemIndex = 0
         didLayoutAllItems = itemCount == 0
@@ -137,16 +154,15 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     }
 
     private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
+        // 全量重排会改动 frame，排序副本必须失效。
+        cacheSortedByMinY = nil
         var heights = [CGFloat](repeating: metrics.sectionInset.top, count: metrics.columns)
         let isFooterAtIndex = { (indexPath: IndexPath?) -> Bool in
             guard let indexPath else { return false }
             return self.treatsLastItemAsFooter && self.itemCount > 0 && indexPath.item == self.itemCount - 1
         }
-        let sortedCache = cache.sorted { a, b in
-            guard let ia = a.indexPath, let ib = b.indexPath else { return false }
-            return ia < ib
-        }
-        for attrs in sortedCache {
+        // cache 按 item 序追加，天然有序，无需再排序。
+        for attrs in cache {
             guard let indexPath = attrs.indexPath else { continue }
             if isFooterAtIndex(indexPath) {
                 let availableWidth = CGFloat(metrics.columns) * metrics.columnWidth
@@ -190,12 +206,37 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     override func layoutAttributesForElements(in rect: NSRect) -> [NSCollectionViewLayoutAttributes] {
         guard rect.isFiniteForWaterfallLayout else { return [] }
         generateLayoutIfNeeded(throughY: rect.maxY)
-        return cache.filter { $0.frame.intersects(rect) }
+        guard !cache.isEmpty else { return [] }
+        // 按 minY 排序后线性扫描，minY 超过 rect 上界即可提前停止，
+        // 避免滚动热路径每帧对全量 cache 做 filter。
+        let sorted = sortedCacheByMinY()
+        var result: [NSCollectionViewLayoutAttributes] = []
+        result.reserveCapacity(16)
+        for attributes in sorted {
+            let minY = attributes.frame.minY
+            guard minY <= rect.maxY else { break }
+            if attributes.frame.intersects(rect) {
+                result.append(attributes)
+            }
+        }
+        return result
+    }
+
+    /// cache 的 minY 排序副本，缓存到 cache 内容或 frame 变化为止。
+    private func sortedCacheByMinY() -> [NSCollectionViewLayoutAttributes] {
+        if let cacheSortedByMinY { return cacheSortedByMinY }
+        let sorted = cache.sorted { $0.frame.minY < $1.frame.minY }
+        cacheSortedByMinY = sorted
+        return sorted
     }
 
     override func layoutAttributesForItem(at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
         guard indexPath.item >= 0, indexPath.item < itemCount else { return nil }
         generateLayoutIfNeeded(throughItem: indexPath.item)
+        // cache 按 item 序追加，下标即定位；仅在异常跳项时回退线性查找。
+        if indexPath.item < cache.count, cache[indexPath.item].indexPath == indexPath {
+            return cache[indexPath.item]
+        }
         return cache.first { $0.indexPath == indexPath }
     }
 
@@ -286,7 +327,21 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         let attributes = NSCollectionViewLayoutAttributes(forItemWith: indexPath)
         attributes.frame = CGRect(x: x, y: y, width: width, height: height)
         cache.append(attributes)
+        cacheSortedByMinY = nil
         didLayoutAllItems = nextItemIndex >= itemCount
+    }
+
+    /// append-only 更新判断：除 itemCount 外，其余几何参数均未变化时，
+    /// 已生成卡片可以直接保留继续追加。
+    private func isAppendOnlyUpdate(_ metrics: LayoutMetrics, from old: LayoutMetrics) -> Bool {
+        old.columns == metrics.columns
+            && old.boundsWidth.isApproximatelyEqual(to: metrics.boundsWidth)
+            && old.columnWidth.isApproximatelyEqual(to: metrics.columnWidth)
+            && old.columnSpacing.isApproximatelyEqual(to: metrics.columnSpacing)
+            && old.rowSpacing.isApproximatelyEqual(to: metrics.rowSpacing)
+            && old.sectionInset.isApproximatelyEqual(to: metrics.sectionInset)
+            && old.minAspectRatio.isApproximatelyEqual(to: metrics.minAspectRatio)
+            && old.maxAspectRatio.isApproximatelyEqual(to: metrics.maxAspectRatio)
     }
 
     private func updateContentHeight(metrics: LayoutMetrics) {
@@ -331,6 +386,7 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     private func resetLayoutState() {
         layoutMetrics = nil
         cache.removeAll(keepingCapacity: true)
+        cacheSortedByMinY = nil
         columnHeights = []
         nextItemIndex = 0
         itemCount = 0

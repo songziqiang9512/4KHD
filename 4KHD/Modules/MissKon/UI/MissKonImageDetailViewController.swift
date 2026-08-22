@@ -172,7 +172,6 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = library.errorMessage
             _ = library.favorites.favorites.last?.id
             _ = detailInteraction.resetToken
-            _ = detailInteraction.saveMessage
             _ = immersive.isImmersive
             _ = detailPane.isPresented
             _ = filmstripVisibility.isPresented
@@ -184,6 +183,25 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
                 self.observeState()
             }
         }
+        observeSaveMessage()
+    }
+
+    /// 保存状态变化(保存中/成功/失败)只刷新状态标签,不走完整 reload 路径。
+    private func observeSaveMessage() {
+        withObservationTracking {
+            _ = detailInteraction.saveMessage
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateSaveStatus()
+                self.observeSaveMessage()
+            }
+        }
+    }
+
+    private func updateSaveStatus() {
+        statusLabel.stringValue = detailStatusText
+        statusChrome.isHidden = statusLabel.stringValue.isEmpty
     }
 
     private func reloadDetail() {
@@ -298,8 +316,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         library.detail.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
 
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
-        statusLabel.stringValue = detailStatusText
-        statusChrome.isHidden = statusLabel.stringValue.isEmpty
+        updateSaveStatus()
 
         let showsFilmstrip = filmstripVisibility.isPresented && !slots.isEmpty
         updateFilmstripLayout(showsFilmstrip: showsFilmstrip)

@@ -21,6 +21,7 @@ final class WorkspaceThumbnailPrefetchController<ID: Hashable> {
 
     func reset() {
         workItem?.cancel()
+        workItem = nil
         lastPrefetchIDs.removeAll()
         lastFirstVisibleIndex = nil
     }
@@ -45,9 +46,11 @@ final class WorkspaceThumbnailPrefetchController<ID: Hashable> {
         itemID: @escaping (Int) -> ID?,
         request: @escaping (Int) -> ImageRequest?
     ) {
-        workItem?.cancel()
+        guard workItem == nil else { return }
         let workItem = DispatchWorkItem { [weak self, weak scrollView, weak layout] in
-            guard let self, let scrollView, let layout else { return }
+            guard let self else { return }
+            self.workItem = nil
+            guard let scrollView, let layout else { return }
             self.prefetchVisibleWindow(
                 scrollView: scrollView,
                 layout: layout,

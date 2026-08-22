@@ -143,8 +143,9 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     private func reloadContent() {
         let records = moduleStore.visibleRecords
         recordsSnapshot = records
-        let recordsChanged = records.map(\.id) != lastAppliedRecordIDs
-        lastAppliedRecordIDs = records.map(\.id)
+        let recordIDs = records.map(\.id)
+        let recordsChanged = recordIDs != lastAppliedRecordIDs
+        lastAppliedRecordIDs = recordIDs
         let searchQueryChanged = lastSearchQuery != moduleStore.activeSearchQuery
         lastSearchQuery = moduleStore.activeSearchQuery
 

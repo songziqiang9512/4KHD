@@ -34,6 +34,12 @@ final class ImmersiveController {
     func handleToolbarPointer(isNearTop: Bool) {
         guard isImmersive else { return }
         if isNearTop {
+            // 工具栏已可见时状态未变,只取消待执行的隐藏调度,不再重复广播
+            // (顶部 72px 内的 mouseMoved 风暴会反复触发 observer)。
+            if isToolbarVisible {
+                cancelHideToolbar()
+                return
+            }
             cancelHideToolbar()
             isToolbarVisible = true
             notifyObservers()

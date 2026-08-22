@@ -33,9 +33,7 @@ class WorkspaceCollectionView: NSCollectionView {
             object: clipView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateHoverAfterScroll()
-            }
+            self?.updateHoverAfterScroll()
         }
     }
 

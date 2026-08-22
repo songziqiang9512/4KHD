@@ -88,6 +88,8 @@ final class FavoritesDetailStore {
         if let cached = DetailPageImageCache.shared.page(for: knownPageURLs[0]) {
             resolvedPages[cached.pageURL] = ResolvedPage(imageURLs: cached.imageURLs, pageURLs: cached.pageURLs)
             reconcileKnownPageURLs(with: cached.pageURLs, requestedPageURL: cached.pageURL)
+            // 缓存页不会走 merge,计数在此补上(merge 改为增量累加后)。
+            resolvedImageCount = cached.imageURLs.count
         }
 
         // 生成占位 slot:已知图片的 slot 直接带 URL,其余等待解析填充。
@@ -263,7 +265,9 @@ final class FavoritesDetailStore {
         for pageURL in removedPageURLs {
             pageTasks[pageURL]?.cancel()
             pageTasks[pageURL] = nil
-            resolvedPages[pageURL] = nil
+            if let removed = resolvedPages.removeValue(forKey: pageURL) {
+                resolvedImageCount -= removed.imageURLs.count
+            }
             failedPageURLs.remove(pageURL)
         }
         knownPageURLs = normalized
@@ -286,7 +290,8 @@ final class FavoritesDetailStore {
         errorMessage = nil
         if resolvedPages.count > 0 {
             resolvedPageCount = resolvedPages.count
-            resolvedImageCount = resolvedPages.values.reduce(0) { $0 + $1.imageURLs.count }
+            // merge 的页此前未解析(loadPage 有 resolvedPages 去重 guard),增量累加即可。
+            resolvedImageCount += page.imageURLs.count
         }
     }
 
@@ -313,17 +318,23 @@ final class FavoritesDetailStore {
     }
 
     /// 替换某页的全部 slot(空数组 = 移除),然后重建 displayIndex 并修复选中。
+    /// 单次遍历过滤(不再先 filter 出 keepIndices 再 map);插入点之前元素的
+    /// displayIndex 不变,只重建插入点及之后的元素,避免整数组 struct 重建。
     private func replaceSlots(for pageURL: URL, with pageSlots: [FavoritesImageSlot]) {
         let slots = imageSlots
         let selectedSlot = selectedSlotID.flatMap { id in slots.first(where: { $0.id == id }) }
         let selectedIndex = selectedSlot.flatMap { s in slots.firstIndex(where: { $0.id == s.id }) }
 
-        let keepIndices = slots.indices.filter { slots[$0].pageURL != pageURL }
-        var newSlots = keepIndices.map { slots[$0] }
+        var newSlots: [FavoritesImageSlot] = []
+        newSlots.reserveCapacity(slots.count + pageSlots.count)
+        for slot in slots where slot.pageURL != pageURL {
+            newSlots.append(slot)
+        }
 
+        var insertAt = newSlots.count
         if !pageSlots.isEmpty {
             guard let pageOrder = knownPageURLs.firstIndex(of: pageURL) else { return }
-            let insertAt = newSlots.firstIndex { slot in
+            insertAt = newSlots.firstIndex { slot in
                 guard let slotPageURL = slot.pageURL,
                       let order = knownPageURLs.firstIndex(of: slotPageURL) else { return false }
                 return order > pageOrder
@@ -331,7 +342,16 @@ final class FavoritesDetailStore {
             newSlots.insert(contentsOf: pageSlots, at: insertAt)
         }
 
-        reindex(&newSlots)
+        // Only slots at/after the insertion point change their displayIndex.
+        for i in insertAt..<newSlots.count {
+            newSlots[i] = FavoritesImageSlot(
+                id: newSlots[i].id,
+                displayIndex: i,
+                pageURL: newSlots[i].pageURL,
+                pageImageIndex: newSlots[i].pageImageIndex,
+                knownURL: newSlots[i].knownURL
+            )
+        }
         imageSlots = newSlots
 
         if let id = selectedSlotID, newSlots.contains(where: { $0.id == id }) { return }

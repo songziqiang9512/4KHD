@@ -344,7 +344,8 @@ final class LocalLibraryStore {
             } else if values.isRegularFile == true,
                       values.contentType?.conforms(to: .image) == true {
                 let imageURL = child.standardizedFileURL
-                let pixelSize = pixelSize(for: imageURL)
+                // 先查 mtime/fileSize 缓存,未变时复用像素尺寸,避免重扫全量读图头。
+                let pixelSize = localPixelSizeCache.size(for: imageURL)
                 images.append(LocalImageItem(
                     url: imageURL,
                     title: child.lastPathComponent,
@@ -423,3 +424,41 @@ final class LocalLibraryStore {
         folder.id == folderID || folder.folders.contains { contains(folderID: folderID, in: $0) }
     }
 }
+
+/// 像素尺寸缓存:(mtime, fileSize) 未变时直接复用,重扫/导入不再全量读图头。
+/// 多个根目录的扫描任务并发执行,锁保护共享字典。
+nonisolated private final class LocalPixelSizeCache: @unchecked Sendable {
+    private struct Entry {
+        let modificationDate: Date?
+        let fileSize: Int
+        let size: (width: Int, height: Int)?
+    }
+
+    private let lock = NSLock()
+    private var entries: [URL: Entry] = [:]
+
+    func size(for url: URL) -> (width: Int, height: Int)? {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        // stat 失败(文件刚被移动/删除)时不缓存,直接读图头。
+        guard let fileSize = values?.fileSize else {
+            return pixelSize(for: url)
+        }
+        let modificationDate = values?.contentModificationDate
+        lock.lock()
+        if let entry = entries[url],
+           entry.modificationDate == modificationDate,
+           entry.fileSize == fileSize {
+            lock.unlock()
+            return entry.size
+        }
+        lock.unlock()
+        // 图头读取放锁外,保持多根目录扫描的并发性;并发 miss 时重复读取结果相同。
+        let size = pixelSize(for: url)
+        lock.lock()
+        entries[url] = Entry(modificationDate: modificationDate, fileSize: fileSize, size: size)
+        lock.unlock()
+        return size
+    }
+}
+
+nonisolated(unsafe) private let localPixelSizeCache = LocalPixelSizeCache()

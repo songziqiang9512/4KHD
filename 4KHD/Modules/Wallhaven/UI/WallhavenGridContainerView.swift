@@ -80,6 +80,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         let previousItemIDs = lastAppliedIDs
         let previousShowsFooter = lastShowsFooter
         let nextItemIDs = wallpapers.map(\.id)
+        let nextItemIDSet = Set(nextItemIDs)
         let contentChanged = nextItemIDs != previousItemIDs || showsFooter != previousShowsFooter
         self.wallpapers = wallpapers
         self.selectedWallpaperID = selectedWallpaperID
@@ -91,6 +92,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         self.isRefreshing = isRefreshing
         self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
+        aspectRatiosByItemID = aspectRatiosByItemID.filter { nextItemIDSet.contains($0.key) }
 
         let itemSizeChanged = updateItemSize()
         if contentChanged {
@@ -124,7 +126,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
                   let cell = collectionView.item(at: indexPath) as? WallhavenGridItemView else { continue }
             let wallpaper = wallpapers[indexPath.item]
             cell.configure(wallpaper: wallpaper, isSelected: wallpaper.id == selectedWallpaperID, searchQuery: searchQuery) { [weak self] ratio in
-                self?.updateAspectRatio(ratio, for: wallpaper.id)
+                self?.updateAspectRatio(ratio, for: wallpaper.id, knownAspectRatio: wallpaper.aspectRatio.map({ CGFloat($0) }))
             }
         }
     }
@@ -179,7 +181,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         item.thumbnailMaxPixelSize = thumbnailMaxPixelSize
         let wallpaper = wallpapers[indexPath.item]
         item.configure(wallpaper: wallpaper, isSelected: wallpaper.id == selectedWallpaperID, searchQuery: searchQuery) { [weak self] ratio in
-            self?.updateAspectRatio(ratio, for: wallpaper.id)
+            self?.updateAspectRatio(ratio, for: wallpaper.id, knownAspectRatio: wallpaper.aspectRatio.map({ CGFloat($0) }))
         }
         return item
     }
@@ -213,10 +215,8 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateItemSize()
-                self?.scheduleThumbnailPrefetch()
-            }
+            self?.updateItemSize()
+            self?.scheduleThumbnailPrefetch()
         }
 
         gridLayout.columnSpacing = 8
@@ -282,13 +282,13 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         return true
     }
 
-    private func updateAspectRatio(_ ratio: CGFloat, for itemID: Wallpaper.ID) {
+    private func updateAspectRatio(_ ratio: CGFloat, for itemID: Wallpaper.ID, knownAspectRatio: CGFloat?) {
         guard ratio.isFinite, ratio > 0 else { return }
         // If API dimensions already provide aspect ratio, don't override with thumbnail decode size.
-        if let apiRatio = wallpapers.first(where: { $0.id == itemID })?.aspectRatio.map({ CGFloat($0) }),
+        if let apiRatio = knownAspectRatio,
            apiRatio > 0 { return }
         let clamped = max(gridLayout.minAspectRatio, min(gridLayout.maxAspectRatio, ratio))
-        let current = aspectRatiosByItemID[itemID] ?? wallpapers.first(where: { $0.id == itemID })?.aspectRatio.map { CGFloat($0) } ?? 0.74
+        let current = aspectRatiosByItemID[itemID] ?? knownAspectRatio ?? 0.74
         let threshold: CGFloat = current < 0.5 ? 0.01 : 0.1
         guard abs(current - clamped) > threshold else { return }
         aspectRatiosByItemID[itemID] = clamped
@@ -324,7 +324,9 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         let width = gridLayout.resolvedColumnWidth
         guard width > 0 else { return 512 }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        return min(max(width * scale, 512), 1536)
+        let requested = width * scale
+        let buckets: [CGFloat] = [512, 768, 1024, 1536]
+        return buckets.first { $0 >= requested } ?? 1536
     }
 
     private func thumbnailRequest(at index: Int) -> ImageRequest? {

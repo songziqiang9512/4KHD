@@ -201,9 +201,7 @@ final class LocalImageGridContainerView: NSView {
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.schedulePrefetch()
-            }
+            self?.schedulePrefetch()
         }
         addSubview(scrollView)
         NSLayoutConstraint.activate([
@@ -230,7 +228,9 @@ final class LocalImageGridContainerView: NSView {
         let width = waterfallLayout.resolvedColumnWidth
         guard width > 0 else { return 512 }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        return min(max(width * scale, 512), 1536)
+        let requested = width * scale
+        let buckets: [CGFloat] = [512, 768, 1024, 1536]
+        return buckets.first { $0 >= requested } ?? 1536
     }
 
     private func makeGridItem(
@@ -238,7 +238,7 @@ final class LocalImageGridContainerView: NSView {
         indexPath: IndexPath,
         imageID: LocalImageItem.ID
     ) -> NSCollectionViewItem {
-        guard let entry = entry(for: imageID),
+        guard let entry = entries.indices.contains(indexPath.item) ? entries[indexPath.item] : nil,
               let item = collectionView.makeItem(
                 withIdentifier: LocalImageGridItemView.reuseID,
                 for: indexPath
@@ -270,10 +270,6 @@ final class LocalImageGridContainerView: NSView {
             }
         }
         return item
-    }
-
-    private func entry(for imageID: LocalImageItem.ID) -> Entry? {
-        entries.first { $0.image.id == imageID }
     }
 
     private func applySnapshot(ids: [LocalImageItem.ID]) {
@@ -470,9 +466,11 @@ final class LocalImageGridContainerView: NSView {
     }
 
     private func schedulePrefetch() {
-        prefetchWorkItem?.cancel()
+        guard prefetchWorkItem == nil else { return }
         let workItem = DispatchWorkItem { [weak self] in
-            self?.prefetchNearVisibleItems()
+            guard let self else { return }
+            self.prefetchWorkItem = nil
+            self.prefetchNearVisibleItems()
         }
         prefetchWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)

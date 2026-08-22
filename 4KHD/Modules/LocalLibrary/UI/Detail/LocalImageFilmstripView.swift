@@ -27,8 +27,12 @@ final class LocalImageFilmstripView: NSView, NSCollectionViewDataSource, NSColle
 
     func update(images: [LocalImageItem], selectedIndex: Int) {
         let previousSelectedIndex = self.selectedIndex
-        let idsChanged = self.images.map(\.id) != images.map(\.id)
+        // 先比 count 再逐项比较 id,避免每次全量 map 分配数组。
         let countChanged = images.count != self.images.count
+        var idsChanged = false
+        if !countChanged {
+            idsChanged = !zip(self.images, images).allSatisfy { $0.id == $1.id }
+        }
         self.images = images
         self.selectedIndex = selectedIndex
         if countChanged {

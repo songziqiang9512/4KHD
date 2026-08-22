@@ -133,9 +133,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         let oldDisplaySignatures = dataSource.allDisplaySignatures()
         dataSource.reload(localRoots: appContext.localLibraryStore.roots)
         let newIdentifiers = dataSource.allStateIdentifiers()
-        let newDisplaySignatures = dataSource.allDisplaySignatures()
         guard oldIdentifiers != newIdentifiers else {
-            reloadVisibleRowsIfNeeded(oldDisplaySignatures: oldDisplaySignatures, newDisplaySignatures: newDisplaySignatures)
+            // 结构未变时才需要 display 签名做局部刷新;结构变化走 reloadData,
+            // 省掉该分支的 newDisplaySignatures 计算。
+            reloadVisibleRowsIfNeeded(
+                oldDisplaySignatures: oldDisplaySignatures,
+                newDisplaySignatures: dataSource.allDisplaySignatures()
+            )
             return
         }
         outlineView.reloadData()

@@ -15,10 +15,30 @@ final class FavoritesModuleStore {
     var searchText = ""
     private(set) var activeSearchQuery: String?
 
+    /// visibleRecords 缓存键:filter/查询词/收藏修订号任一变化即重算。
+    private struct VisibleRecordsKey: Equatable {
+        let filter: FavoriteSourceFilter
+        let query: String?
+        let revision: Int
+    }
+
+    @ObservationIgnored private var cachedVisibleRecords: [FavoriteRecord] = []
+    @ObservationIgnored private var cachedVisibleRecordsKey: VisibleRecordsKey?
+
     var visibleRecords: [FavoriteRecord] {
+        // 读取 filter/activeSearchQuery/favoritesRevision 保持 @Observable 依赖注册,
+        // favorites 变化经 revision 自增传导。
+        let key = VisibleRecordsKey(
+            filter: filter,
+            query: activeSearchQuery,
+            revision: favoritesStore.favoritesRevision
+        )
+        if let cachedKey = cachedVisibleRecordsKey, cachedKey == key {
+            return cachedVisibleRecords
+        }
         let source = filter.source
         let query = activeSearchQuery
-        return favoritesStore.favorites.filter { record in
+        let records = favoritesStore.favorites.filter { record in
             guard let recordSource = FavoriteSource.source(for: record) else { return false }
             guard source == nil || recordSource == source else { return false }
             guard let query, !query.isEmpty else { return true }
@@ -26,6 +46,9 @@ final class FavoritesModuleStore {
                 || record.rawTitle.localizedCaseInsensitiveContains(query)
                 || record.subtitle.localizedCaseInsensitiveContains(query)
         }
+        cachedVisibleRecords = records
+        cachedVisibleRecordsKey = key
+        return records
     }
 
     var selectedRecord: FavoriteRecord? {

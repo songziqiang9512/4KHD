@@ -14,6 +14,8 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
     private var retryAction: (() -> Void)?
     private var imageTask: ImageTask?
     private var loadedURL: URL?
+    /// 正在网络加载的 URL:同一 URL 的在途请求被再次调用时直接复用,不取消重启。
+    private var inFlightURL: URL?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -21,7 +23,10 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
     }
 
     func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
+        // 同一 URL 的请求仍在途:直接复用,避免封面→详情同 URL 连续调用时取消重启。
+        if let url, url == inFlightURL { return }
         imageTask?.cancel()
+        inFlightURL = nil
         // 同 URL 且已有图才跳过:加载失败后重试同一 URL 必须重新发起请求。
         guard loadedURL != url || imageView.image == nil else { return }
         loadedURL = url
@@ -67,9 +72,11 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
             placeholderContainer.isHidden = false
         }
 
+        inFlightURL = url
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
             Task { @MainActor [weak self] in
                 guard let self, self.loadedURL == url else { return }
+                self.inFlightURL = nil
                 guard let image else {
                     if !shouldKeepCurrent || self.imageView.image == nil {
                         self.placeholderLabel.stringValue = "图片加载失败"
@@ -94,6 +101,7 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
     func showFailure(retry: @escaping () -> Void) {
         retryAction = retry
         imageTask?.cancel()
+        inFlightURL = nil
         imageView.image = nil
         placeholderLabel.stringValue = "解析失败"
         retryButton.isHidden = false

@@ -41,6 +41,10 @@ final class FavoritesStore {
 
     private(set) var favorites: [FavoriteRecord] = []
     private(set) var isLoaded = false
+    /// favorites 每次变更自增,供派生缓存(FavoritesModuleStore.visibleRecords)识别失效。
+    private(set) var favoritesRevision = 0
+    /// detailURL 集合索引:contains 查询 O(1),与 favorites 同步维护。
+    @ObservationIgnored private var favoriteDetailURLs = Set<String>()
 
     @ObservationIgnored private static let defaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
     @ObservationIgnored private nonisolated static let backupFileName = "favorites.json.bak"
@@ -75,6 +79,8 @@ final class FavoritesStore {
             }.value
             guard !Task.isCancelled, let self else { return }
             favorites = result.favorites
+            self.favoriteDetailURLs = Set(self.favorites.map(\.detailURL))
+            self.favoritesRevision += 1
             isLoaded = true
             if result.didMigrateLegacyData {
                 defaults.removeObject(forKey: Self.defaultsKey)
@@ -87,7 +93,7 @@ final class FavoritesStore {
     }
 
     func contains(detailURL: URL) -> Bool {
-        favorites.contains { $0.detailURL == detailURL.absoluteString }
+        favoriteDetailURLs.contains(detailURL.absoluteString)
     }
 
     /// 切换收藏状态。返回切换后的最新值；同步更新 `DetailPageImageCache` 的 `isPersistent`，
@@ -109,6 +115,8 @@ final class FavoritesStore {
         }
         try await persist(updatedFavorites)
         favorites = updatedFavorites
+        favoriteDetailURLs = Set(updatedFavorites.map(\.detailURL))
+        favoritesRevision += 1
         DetailPageImageCache.shared.setPersistent(isFavorite, forDetailURL: detailURL)
         onFavoritesChanged?()
         return isFavorite
@@ -158,6 +166,8 @@ final class FavoritesStore {
         let updatedFavorites = orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
         try await persist(updatedFavorites)
         favorites = updatedFavorites
+        favoriteDetailURLs = Set(updatedFavorites.map(\.detailURL))
+        favoritesRevision += 1
         markFavoriteCachesPersistent()
         DetailPageImageCache.shared.prune()
         onFavoritesChanged?()
@@ -174,6 +184,8 @@ final class FavoritesStore {
         let previousFavorites = favorites
         try await persist([])
         favorites = []
+        favoriteDetailURLs = []
+        favoritesRevision += 1
         for favorite in previousFavorites {
             if let detailURL = URL(string: favorite.detailURL) {
                 DetailPageImageCache.shared.setPersistent(false, forDetailURL: detailURL)
@@ -201,6 +213,8 @@ final class FavoritesStore {
         }.value
         guard !Task.isCancelled else { return }
         favorites = result.favorites
+        favoriteDetailURLs = Set(self.favorites.map(\.detailURL))
+        favoritesRevision += 1
         isLoaded = true
         if result.didMigrateLegacyData {
             defaults.removeObject(forKey: Self.defaultsKey)

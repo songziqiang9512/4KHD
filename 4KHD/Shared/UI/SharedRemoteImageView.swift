@@ -65,20 +65,18 @@ class RemoteImageView: NSView {
             placeholderImageView.isHidden = false
         }
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
-            Task { @MainActor [weak self] in
-                guard let self, self.loadedURL == url else { return }
-                guard let image else {
-                    self.placeholderImageView.isHidden = false
-                    return
-                }
-                self.imageView.alphaValue = 0
-                self.imageView.image = image
-                self.placeholderImageView.isHidden = true
-                self.needsLayout = true
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.12
-                    self.imageView.animator().alphaValue = 1
-                }
+            guard let self, self.loadedURL == url else { return }
+            guard let image else {
+                self.placeholderImageView.isHidden = false
+                return
+            }
+            self.imageView.alphaValue = 0
+            self.imageView.image = image
+            self.placeholderImageView.isHidden = true
+            self.needsLayout = true
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                self.imageView.animator().alphaValue = 1
             }
         }
     }

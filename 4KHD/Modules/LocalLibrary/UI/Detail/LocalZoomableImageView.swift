@@ -40,7 +40,10 @@ final class LocalZoomableImageView: WorkspaceZoomableImageView {
 
     private var maxPixelSize: CGFloat {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        return max(bounds.width, bounds.height) * scale
+        // 量化到固定档位：缓存键含该值，连续值会在窗口尺寸微调时全量缓存抖动。
+        let requested = max(bounds.width, bounds.height) * scale
+        let buckets: [CGFloat] = [512, 1024, 1536, 2048, 3072, 4096, 6144]
+        return buckets.first { $0 >= requested } ?? 6144
     }
 
     private func display(_ image: NSImage?) {

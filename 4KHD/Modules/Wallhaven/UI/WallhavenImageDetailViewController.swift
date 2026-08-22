@@ -209,11 +209,12 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         isObserving = true
         withObservationTracking {
             _ = library.selectedWallpaper?.id
-            _ = library.wallpapers
+            // 只观察列表长度:加载更多时刷新上/下张按钮状态,列表内容替换
+            // (搜索/刷新)会经 selectedWallpaper 重新赋值触发,无需观察整个数组。
+            _ = library.wallpapers.count
             _ = library.resolvedWallpaper?.id
             _ = library.isResolvingDetail
             _ = detailInteraction.resetToken
-            _ = detailInteraction.saveMessage
             _ = immersive.isImmersive
             _ = detailPane.isPresented
         } onChange: { [weak self] in
@@ -224,6 +225,26 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
                 self.observeState()
             }
         }
+        observeSaveMessage()
+    }
+
+    /// 保存状态变化只刷新状态标签,不走完整 reload 路径。
+    private func observeSaveMessage() {
+        withObservationTracking {
+            _ = detailInteraction.saveMessage
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateSaveStatus()
+                self.observeSaveMessage()
+            }
+        }
+    }
+
+    private func updateSaveStatus() {
+        let statusText = detailStatusText
+        actionLabel.stringValue = statusText
+        actionChrome.isHidden = statusText.isEmpty
     }
 
     private func reloadDetail() {
@@ -340,9 +361,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             setDetailImageURL(full, isOriginal: true, preservesCurrentImageUntilLoaded: true)
         }
 
-        let statusText = detailStatusText
-        actionLabel.stringValue = statusText
-        actionChrome.isHidden = statusText.isEmpty
+        updateSaveStatus()
 
         if detailInteraction.resetToken != resetTokenSeen {
             resetTokenSeen = detailInteraction.resetToken
@@ -370,10 +389,21 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         isOriginal: Bool,
         preservesCurrentImageUntilLoaded: Bool
     ) {
-        if isOriginal && !imageView.hasCachedImage(for: url) {
-            loadingOriginalImageURL = url
+        // 缓存只查一次,结果传给 setImageURL 复用,避免三档缓存重复查询。
+        var prechecked = WallhavenDetailZoomableImageView.CachedImageLookup.notChecked
+        if isOriginal {
+            if let cached = imageView.cachedImage(for: url) {
+                prechecked = .found(cached)
+            } else {
+                prechecked = .miss
+                loadingOriginalImageURL = url
+            }
         }
-        imageView.setImageURL(url, preservesCurrentImageUntilLoaded: preservesCurrentImageUntilLoaded)
+        imageView.setImageURL(
+            url,
+            preservesCurrentImageUntilLoaded: preservesCurrentImageUntilLoaded,
+            prechecked: prechecked
+        )
     }
 
     @objc private func previousWallpaper() {
@@ -473,20 +503,37 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
 final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
     var onImageLoadCompleted: ((URL, Bool) -> Void)?
 
+    /// 调用方对缓存查询的预检结果:详情 VC 需要先知道缓存是否命中来设置
+    /// 「加载原图中」状态,把结果传进来避免 setImageURL 内部重复三档查询。
+    enum CachedImageLookup {
+        case notChecked
+        case found(NSImage)
+        case miss
+    }
+
     private let placeholderContainer = NSView()
     private let placeholderLabel = NSTextField(labelWithString: "加载中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
     private var retryAction: (() -> Void)?
     private var imageTask: ImageTask?
     private var loadedURL: URL?
+    /// 正在网络加载的 URL:同一 URL 的在途请求被再次调用时直接复用,不取消重启。
+    private var inFlightURL: URL?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupPlaceholder()
     }
 
-    func setImageURL(_ url: URL?, preservesCurrentImageUntilLoaded: Bool = false) {
+    func setImageURL(
+        _ url: URL?,
+        preservesCurrentImageUntilLoaded: Bool = false,
+        prechecked: CachedImageLookup = .notChecked
+    ) {
+        // 同一 URL 的请求仍在途:直接复用,避免封面→原图升级时同 URL 连续调用取消重启。
+        if let url, url == inFlightURL { return }
         imageTask?.cancel()
+        inFlightURL = nil
         // 同 URL 且已有图才跳过：加载失败（image 为 nil）后重试同一 URL 必须重新发起请求。
         guard loadedURL != url || imageView.image == nil else { return }
         loadedURL = url
@@ -505,7 +552,16 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         )
         // Try full/detail cache first; then fall back to grid/list thumbnail sizes
         // so the existing cover can display immediately when opening detail.
-        if let cached = cachedImage(for: url) {
+        let cached: NSImage?
+        switch prechecked {
+        case .notChecked:
+            cached = cachedImage(for: url)
+        case .found(let image):
+            cached = image
+        case .miss:
+            cached = nil
+        }
+        if let cached {
             imageView.image = cached
             placeholderContainer.isHidden = true
             fitImage(resetMagnification: true)
@@ -521,34 +577,30 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
             placeholderContainer.isHidden = false
         }
 
+        inFlightURL = url
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
-            Task { @MainActor [weak self] in
-                guard let self, self.loadedURL == url else { return }
-                guard let image else {
-                    if !shouldKeepCurrent || self.imageView.image == nil {
-                        self.placeholderLabel.stringValue = "图片加载失败"
-                        self.retryButton.isHidden = true
-                        self.placeholderContainer.isHidden = false
-                    }
-                    self.onImageLoadCompleted?(url, false)
-                    return
+            guard let self, self.loadedURL == url else { return }
+            self.inFlightURL = nil
+            guard let image else {
+                if !shouldKeepCurrent || self.imageView.image == nil {
+                    self.placeholderLabel.stringValue = "图片加载失败"
+                    self.retryButton.isHidden = true
+                    self.placeholderContainer.isHidden = false
                 }
-                self.placeholderContainer.isHidden = true
-                self.retryButton.isHidden = true
-                self.imageView.alphaValue = 0
-                self.imageView.image = image
-                self.fitImage(resetMagnification: true)
-                self.onImageLoadCompleted?(url, true)
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.15
-                    self.imageView.animator().alphaValue = 1
-                }
+                self.onImageLoadCompleted?(url, false)
+                return
+            }
+            self.placeholderContainer.isHidden = true
+            self.retryButton.isHidden = true
+            self.imageView.alphaValue = 0
+            self.imageView.image = image
+            self.fitImage(resetMagnification: true)
+            self.onImageLoadCompleted?(url, true)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                self.imageView.animator().alphaValue = 1
             }
         }
-    }
-
-    func hasCachedImage(for url: URL) -> Bool {
-        cachedImage(for: url) != nil
     }
 
     func showLoading(_ message: String) {
@@ -601,7 +653,7 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
         ])
     }
 
-    private func cachedImage(for url: URL) -> NSImage? {
+    func cachedImage(for url: URL) -> NSImage? {
         let request = RemoteImagePipeline.shared.request(
             for: url,
             priority: .veryHigh,

@@ -205,7 +205,6 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = immersive.isImmersive
             _ = detailPane.isPresented
             _ = detailInteraction.resetToken
-            _ = detailInteraction.saveMessage
             _ = filmstripVisibility.isPresented
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
@@ -217,6 +216,25 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
                 self.observeState()
             }
         }
+        observeSaveMessage()
+    }
+
+    /// 保存状态变化(保存中/成功/失败)只刷新状态标签,不走完整 reload 路径。
+    private func observeSaveMessage() {
+        withObservationTracking {
+            _ = detailInteraction.saveMessage
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateSaveStatus()
+                self.observeSaveMessage()
+            }
+        }
+    }
+
+    private func updateSaveStatus() {
+        statusLabel.stringValue = detailStatusText
+        statusChrome.isHidden = statusLabel.stringValue.isEmpty
     }
 
     private func reloadDetail() {
@@ -280,8 +298,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         }
 
         counterLabel.stringValue = "\(slot.displayIndex) / \(max(item.imageCount, library.loadedImageSlots.count))"
-        statusLabel.stringValue = detailStatusText
-        statusChrome.isHidden = statusLabel.stringValue.isEmpty
+        updateSaveStatus()
         let showsFilmstrip = filmstripVisibility.isPresented
         updateFilmstripLayout(showsFilmstrip: showsFilmstrip)
         filmstripView.update(
@@ -377,21 +394,20 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         library.stepImage(1)
     }
 
-    private var placeholderItem: GalleryItem {
-        GalleryItem(
-            id: "",
-            section: .latest,
-            kind: .gallery,
-            title: "",
-            rawTitle: "",
-            subtitle: "",
-            detailURL: URL(string: "https://www.4khd.com/")!,
-            coverURL: nil,
-            coverAspectRatio: nil,
-            imageCount: 0,
-            pageCount: 0,
-            pageURLs: [],
-            sampleImageURLs: []
-        )
-    }
+    /// 观察注册时用于 isFavorite 兜底的占位 item:纯值 struct,一次性常量即可。
+    private let placeholderItem = GalleryItem(
+        id: "",
+        section: .latest,
+        kind: .gallery,
+        title: "",
+        rawTitle: "",
+        subtitle: "",
+        detailURL: URL(string: "https://www.4khd.com/")!,
+        coverURL: nil,
+        coverAspectRatio: nil,
+        imageCount: 0,
+        pageCount: 0,
+        pageURLs: [],
+        sampleImageURLs: []
+    )
 }

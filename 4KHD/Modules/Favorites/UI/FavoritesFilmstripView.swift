@@ -30,8 +30,12 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
     }
 
     func update(slots: [FavoritesImageSlot], selectedSlotID: FavoritesImageSlot.ID?) {
-        let slotIDsChanged = self.slots.map(\.id) != slots.map(\.id)
+        // 先比 count 再逐项比较 id,避免每次全量 map 分配数组。
         let countChanged = slots.count != self.slots.count
+        var slotIDsChanged = false
+        if !countChanged {
+            slotIDsChanged = !zip(self.slots, slots).allSatisfy { $0.id == $1.id }
+        }
         let previousSelectedID = self.selectedSlotID
         self.slots = slots
         self.selectedSlotID = selectedSlotID

@@ -172,16 +172,14 @@ final class FavoritesGridItemView: NSCollectionViewItem {
 
         cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
-            Task { @MainActor [weak self] in
-                guard let self, self.currentCoverURL == coverURL else { return }
-                guard let image else {
-                    self.cardView.setPlaceholder("加载失败", isVisible: true)
-                    return
-                }
-                self.cardView.setImage(image)
-                if image.size.width > 0, image.size.height > 0 {
-                    onAspectRatio(image.size.width / image.size.height)
-                }
+            guard let self, self.currentCoverURL == coverURL else { return }
+            guard let image else {
+                self.cardView.setPlaceholder("加载失败", isVisible: true)
+                return
+            }
+            self.cardView.setImage(image)
+            if image.size.width > 0, image.size.height > 0 {
+                onAspectRatio(image.size.width / image.size.height)
             }
         }
     }
@@ -305,6 +303,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         let previousSelectedRecordID = self.selectedRecordID
         let previousSearchQuery = self.searchQuery
         let nextItemIDs = records.map(\.id)
+        let nextItemIDSet = Set(nextItemIDs)
         let contentChanged = nextItemIDs != previousItemIDs
         self.records = records
         self.selectedRecordID = selectedRecordID
@@ -312,6 +311,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         self.minimumColumnCount = minimumColumnCount
         self.maximumColumnCount = maximumColumnCount
         self.preferredCardMinimumWidth = preferredCardMinimumWidth
+        aspectRatiosByRecordID = aspectRatiosByRecordID.filter { nextItemIDSet.contains($0.key) }
 
         let sizeChanged = updateItemSize()
         if sizeChanged || contentChanged {
@@ -407,10 +407,8 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: gridScrollView.contentView, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateItemSize()
-                self?.scheduleThumbnailPrefetch()
-            }
+            self?.updateItemSize()
+            self?.scheduleThumbnailPrefetch()
         }
 
         // 与 MissKon/4KHD 网格完全一致的间距。
@@ -519,7 +517,9 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         let width = gridLayout.resolvedColumnWidth
         guard width > 0 else { return 512 }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        return min(max(width * scale, 512), 1536)
+        let requested = width * scale
+        let buckets: [CGFloat] = [512, 768, 1024, 1536]
+        return buckets.first { $0 >= requested } ?? 1536
     }
 
     private func thumbnailRequest(at index: Int) -> ImageRequest? {

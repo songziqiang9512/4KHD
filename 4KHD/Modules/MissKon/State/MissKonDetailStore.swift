@@ -33,9 +33,8 @@ final class MissKonDetailStore {
     }
 
     var resolvedPageCount: Int { resolvedPages.count }
-    var resolvedImageCount: Int {
-        resolvedPages.reduce(0) { $0 + $1.value.imageURLs.count }
-    }
+    /// 缓存的已解析图片计数,在解析/移除页时增量维护,避免每次访问 O(n) reduce。
+    private(set) var resolvedImageCount = 0
 
     func imageURL(for slot: MissKonImageSlot) -> URL? {
         if let knownURL = slot.knownURL { return knownURL }
@@ -48,6 +47,7 @@ final class MissKonDetailStore {
         guard item.id != currentItem?.id else { return }
         cancelAllPageTasks()
         resolvedPages = [:]
+        resolvedImageCount = 0
         failedPageURLs = []
         isResolving = false
         isResolutionComplete = false
@@ -70,6 +70,7 @@ final class MissKonDetailStore {
         if let cachedFirstPage {
             resolvedPages[cachedFirstPage.pageURL] = cachedFirstPage
             reconcileKnownPageURLs(with: cachedFirstPage.pageURLs, requestedPageURL: cachedFirstPage.pageURL)
+            resolvedImageCount = cachedFirstPage.imageURLs.count
             if let mediaFireURL = cachedFirstPage.mediaFireURL {
                 mediaFireDownloadURL = mediaFireURL
             }
@@ -113,6 +114,7 @@ final class MissKonDetailStore {
         if force {
             cancelAllPageTasks()
             resolvedPages = [:]
+            resolvedImageCount = 0
             failedPageURLs = []
             errorMessage = nil
             isResolutionComplete = false
@@ -200,6 +202,7 @@ final class MissKonDetailStore {
                 else { return }
                 self.reconcileKnownPageURLs(with: page.pageURLs, requestedPageURL: pageURL)
                 self.resolvedPages[pageURL] = page
+                self.resolvedImageCount += page.imageURLs.count
                 self.pageTasks[pageURL] = nil
                 if let mediaFireURL = page.mediaFireURL {
                     self.mediaFireDownloadURL = mediaFireURL
@@ -260,7 +263,9 @@ final class MissKonDetailStore {
         for pageURL in removedPageURLs {
             pageTasks[pageURL]?.cancel()
             pageTasks[pageURL] = nil
-            resolvedPages[pageURL] = nil
+            if let removed = resolvedPages.removeValue(forKey: pageURL) {
+                resolvedImageCount -= removed.imageURLs.count
+            }
             failedPageURLs.remove(pageURL)
         }
 
@@ -330,26 +335,41 @@ final class MissKonDetailStore {
     }
 
     /// Replace all slots for `pageURL` with `newSlots` (empty = remove), then reindex + repair selection.
+    /// 单次遍历过滤(不再先 filter 出 keepIndices 再 map);插入点之前元素的
+    /// displayIndex 不变,只重建插入点及之后的元素,避免整数组 struct 重建。
     private func replaceSlots(for pageURL: URL, with pageSlots: [MissKonImageSlot]) {
         let slots = imageSlots
         let selectedSlot = selectedSlotID.flatMap { id in slots.first(where: { $0.id == id }) }
         let selectedIndex = selectedSlot.flatMap { s in slots.firstIndex(where: { $0.id == s.id }) }
 
         // Filter out all slots for this pageURL.
-        let keepIndices = slots.indices.filter { slots[$0].pageURL != pageURL }
-        var newSlots = keepIndices.map { slots[$0] }
+        var newSlots: [MissKonImageSlot] = []
+        newSlots.reserveCapacity(slots.count + pageSlots.count)
+        for slot in slots where slot.pageURL != pageURL {
+            newSlots.append(slot)
+        }
 
+        var insertAt = newSlots.count
         if !pageSlots.isEmpty {
             // Insert after the last slot whose pageURL comes before `pageURL` in knownPageURLs.
             guard let pageOrder = knownPageURLs.firstIndex(of: pageURL) else { return }
-            let insertAt = newSlots.firstIndex { slot in
+            insertAt = newSlots.firstIndex { slot in
                 guard let order = knownPageURLs.firstIndex(of: slot.pageURL) else { return false }
                 return order > pageOrder
             } ?? newSlots.count
             newSlots.insert(contentsOf: pageSlots, at: insertAt)
         }
 
-        reindex(&newSlots)
+        // Only slots at/after the insertion point change their displayIndex.
+        for i in insertAt..<newSlots.count {
+            newSlots[i] = MissKonImageSlot(
+                id: newSlots[i].id,
+                displayIndex: i,
+                pageURL: newSlots[i].pageURL,
+                pageImageIndex: newSlots[i].pageImageIndex,
+                knownURL: newSlots[i].knownURL
+            )
+        }
         imageSlots = newSlots
 
         // Repair selection.
@@ -383,6 +403,7 @@ final class MissKonDetailStore {
         isResolving = false
         errorMessage = nil
         resolvedPages = [:]
+        resolvedImageCount = 0
         failedPageURLs = []
         knownPageURLs = []
     }

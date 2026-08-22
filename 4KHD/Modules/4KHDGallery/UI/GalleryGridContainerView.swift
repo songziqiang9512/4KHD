@@ -225,7 +225,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             isFavorite: isFavorite(galleryItem),
             isCached: isCached(galleryItem),
             onImageAspectRatioResolved: { [weak self] ratio in
-                self?.updateAspectRatio(ratio, for: galleryItem.id)
+                self?.updateAspectRatio(ratio, for: galleryItem.id, knownAspectRatio: galleryItem.coverAspectRatio.map { CGFloat($0) })
             }
         )
         return item
@@ -273,10 +273,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.updateItemSize()
-                self?.scheduleThumbnailPrefetch()
-            }
+            self?.updateItemSize()
+            self?.scheduleThumbnailPrefetch()
         }
 
         gridLayout.columnSpacing = 8
@@ -353,14 +351,13 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         return true
     }
 
-    private func updateAspectRatio(_ ratio: CGFloat, for itemID: GalleryItem.ID) {
+    private func updateAspectRatio(_ ratio: CGFloat, for itemID: GalleryItem.ID, knownAspectRatio: CGFloat?) {
         guard ratio.isFinite, ratio > 0 else { return }
         let clampedRatio = max(gridLayout.minAspectRatio, min(gridLayout.maxAspectRatio, ratio))
-        let modelRatio = items.first(where: { $0.id == itemID })?.coverAspectRatio.map { CGFloat($0) }
         let currentRatio = aspectRatiosByItemID[itemID]
-            ?? modelRatio
+            ?? knownAspectRatio
             ?? 0.74
-        let threshold = modelRatio != nil ? 0.1 : 0.01
+        let threshold = knownAspectRatio != nil ? 0.1 : 0.01
         guard abs(currentRatio - clampedRatio) > threshold else { return }
         aspectRatiosByItemID[itemID] = clampedRatio
         aspectRatioLayoutQueue.add(id: "invalidate-layout") { [weak self] in
@@ -397,7 +394,9 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let width = gridLayout.resolvedColumnWidth
         guard width > 0 else { return 512 }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        return min(max(width * scale, 512), 1536)
+        let requested = width * scale
+        let buckets: [CGFloat] = [512, 768, 1024, 1536]
+        return buckets.first { $0 >= requested } ?? 1536
     }
 
     private func thumbnailRequest(at index: Int) -> ImageRequest? {
@@ -741,16 +740,14 @@ final class GalleryGridItemView: NSCollectionViewItem {
 
         cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
-            Task { @MainActor [weak self] in
-                guard let self, self.representedID == item.id else { return }
-                if let image {
-                    self.cardView.setImage(image)
-                    if image.size.width > 0, image.size.height > 0 {
-                        onImageAspectRatioResolved(image.size.width / image.size.height)
-                    }
-                } else {
-                    self.cardView.setPlaceholder("缩略图不可用", isVisible: true)
+            guard let self, self.representedID == item.id else { return }
+            if let image {
+                self.cardView.setImage(image)
+                if image.size.width > 0, image.size.height > 0 {
+                    onImageAspectRatioResolved(image.size.width / image.size.height)
                 }
+            } else {
+                self.cardView.setPlaceholder("缩略图不可用", isVisible: true)
             }
         }
     }
