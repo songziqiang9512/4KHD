@@ -92,8 +92,13 @@ final class FavoritesStore {
         }
     }
 
+    /// 读 revision 建立观察依赖：favoriteDetailURLs 是 @ObservationIgnored 性能索引，
+    /// 直接读它不会被 Observation 追踪，收藏切换后依赖 isFavorite 的 UI
+    /// （工具栏收藏按钮、网格 badge）收不到变更通知，只能等下一次手动刷新。
+    /// revision 在 favorites 每次变更（加载/toggle/导入）时自增。
     func contains(detailURL: URL) -> Bool {
-        favoriteDetailURLs.contains(detailURL.absoluteString)
+        _ = favoritesRevision
+        return favoriteDetailURLs.contains(detailURL.absoluteString)
     }
 
     /// 切换收藏状态。返回切换后的最新值；同步更新 `DetailPageImageCache` 的 `isPersistent`，
