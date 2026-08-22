@@ -111,6 +111,11 @@ final class WorkspaceSidebarCellView: NSTableCellView {
         alphaValue = isDragging ? 0 : 1
     }
 
+    func setTitleStyle(font: NSFont, color: NSColor) {
+        titleLabel.font = font
+        titleLabel.textColor = color
+    }
+
     private func setupView() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor

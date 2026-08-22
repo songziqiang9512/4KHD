@@ -39,14 +39,6 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         invalidateLayout()
     }
 
-    /// 内容替换(reloadData/搜索/切换列表)时由宿主调用:丢弃已捕获的
-    /// 滚动锚点,防止旧锚点被应用到数量恰好相同的新内容上。
-    func clearPendingScrollAnchor() {
-
-        pendingScrollAnchor = nil
-        pendingScrollAnchorItemCount = nil
-    }
-
     private var cache: [NSCollectionViewLayoutAttributes] = []
     private var columnHeights: [CGFloat] = []
     private var nextItemIndex = 0
@@ -130,8 +122,6 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
            oldMetrics.columns == metrics.columns,
            !cache.isEmpty {
             updateCachedFrames(metrics: metrics, oldMetrics: oldMetrics)
-            // 列数没变但列宽变了,行高与内容高度都会变,同样按锚点恢复可视位置。
-            scheduleScrollAnchorRestore()
             return
         }
 
@@ -144,94 +134,6 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         contentHeight = inset.top + inset.bottom
         estimatedContentHeight = estimateContentHeight(metrics: metrics)
         resolvedColumnWidth = metrics.columnWidth
-
-        scheduleScrollAnchorRestore()
-    }
-
-    // MARK: - 滚动锚点(面板开关/宽度变化时保持可视位置)
-
-    /// 锚点 = 选中的卡片 indexPath(无选中时取视口顶部第一张可见卡片)。
-    private var pendingScrollAnchor: IndexPath?
-    private var pendingScrollAnchorItemCount: Int?
-
-    /// 面板开关动画期间 bounds 逐帧变化,prepare 可能因 metrics 未变而跳过恢复;
-    /// 这里在宽度变化时直接调度:等宽度稳定(动画结束)后强制布局并居中锚点卡片。
-    private var centerRestoreWorkItem: DispatchWorkItem?
-
-    private func scheduleCenterRestoreWhenWidthStable(targetWidth: CGFloat) {
-        guard pendingScrollAnchor != nil else { return }
-        centerRestoreWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, let collectionView = self.collectionView else { return }
-            // 宽度仍在变化(动画未结束):继续等。
-            if abs(collectionView.bounds.width - targetWidth) > 1 {
-                self.scheduleCenterRestoreWhenWidthStable(targetWidth: collectionView.bounds.width)
-                return
-            }
-            // 强制按最终宽度重建布局,保证锚点帧是最终布局的。
-            self.invalidateLayout()
-            collectionView.layoutSubtreeIfNeeded()
-            self.applyCenterRestore()
-        }
-        centerRestoreWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
-    }
-
-    /// 把锚点卡片居中到视口,并消费锚点。
-    private func applyCenterRestore() {
-        guard let anchor = pendingScrollAnchor,
-              let collectionView,
-              let clipView = collectionView.enclosingScrollView?.contentView else { return }
-        pendingScrollAnchor = nil
-        pendingScrollAnchorItemCount = nil
-        guard let attrs = layoutAttributesForItem(at: anchor) else { return }
-        let viewportHeight = clipView.bounds.height
-        guard viewportHeight > 1 else { return }
-        let targetY = max(0, attrs.frame.midY - viewportHeight / 2)
-        let maxY = max(0, collectionViewContentSize.height - viewportHeight)
-        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(targetY, maxY)))
-        collectionView.enclosingScrollView?.reflectScrolledClipView(clipView)
-    }
-
-    /// 记录锚点:优先当前选中卡片(用户视线所在,不依赖惰性生成的 cache)。
-    private func captureScrollAnchor() {
-        guard let collectionView else { return }
-        let itemCount = collectionView.numberOfItems(inSection: 0)
-        if let selectedIndexPath = collectionView.selectionIndexPaths.first {
-            pendingScrollAnchor = selectedIndexPath
-            pendingScrollAnchorItemCount = itemCount
-            return
-        }
-        // 无选中:视口顶部第一张可见卡片。
-        let visibleRect = collectionView.visibleRect
-        guard visibleRect.height > 1 else {
-            pendingScrollAnchor = nil
-            pendingScrollAnchorItemCount = nil
-            return
-        }
-        for attrs in cache {
-            guard let indexPath = attrs.indexPath,
-                  attrs.frame.maxY > visibleRect.minY else { continue }
-            pendingScrollAnchor = indexPath
-            pendingScrollAnchorItemCount = itemCount
-            return
-        }
-        pendingScrollAnchor = nil
-        pendingScrollAnchorItemCount = nil
-    }
-
-    /// 整表重建后异步恢复滚动,避免在布局 pass 中修改几何。
-    /// 恢复语义:把锚点卡片居中到视口——面板开/关双向都定位到选中卡片。
-    private func scheduleScrollAnchorRestore() {
-        guard let anchor = pendingScrollAnchor else { return }
-        let capturedItemCount = pendingScrollAnchorItemCount
-        DispatchQueue.main.async { [weak self, weak collectionView] in
-            guard let self,
-                  let collectionView,
-                  capturedItemCount == collectionView.numberOfItems(inSection: 0),
-                  capturedItemCount != nil else { return }
-            self.applyCenterRestore()
-        }
     }
 
     private func updateCachedFrames(metrics: LayoutMetrics, oldMetrics: LayoutMetrics) {
@@ -300,16 +202,9 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool {
         guard let collectionView else { return false }
         guard collectionView.bounds.isFiniteForWaterfallLayout, newBounds.isFiniteForWaterfallLayout else {
-            // 宽度塌缩(immersive / 收起详情面板):此时 bounds 仍是旧值,
-            // 记录锚点供后续重建恢复,否则滚动位置会被夹回顶部。
-            captureScrollAnchor()
             return true
         }
         let widthChanged = abs(collectionView.bounds.width - newBounds.width) > 0.5
-        if widthChanged {
-            captureScrollAnchor()
-            scheduleCenterRestoreWhenWidthStable(targetWidth: newBounds.width)
-        }
         return widthChanged
     }
 

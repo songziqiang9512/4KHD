@@ -317,8 +317,6 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         if sizeChanged || contentChanged {
             lastAppliedIDs = nextItemIDs
             if contentChanged {
-                // 内容被替换:已捕获的滚动锚点对新内容无效。
-                gridLayout.clearPendingScrollAnchor()
                 thumbnailPrefetchController.reset()
             }
             performWithoutAnimation { collectionView.reloadData() }

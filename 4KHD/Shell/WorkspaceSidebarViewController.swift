@@ -151,10 +151,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             guard let oldNode = outlineView.item(atRow: row) as? WorkspaceSidebarNode,
                   let node = dataSource.node(withStateIdentifier: oldNode.stateIdentifier),
                   let view = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) else { continue }
-            if isGroupNode(node) {
-                (view as? NSTableCellView)?.textField?.stringValue = node.title
-            } else if let cell = view as? WorkspaceSidebarCellView {
+            if let cell = view as? WorkspaceSidebarCellView {
                 cell.configure(title: node.title, image: sidebarImage(for: node), count: node.count)
+                if isGroupNode(node) {
+                    cell.setTitleStyle(font: font(for: node), color: .secondaryLabelColor)
+                }
             }
         }
     }
@@ -179,10 +180,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         delegate?.sidebarViewControllerDidRequestLocalImport(self)
     }
 
+    // macOS 26+ 的 sourceList 系统分组行渲染(标题文字)在 macOS 27 上失效,
+    // 分组行按普通行渲染,由 viewFor 的自定义 cell 完全接管。
+    // 选中保护由 shouldSelectItem / selectionIndexesForProposedSelection 完成。
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        guard let node = item as? WorkspaceSidebarNode else { return false }
-        if case .group = node { return true }
-        return false
+        false
     }
 
     func outlineView(
@@ -204,10 +206,6 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
-        guard let node = item as? WorkspaceSidebarNode,
-              !isGroupNode(node) else {
-            return nil
-        }
         let identifier = NSUserInterfaceItemIdentifier("WorkspaceSidebarRowView")
         let rowView = outlineView.makeView(withIdentifier: identifier, owner: self) as? WorkspaceSidebarRowView
             ?? WorkspaceSidebarRowView()
@@ -294,22 +292,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             isGroup = false
         }
         if isGroup {
+            // 分组标题复用叶子 cell 组件(NSTableCellView.textField 特殊路径在 macOS 27 上布局失效,标题不可见)。
             let identifier = NSUserInterfaceItemIdentifier("SidebarGroupCell")
-            let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
-                ?? NSTableCellView()
+            let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? WorkspaceSidebarCellView
+                ?? WorkspaceSidebarCellView()
             cell.identifier = identifier
-            cell.textField = cell.textField ?? NSTextField(labelWithString: "")
-            if cell.textField?.superview == nil, let textField = cell.textField {
-                textField.translatesAutoresizingMaskIntoConstraints = false
-                cell.addSubview(textField)
-                NSLayoutConstraint.activate([
-                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 12),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-                ])
-            }
-            cell.textField?.stringValue = node.title
-            cell.textField?.font = font(for: node)
+            cell.configure(title: node.title, image: nil, count: nil)
+            cell.setTitleStyle(font: font(for: node), color: .secondaryLabelColor)
             return cell
         }
 

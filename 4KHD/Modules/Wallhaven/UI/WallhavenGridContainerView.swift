@@ -94,8 +94,6 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
 
         let itemSizeChanged = updateItemSize()
         if contentChanged {
-            // 内容被替换:已捕获的滚动锚点对新内容无效。
-            gridLayout.clearPendingScrollAnchor()
             lastAppliedIDs = nextItemIDs
             lastShowsFooter = showsFooter
             thumbnailPrefetchController.reset()
