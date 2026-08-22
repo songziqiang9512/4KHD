@@ -39,6 +39,15 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
         invalidateLayout()
     }
 
+    /// 内容整体替换（reloadData 前）时由宿主调用：强制下次 prepare 全量重建。
+    /// 内容替换若新 itemCount ≥ 旧 itemCount，append-only 增量路径会把新内容
+    /// 套进旧卡片的 frame（同数量时 prepare 甚至会直接返回复用旧缓存），
+    /// 必须在 prepare 消费标记后走全量生成。
+    func invalidateLayoutForContentReplacement() {
+        invalidatedExternally = true
+        invalidateLayout()
+    }
+
     private var cache: [NSCollectionViewLayoutAttributes] = []
     /// cache 按 frame.minY 排序的副本，滚动热路径复用；cache 内容或 frame 变化时失效。
     private var cacheSortedByMinY: [NSCollectionViewLayoutAttributes]?
@@ -49,6 +58,8 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     private var estimatedContentHeight: CGFloat = 0
     private var didLayoutAllItems = false
     private var cacheInvalidatedByRatioChange = false
+    /// 宿主在 reloadData 前显式置位：下次 prepare 丢弃增量路径，全量重建。
+    private var invalidatedExternally = false
     private var layoutMetrics: LayoutMetrics?
     private let maximumLayoutWidth: CGFloat = 100_000
     private let maximumLayoutExtent: CGFloat = 100_000_000
@@ -105,6 +116,13 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             minAspectRatio: minAspectRatio,
             maxAspectRatio: maxAspectRatio
         )
+        // 内容替换标记：丢弃旧 metrics，强制走全量重建
+        // （append-only 增量与 updateCachedFrames 都会因 oldMetrics 缺失而跳过）。
+        if invalidatedExternally {
+            invalidatedExternally = false
+            layoutMetrics = nil
+        }
+
         // 宽高比更新时 LayoutMetrics 可能完全不变，但仍需按新比例重排已生成卡片。
         if cacheInvalidatedByRatioChange {
             cacheInvalidatedByRatioChange = false
@@ -119,7 +137,10 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
 
         // 加载更多(append-only)场景：几何参数未变、仅 itemCount 增加时保留已生成部分，
         // 从断点继续生成，避免每次触底加载都全量清空重排。
+        // footer 网格（treatsLastItemAsFooter）不参与：旧 footer 的 34px 通栏 frame
+        // 在 itemCount 增长后应重新按普通卡片布局，增量追加会把它残留为细条带。
         if !cacheInvalidatedByRatioChange,
+           !treatsLastItemAsFooter,
            let oldMetrics = layoutMetrics,
            metrics.itemCount > oldMetrics.itemCount,
            isAppendOnlyUpdate(metrics, from: oldMetrics) {

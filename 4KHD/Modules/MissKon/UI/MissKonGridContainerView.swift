@@ -115,6 +115,8 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             lastShowsFooter = showsFooter
             if contentChanged {
                 thumbnailPrefetchController.reset()
+                // 内容替换：强制布局全量重建，避免 append 增量路径把新内容套进旧卡片 frame。
+                gridLayout.invalidateLayoutForContentReplacement()
             }
             performWithoutAnimation { collectionView.reloadData() }
             if contentChanged {

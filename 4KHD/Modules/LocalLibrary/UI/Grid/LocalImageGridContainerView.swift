@@ -277,6 +277,12 @@ final class LocalImageGridContainerView: NSView {
         let animate = !lastAppliedIDs.isEmpty
             && abs(ids.count - lastAppliedIDs.count)
                 <= max(20, collectionView.indexPathsForVisibleItems().count + 10)
+        let isPureAppend = ids.count >= lastAppliedIDs.count
+            && Array(ids.prefix(lastAppliedIDs.count)) == lastAppliedIDs
+        if !isPureAppend {
+            // 内容替换：强制布局全量重建，避免 append 增量路径把新内容套进旧卡片 frame。
+            waterfallLayout.invalidateLayoutForContentReplacement()
+        }
         var snapshot = NSDiffableDataSourceSnapshot<Section, LocalImageItem.ID>()
         snapshot.appendSections([.main])
         snapshot.appendItems(ids, toSection: .main)
@@ -466,7 +472,8 @@ final class LocalImageGridContainerView: NSView {
     }
 
     private func schedulePrefetch() {
-        guard prefetchWorkItem == nil else { return }
+        // cancel + 重建 = 滚动防抖：滚动停止后只触发一次，避免滚动中反复预取中间窗口。
+        prefetchWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.prefetchWorkItem = nil

@@ -318,8 +318,6 @@ final class FavoritesDetailStore {
     }
 
     /// 替换某页的全部 slot(空数组 = 移除),然后重建 displayIndex 并修复选中。
-    /// 单次遍历过滤(不再先 filter 出 keepIndices 再 map);插入点之前元素的
-    /// displayIndex 不变,只重建插入点及之后的元素,避免整数组 struct 重建。
     private func replaceSlots(for pageURL: URL, with pageSlots: [FavoritesImageSlot]) {
         let slots = imageSlots
         let selectedSlot = selectedSlotID.flatMap { id in slots.first(where: { $0.id == id }) }
@@ -331,10 +329,9 @@ final class FavoritesDetailStore {
             newSlots.append(slot)
         }
 
-        var insertAt = newSlots.count
         if !pageSlots.isEmpty {
             guard let pageOrder = knownPageURLs.firstIndex(of: pageURL) else { return }
-            insertAt = newSlots.firstIndex { slot in
+            let insertAt = newSlots.firstIndex { slot in
                 guard let slotPageURL = slot.pageURL,
                       let order = knownPageURLs.firstIndex(of: slotPageURL) else { return false }
                 return order > pageOrder
@@ -342,16 +339,9 @@ final class FavoritesDetailStore {
             newSlots.insert(contentsOf: pageSlots, at: insertAt)
         }
 
-        // Only slots at/after the insertion point change their displayIndex.
-        for i in insertAt..<newSlots.count {
-            newSlots[i] = FavoritesImageSlot(
-                id: newSlots[i].id,
-                displayIndex: i,
-                pageURL: newSlots[i].pageURL,
-                pageImageIndex: newSlots[i].pageImageIndex,
-                knownURL: newSlots[i].knownURL
-            )
-        }
+        // 全量重建 displayIndex：移除失败页、或两个页 URL 共享同一 pageOrder 时，
+        // 部分重建会留下过期的 displayIndex，必须与数组下标恒一致。
+        reindex(&newSlots)
         imageSlots = newSlots
 
         if let id = selectedSlotID, newSlots.contains(where: { $0.id == id }) { return }

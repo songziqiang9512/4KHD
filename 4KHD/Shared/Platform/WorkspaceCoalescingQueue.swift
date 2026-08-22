@@ -52,9 +52,12 @@ final class WorkspaceCoalescingQueue {
     }
 
     private func restartTimer() {
-        // 已有未触发的 timer 时直接复用:add 风暴不再反复 invalidate + 重建。
-        // fire 后 non-repeating timer 自动失效,下一次 add 会重新创建。
-        if timer?.isValid == true { return }
+        // 已有未触发的 timer 时只推迟触发时刻（保持 debounce 语义：持续 add 会不断
+        // 延后触发，停歇后才执行），不重建对象，避免 add 风暴反复 invalidate + 创建。
+        if let timer, timer.isValid {
+            timer.fireDate = Date().addingTimeInterval(interval)
+            return
+        }
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.timerDidFire()

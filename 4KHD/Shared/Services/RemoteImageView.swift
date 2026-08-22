@@ -56,8 +56,8 @@ final class RemoteImagePipeline {
     private let dataCache: DataCache?
     private var inFlightTasks = Set<ImageTask>()
     /// 失败 URL 短期负缓存：坏图链接在快速滚动时每次滚入都会重新请求，
-    /// 记录 60s 内直接跳过，避免反复占用并发配额。只作用于低优先级
-    /// （缩略图/预取类）请求，详情图的显式重试不受影响。
+    /// 记录 60s 内直接跳过，避免反复占用并发配额。只作用于缩略图级
+    /// （≤ .normal）请求，详情图（.high/.veryHigh）的显式重试不受影响。
     private var failedURLs: [URL: Date] = [:]
     private let negativeCacheWindow: TimeInterval = 60
 
@@ -155,7 +155,7 @@ final class RemoteImagePipeline {
 
     @discardableResult
     func loadImage(with request: ImageRequest, completion: @escaping (NSImage?) -> Void) -> ImageTask? {
-        if isLowPriority(request), let url = request.url, let failedAt = failedURLs[url],
+        if isNegativeCacheEligible(request), let url = request.url, let failedAt = failedURLs[url],
            Date().timeIntervalSince(failedAt) < negativeCacheWindow {
             completion(nil)
             return nil
@@ -166,7 +166,7 @@ final class RemoteImagePipeline {
                 completion(response.image)
                 self?.pruneFinishedTasks()
             case .failure(let error):
-                if let url = request.url, self?.isLowPriority(request) == true {
+                if let url = request.url, self?.isNegativeCacheEligible(request) == true {
                     self?.recordFailure(for: url)
                 }
                 if self?.isRetriableLoadingError(error) == true {
@@ -182,8 +182,13 @@ final class RemoteImagePipeline {
         return task
     }
 
-    private func isLowPriority(_ request: ImageRequest) -> Bool {
-        request.priority == .veryLow || request.priority == .low
+    /// 负缓存仅适用于缩略图/网格级请求（≤ .normal）：滚动复用场景下坏链接
+    /// 值得短期跳过；详情图（.high/.veryHigh）失败会留给用户显式重试。
+    private func isNegativeCacheEligible(_ request: ImageRequest) -> Bool {
+        switch request.priority {
+        case .veryLow, .low, .normal: true
+        case .high, .veryHigh: false
+        }
     }
 
     private func recordFailure(for url: URL) {
@@ -207,7 +212,7 @@ final class RemoteImagePipeline {
                 case .success(let response):
                     completion(response.image)
                 case .failure:
-                    if let url = request.url, self?.isLowPriority(request) == true {
+                    if let url = request.url, self?.isNegativeCacheEligible(request) == true {
                         self?.recordFailure(for: url)
                     }
                     completion(nil)
@@ -319,9 +324,11 @@ actor LocalImageCache {
     private static let decodeSemaphore = DispatchSemaphore(value: 3)
     private var inFlight: [String: (id: UUID, task: Task<NSImage?, Never>)] = [:]
     /// 文件版本短期缓存：连续请求同一批 URL 时避免每个 cell 都同步 stat 一次。
-    /// 与磁盘 prune 周期同步失效（约每 100 次加载清空一次），导入/覆盖新文件
-    /// 最迟在该窗口内重取版本。
-    private var fileVersionCache: [String: FileVersion] = [:]
+    /// 30s TTL：文件被导入/覆盖后最迟 30s 重取版本，否则缓存键用旧版本
+    /// 会把新文件内容当成旧文件命中（详情图短暂显示旧内容）。
+    /// prune 周期兜底清空，防止异常路径下条目滞留。
+    private var fileVersionCache: [String: (version: FileVersion, cachedAt: Date)] = [:]
+    private let fileVersionTTL: TimeInterval = 30
     private var failedSignatures = Set<String>()
     /// 失效签名无界增长会拖垮大库浏览(外接盘断开后整库失效);
     /// 超限整体清空,允许失败项周期性重试。
@@ -474,9 +481,12 @@ actor LocalImageCache {
     }
 
     private func fileVersion(for url: URL) -> FileVersion {
-        if let cached = fileVersionCache[url.path] { return cached }
+        if let entry = fileVersionCache[url.path],
+           Date().timeIntervalSince(entry.cachedAt) < fileVersionTTL {
+            return entry.version
+        }
         let version = statFileVersion(for: url)
-        fileVersionCache[url.path] = version
+        fileVersionCache[url.path] = (version, Date())
         return version
     }
 
@@ -520,8 +530,14 @@ actor LocalImageCache {
         try? FileManager.default.createDirectory(at: diskCacheDirectory, withIntermediateDirectories: true)
         let url = diskCacheURL(forKey: key)
         // CGImageDestination 直接编码到文件，比 NSBitmapImageRep + Data.write 少一次完整
-        // 位图到内存数据的往返，编码更快。
-        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else {
+        // 位图到内存数据的往返，编码更快。先写临时文件再原子替换：
+        // 中断/崩溃不会留下半截损坏的缓存文件（读侧对损坏文件的处理是重新解码，
+        // 但损坏文件不清理会反复触发解码，浪费解码配额）。
+        let temporaryURL = diskCacheDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("tmp")
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        guard let destination = CGImageDestinationCreateWithURL(temporaryURL as CFURL, "public.jpeg" as CFString, 1, nil) else {
             return
         }
         CGImageDestinationAddImage(
@@ -529,7 +545,8 @@ actor LocalImageCache {
             cgImage,
             [kCGImageDestinationLossyCompressionQuality: 0.86] as CFDictionary
         )
-        _ = CGImageDestinationFinalize(destination)
+        guard CGImageDestinationFinalize(destination) else { return }
+        try? FileManager.default.replaceItemAt(url, withItemAt: temporaryURL)
     }
 
     private nonisolated static func pruneDiskCache() {

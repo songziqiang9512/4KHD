@@ -46,7 +46,9 @@ final class WorkspaceThumbnailPrefetchController<ID: Hashable> {
         itemID: @escaping (Int) -> ID?,
         request: @escaping (Int) -> ImageRequest?
     ) {
-        guard workItem == nil else { return }
+        // cancel + 重建 = 滚动防抖：只有滚动停止后才会触发一次预取，
+        // 避免滚动中每 0.05s 对中间窗口发一批预取（在线网格浪费请求、本地网格占用解码槽位）。
+        workItem?.cancel()
         let workItem = DispatchWorkItem { [weak self, weak scrollView, weak layout] in
             guard let self else { return }
             self.workItem = nil

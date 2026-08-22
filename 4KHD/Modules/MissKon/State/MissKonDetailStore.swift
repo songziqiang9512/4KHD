@@ -349,27 +349,19 @@ final class MissKonDetailStore {
             newSlots.append(slot)
         }
 
-        var insertAt = newSlots.count
         if !pageSlots.isEmpty {
             // Insert after the last slot whose pageURL comes before `pageURL` in knownPageURLs.
             guard let pageOrder = knownPageURLs.firstIndex(of: pageURL) else { return }
-            insertAt = newSlots.firstIndex { slot in
+            let insertAt = newSlots.firstIndex { slot in
                 guard let order = knownPageURLs.firstIndex(of: slot.pageURL) else { return false }
                 return order > pageOrder
             } ?? newSlots.count
             newSlots.insert(contentsOf: pageSlots, at: insertAt)
         }
 
-        // Only slots at/after the insertion point change their displayIndex.
-        for i in insertAt..<newSlots.count {
-            newSlots[i] = MissKonImageSlot(
-                id: newSlots[i].id,
-                displayIndex: i,
-                pageURL: newSlots[i].pageURL,
-                pageImageIndex: newSlots[i].pageImageIndex,
-                knownURL: newSlots[i].knownURL
-            )
-        }
+        // 全量重建 displayIndex：移除失败页、或两个页 URL 共享同一 pageOrder 时，
+        // 部分重建会留下过期的 displayIndex，必须与数组下标恒一致。
+        reindex(&newSlots)
         imageSlots = newSlots
 
         // Repair selection.

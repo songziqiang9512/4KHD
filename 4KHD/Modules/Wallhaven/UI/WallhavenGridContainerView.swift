@@ -143,7 +143,8 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
 
         guard isAppendOnly else {
             performWithoutAnimation {
-                gridLayout.invalidateLayout()
+                // 内容替换：强制布局全量重建，避免 append 增量路径把新内容套进旧卡片 frame。
+                gridLayout.invalidateLayoutForContentReplacement()
                 collectionView.reloadData()
             }
             return
