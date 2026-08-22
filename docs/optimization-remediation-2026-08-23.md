@@ -80,6 +80,12 @@
   验收：脚本检查不存在未验证的发布期可执行下载。
   结果：checkout/upload-artifact 已 pin 到 commit；Sparkle 2.9.4 发布工具固定 SHA-256 并在解压前校验。
 
+- [x] **REL-009 普通 `xcodebuild build` 未重签 Sparkle 内嵌 helper**
+  证据：1.8.6 首次真实公证返回 `Invalid`，Apple 精确指出 Sparkle 的 `Updater.app`、`Autoupdate`、`Installer.xpc` 和 `Downloader.xpc` 不是有效 Developer ID 签名且缺少 secure timestamp；外层 App 的签名与 entitlement 门禁此前已通过。
+  修复目标：按照 Sparkle 官方非 Archive/Export 分发顺序，仅重签已知 helper、framework 和 host；Downloader 保留 sandbox entitlement，host 保留 Xcode 生成的最终 entitlements，禁止 `--deep` 通签。
+  验收：每个已知 Sparkle 组件及 host 均断言 Developer ID Application authority 与 secure timestamp，深度签名、host entitlement 和 Apple 公证全部通过。
+  结果：新增 `sign_sparkle_for_distribution.sh` 执行精确 inner-to-outer 重签；`verify_release_app.sh` 对六个签名目标增加 Developer ID 与时间戳断言。最终 Apple 公证结果由 1.8.6 重试流水线验证。
+
 ## B. 用户数据与持久权限
 
 - [x] **DATA-001 保存到源文件会先把源文件移入废纸篓**
@@ -399,4 +405,5 @@ FourKHDAppDelegate
 - 2026-08-23：用户报告工具栏非悬停时系统背景消失、折叠详情列闪绿。确认不应用 safe area 截断内容；删除遮在 `NSScrollView` 外的多层自定义材质和显式 `.unified` 窗口样式，让 AppKit 默认 scroll-edge effect 接管。实机滚动、悬停、失焦及详情列开关复验通过，内容仍可穿过工具栏下方。
 - 2026-08-23：用户报告 4KHD“最新”滚动无法加载下一页。定位为首页全站 SEO `/page/N` 与栏目 Query Block `?query-3-page=N` 并存时选错分页链；改为优先且仅接受数值型 Query Block 分页，冲突 fixture、回退 fixture、定向状态机测试和实机连续多页滚动通过，用户复测确认恢复。
 - 2026-08-23：1.8.6 首次远端发布演练在版本校验阶段发现 `chmod +x script/*.sh` 先于 clean-tree 断言，导致四个既有脚本的 mode-only diff 被误判为源码不干净；将脚本权限调整移到不可变版本/标签/clean-tree 校验之后，失败运行未接触签名或创建 release。
+- 2026-08-23：1.8.6 第二次远端发布通过测试、证书导入、签名构建与 App 权限门禁，但 Apple 公证精确拒绝 Sparkle 四个 ad-hoc helper。按 Sparkle 官方顺序新增专用重签脚本，并把 Developer ID authority/secure timestamp 纳入最终 App 门禁；失败运行仍未创建 tag/release。
 - 2026-08-23：最终 Debug/Release 构建、82 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩实际流水线生成的最终签名/公证 DMG、N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。

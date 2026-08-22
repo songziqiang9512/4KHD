@@ -168,6 +168,10 @@ jobs:
           dsym_archive="build/$APP_NAME-${{ steps.version.outputs.version }}.dSYM.zip"
           [[ -d "$app_path" ]] || { echo "App bundle not found: $app_path" >&2; exit 1; }
           [[ -d "$dsym_path" ]] || { echo "dSYM not found: $dsym_path" >&2; exit 1; }
+          script/sign_sparkle_for_distribution.sh \
+            "$app_path" \
+            "$DEVELOPER_ID_APPLICATION" \
+            "$SIGNING_KEYCHAIN_PATH"
           script/verify_release_app.sh \
             "$app_path" \
             "${{ steps.version.outputs.version }}" \

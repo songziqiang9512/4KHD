@@ -81,6 +81,32 @@ if [[ ! -d "$app_path/Contents/Frameworks/Sparkle.framework" ]]; then
   exit 1
 fi
 
+assert_developer_id_timestamp() {
+  local signed_path="$1"
+  local signing_info
+  signing_info="$(codesign -d --verbose=4 "$signed_path" 2>&1)"
+  if ! grep -Fq 'Authority=Developer ID Application:' <<< "$signing_info"; then
+    echo "Developer ID Application signature missing: $signed_path" >&2
+    exit 1
+  fi
+  if ! grep -Eq '^Timestamp=.+$' <<< "$signing_info"; then
+    echo "Secure timestamp missing: $signed_path" >&2
+    exit 1
+  fi
+}
+
+sparkle_version="$app_path/Contents/Frameworks/Sparkle.framework/Versions/B"
+for signed_path in \
+  "$sparkle_version/XPCServices/Installer.xpc" \
+  "$sparkle_version/XPCServices/Downloader.xpc" \
+  "$sparkle_version/Autoupdate" \
+  "$sparkle_version/Updater.app" \
+  "$app_path/Contents/Frameworks/Sparkle.framework" \
+  "$app_path"
+do
+  assert_developer_id_timestamp "$signed_path"
+done
+
 architectures="$(lipo -archs "$executable_path")"
 if ! grep -qw arm64 <<< "$architectures"; then
   echo "Expected arm64 release executable, got: $architectures" >&2
