@@ -1,7 +1,7 @@
 # 4KHD 全面审查问题修复清单
 
 更新日期：2026-08-23
-状态：代码修复与 UI 结构审查完成；外部发布验收和真实大图库性能基线待执行
+状态：代码修复、UI 结构审查和 1.8.7 发布验收完成；N-1 自动更新安装与真实大图库性能基线待执行
 范围：发布链、数据安全、沙盒权限、图片与缓存、在线模块状态机、Shell/UI 行为、模块边界、性能、构建质量与最终 UI 结构审查。
 
 本文件是本轮修复的唯一进度账本。源码和可复现验证优先于本文件；每个条目只有在对应测试/构建/产物检查通过并填写“结果”后才能标记完成。
@@ -84,19 +84,19 @@
   证据：1.8.6 首次真实公证返回 `Invalid`，Apple 精确指出 Sparkle 的 `Updater.app`、`Autoupdate`、`Installer.xpc` 和 `Downloader.xpc` 不是有效 Developer ID 签名且缺少 secure timestamp；外层 App 的签名与 entitlement 门禁此前已通过。
   修复目标：按照 Sparkle 官方非 Archive/Export 分发顺序，仅重签已知 helper、framework 和 host；Downloader 保留 sandbox entitlement，host 保留 Xcode 生成的最终 entitlements，禁止 `--deep` 通签。
   验收：每个已知 Sparkle 组件及 host 均断言 Developer ID Application authority 与 secure timestamp，深度签名、host entitlement 和 Apple 公证全部通过。
-  结果：新增 `sign_sparkle_for_distribution.sh` 执行精确 inner-to-outer 重签；`verify_release_app.sh` 对六个签名目标增加 Developer ID 与时间戳断言。最终 Apple 公证结果由 1.8.6 重试流水线验证。
+  结果：新增 `sign_sparkle_for_distribution.sh` 执行精确 inner-to-outer 重签；`verify_release_app.sh` 对六个签名目标增加 Developer ID 与时间戳断言。1.8.6 与最终 1.8.7 的 App/DMG 公证、staple、Gatekeeper 和公开下载后二次验证均通过。
 
 - [x] **REL-010 发布校验文件泄漏 CI 内部路径，下载后无法直接验证**
   证据：1.8.6 的 `.sha256` 内容记录 `build/4KHD-...dmg`；公开 DMG 的实际 SHA-256 与 GitHub digest、校验文件哈希一致，但把 DMG 与校验文件下载到同一目录后执行 `shasum -c` 会因不存在 `build/` 子目录失败。
   修复目标：校验文件只记录 DMG basename，不依赖 runner 工作目录。
   验收：从公开 release 下载两个文件到任意同一目录，直接 `shasum -a 256 -c` 通过。
-  结果：发布工作流改为单独计算 digest，并用 `basename "$dmg_path"` 写入校验文件；1.8.7 公开资产执行直接校验作为最终门禁。
+  结果：发布工作流改为单独计算 digest，并用 `basename "$dmg_path"` 写入校验文件；1.8.7 的公开 DMG 与 `.sha256` 下载到同一临时目录后，直接 `shasum -a 256 -c` 通过。
 
 - [x] **REL-011 普通 CI 在无开发证书 runner 上无法构建 XCTest**
   证据：新 `ci.yml` 的前三次 push 均在 `4KHDTests` 构建阶段报 “No signing certificate Mac Development found”；同一源码在导入 Developer ID 后的发布测试和本地 ad-hoc 测试均通过。
   修复目标：只读 CI 的 Debug 测试显式使用 ad-hoc 手动签名，不依赖仓库发布证书；Release 编译继续禁止签名。
   验收：干净 GitHub macOS runner 的 Test Debug、unsigned Release、AppKit 扫描和 patch hygiene 全部通过。
-  结果：CI Test Debug 增加 `CODE_SIGN_STYLE=Manual`、`CODE_SIGN_IDENTITY=-` 和空 `DEVELOPMENT_TEAM`；1.8.7 push CI 作为最终远端验证。
+  结果：CI Test Debug 增加 `CODE_SIGN_STYLE=Manual`、`CODE_SIGN_IDENTITY=-` 和空 `DEVELOPMENT_TEAM`；1.8.7 push CI 的 Debug XCTest、unsigned Release、AppKit 扫描与 patch hygiene 全部通过。
 
 ## B. 用户数据与持久权限
 
@@ -401,7 +401,7 @@ FourKHDAppDelegate
 - [x] 全部 XCTest 通过：82/82，0 failure、0 skipped。
 - [x] 生产代码 0 SwiftUI。
 - [x] `git diff --check` 通过。
-- [!] 最终 DMG entitlement、签名、公证、版本、架构、Sparkle 签名门禁：代码门禁、受保护环境和真实 Sparkle EdDSA Secret 已就绪；仍需由实际发布流水线生成并验证最终签名/公证 DMG，不能把本地 Release 样本冒充发布产物。
+- [x] 最终 DMG entitlement、签名、公证、版本、架构、Sparkle 签名门禁：1.8.7 发布流水线全部通过；公开 DMG 独立下载后再次通过直接 SHA-256、Developer ID、Apple 公证/staple、Gatekeeper、1.8.7/187、arm64、host entitlements、六个 Sparkle 签名目标与 EdDSA appcast 验证。
 - [!] N-1 自动更新安装：Installer Launcher 与 entitlement 代码已配置；仍需真实签名发布包和受保护发布环境实测。
 - [x] UI 结构审查完成；可复现的新问题均已修复，窗口共享工具产生的 AppKit runtime issue 已用调用栈排除。
 - [x] AGENTS.md、README.md、当前 handover 与本文件同步。
@@ -419,4 +419,5 @@ FourKHDAppDelegate
 - 2026-08-23：1.8.6 首次远端发布演练在版本校验阶段发现 `chmod +x script/*.sh` 先于 clean-tree 断言，导致四个既有脚本的 mode-only diff 被误判为源码不干净；将脚本权限调整移到不可变版本/标签/clean-tree 校验之后，失败运行未接触签名或创建 release。
 - 2026-08-23：1.8.6 第二次远端发布通过测试、证书导入、签名构建与 App 权限门禁，但 Apple 公证精确拒绝 Sparkle 四个 ad-hoc helper。按 Sparkle 官方顺序新增专用重签脚本，并把 Developer ID authority/secure timestamp 纳入最终 App 门禁；失败运行仍未创建 tag/release。
 - 2026-08-23：1.8.6 第三次流水线全部通过并发布；公开 DMG 独立下载后通过实际哈希、签名、公证、staple、Gatekeeper、版本/权限/Sparkle helper 与 EdDSA appcast 验证。独立复核另发现 `.sha256` 记录 CI 内部 `build/` 路径，以及普通 CI 误要求 Mac Development 证书；两项均修复并递增到 1.8.7 做不可变重发。
-- 2026-08-23：最终 Debug/Release 构建、82 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩实际流水线生成的最终签名/公证 DMG、N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。
+- 2026-08-23：最终 1.8.7（build 187）已发布；受保护发布流水线与普通 CI 均成功，公开 checksum 可直接验证，DMG/App 签名、公证、staple、Gatekeeper、版本/架构/entitlements、Sparkle helper Developer ID/secure timestamp、EdDSA appcast 和 dSYM 全部确认。发布页：`build-1.8.7`，源提交 `b79f743`。
+- 2026-08-23：最终 Debug/Release 构建、82 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩 N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。

@@ -4,10 +4,10 @@
 
 ## 当前状态
 
-- 当前分支 `main`；本文件对应 1.8.7 发布候选，完整改动和逐项结果见修复清单。
+- 当前分支 `main`；1.8.7 已由 `build-1.8.7` 从提交 `b79f743` 发布，完整改动和逐项结果见修复清单。
 - 源码版本 1.8.7（build 187），最低系统 macOS 26.4；生产代码纯 AppKit、0 SwiftUI。
 - 最终 Debug/Release 构建通过；全量 XCTest 82/82 通过；生产代码 SwiftUI 禁用扫描与 `git diff --check` 通过。
-- 发布代码门禁已补齐；GitHub `release` environment 已限制为 `main` 并要求仓库所有者审批，4KHD 专属 Sparkle EdDSA 密钥已配置为 GitHub Secret。最终签名/公证 DMG 与 N-1 更新安装仍以实际发布环境为准。
+- 发布代码门禁已补齐；GitHub `release` environment 已限制为 `main` 并要求仓库所有者审批，4KHD 专属 Sparkle EdDSA 密钥已配置为 GitHub Secret。1.8.7 的签名/公证 DMG、直接 checksum、dSYM 和签名 appcast 均已发布并独立复核；只剩 N-1 应用内真实升级安装尚未执行。
 
 ## 当前架构事实
 
