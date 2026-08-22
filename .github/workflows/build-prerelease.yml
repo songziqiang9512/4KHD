@@ -36,9 +36,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure scripts are executable
-        run: chmod +x script/*.sh
-
       - name: Show Xcode environment
         run: |
           xcodebuild -version
@@ -73,6 +70,9 @@ jobs:
           echo "build_version=$build_version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$APP_NAME-$marketing_version-$short_sha.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure scripts are executable
+        run: chmod +x script/*.sh
 
       - name: Validate release secrets
         env:

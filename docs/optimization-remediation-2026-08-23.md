@@ -398,4 +398,5 @@ FourKHDAppDelegate
 - 2026-08-23：用户报告 4KHD 无法加载新图集。定位为当前媒体链 `img.4khd.com → i0.wp.com/yt4.googleusercontent.com/...` 被重定向守卫误拒；按精确主机和代理路径修复并新增回归测试。实机最新列表缩略图全部加载，`Kiyo - Usada Pekora` 24 张详情图解析完成。
 - 2026-08-23：用户报告工具栏非悬停时系统背景消失、折叠详情列闪绿。确认不应用 safe area 截断内容；删除遮在 `NSScrollView` 外的多层自定义材质和显式 `.unified` 窗口样式，让 AppKit 默认 scroll-edge effect 接管。实机滚动、悬停、失焦及详情列开关复验通过，内容仍可穿过工具栏下方。
 - 2026-08-23：用户报告 4KHD“最新”滚动无法加载下一页。定位为首页全站 SEO `/page/N` 与栏目 Query Block `?query-3-page=N` 并存时选错分页链；改为优先且仅接受数值型 Query Block 分页，冲突 fixture、回退 fixture、定向状态机测试和实机连续多页滚动通过，用户复测确认恢复。
+- 2026-08-23：1.8.6 首次远端发布演练在版本校验阶段发现 `chmod +x script/*.sh` 先于 clean-tree 断言，导致四个既有脚本的 mode-only diff 被误判为源码不干净；将脚本权限调整移到不可变版本/标签/clean-tree 校验之后，失败运行未接触签名或创建 release。
 - 2026-08-23：最终 Debug/Release 构建、82 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩实际流水线生成的最终签名/公证 DMG、N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。
