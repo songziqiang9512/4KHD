@@ -23,4 +23,34 @@ final class WorkspaceModuleRegistryTests: XCTestCase {
 
         XCTAssertEqual(bootstrapCount, 1)
     }
+
+    @MainActor
+    func testModulePresentationCapabilitiesTravelWithDescriptor() {
+        let profile = WorkspaceModulePresentationProfile(
+            showsGridColumns: true,
+            showsLocalSort: false,
+            showsImportFolder: false,
+            showsFavorite: true,
+            showsOnlineSave: true,
+            showsWallhavenControls: false,
+            showsFavoritesFilter: false,
+            filmstripAvailability: .detail,
+            refreshRequiresSelection: false,
+            detailActions: .none
+        )
+        let descriptor = WorkspaceModuleDescriptor(
+            id: .fourKHDGallery,
+            displayName: "Gallery",
+            presentation: profile,
+            defaultRoute: { WorkspaceRoute(moduleID: .fourKHDGallery, itemID: "latest") },
+            makeContentController: { _ in NSViewController() },
+            makeDetailController: { _ in NSViewController() },
+            normalizeRoute: { $0 },
+            applyRoute: { _ in },
+            bootstrap: {}
+        )
+        let registry = WorkspaceModuleRegistry(modules: [descriptor])
+
+        XCTAssertEqual(registry.descriptor(for: .fourKHDGallery)?.presentation, profile)
+    }
 }

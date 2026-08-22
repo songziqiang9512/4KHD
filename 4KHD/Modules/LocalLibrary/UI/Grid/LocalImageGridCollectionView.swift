@@ -11,7 +11,7 @@ final class LocalImageGridCollectionView: WorkspaceCollectionView {
     private var pendingPressReleaseWorkItem: DispatchWorkItem?
 
     override func accessibilityLabel() -> String? {
-        "Local Image Grid"
+        "本地图片网格"
     }
 
     override func mouseDown(with event: NSEvent) {

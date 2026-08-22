@@ -136,6 +136,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         placeholderLabel.isHidden = false
         titleLabel.stringValue = ""
         metadataLabel.stringValue = ""
+        setAccessibilityLabel("正在加载图片")
         metadataLabel.isHidden = false
         missingOverlay.isHidden = true
         infoOverlay.alphaValue = 0
@@ -183,6 +184,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         }
         metadataLabel.stringValue = metadata
         metadataLabel.isHidden = metadata.isEmpty
+        setAccessibilityLabel(metadata.isEmpty ? title : "\(title)，\(metadata)")
         needsLayout = true
     }
 
@@ -240,6 +242,9 @@ final class WorkspaceThumbnailGridCardView: NSView {
 
     private func setupView() {
         wantsLayer = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel("正在加载图片")
         layer?.cornerRadius = 12
         layer?.masksToBounds = true
         layer?.borderWidth = 1

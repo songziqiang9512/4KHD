@@ -1,6 +1,6 @@
 import Foundation
 
-struct FavoriteRecord: Codable, Identifiable, Hashable, Sendable {
+nonisolated struct FavoriteRecord: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let sourceID: String
     let title: String

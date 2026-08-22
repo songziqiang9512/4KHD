@@ -104,6 +104,7 @@ enum WorkspaceToolbarSnapshot {
         let canSelectPreviousImage: Bool
         let canSelectNextImage: Bool
         let canSaveImage: Bool
+        let canSaveAlbum: Bool
         let canResetZoom: Bool
         let canShare: Bool
         let isFilmstripPresented: Bool
@@ -121,7 +122,7 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
@@ -134,7 +135,7 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canSaveImage: s.canSaveImage, canSaveAlbum: false, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.hasSelection
             )
@@ -147,7 +148,7 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
@@ -160,7 +161,7 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canSaveImage: s.canSaveImage, canSaveAlbum: false, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: false,
                 hasSelection: s.canShare
             )
@@ -173,7 +174,7 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canResetZoom: s.canResetZoom,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canResetZoom: s.canResetZoom,
                 canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
@@ -334,6 +335,7 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             let selectedImageIndex = localLibraryStore.selectedImageIndex
             let imageCount = localLibraryStore.selectedImages.count
+            let hasLocalRoot = !localLibraryStore.roots.isEmpty
             let canAdjustGridColumns = localPreferences.layout == .grid
                 && !detailPaneController.isPresented
             return .local(
@@ -343,10 +345,10 @@ final class WorkspaceToolbarContext {
                     sortField: localPreferences.sortField,
                     sortDirection: localPreferences.sortDirection,
                     isRefreshing: localLibraryStore.isScanning,
-                    hasSelection: !localLibraryStore.roots.isEmpty,
-                    canIncreaseGridColumns: canAdjustGridColumns
+                    hasSelection: hasLocalRoot,
+                    canIncreaseGridColumns: hasLocalRoot && canAdjustGridColumns
                         && localPreferences.canIncreaseGridColumns,
-                    canDecreaseGridColumns: canAdjustGridColumns
+                    canDecreaseGridColumns: hasLocalRoot && canAdjustGridColumns
                         && localPreferences.canDecreaseGridColumns,
                     canSelectPreviousImage: selectedImageIndex > 0,
                     canSelectNextImage: selectedImageIndex < imageCount - 1,
@@ -728,10 +730,10 @@ final class WorkspaceToolbarContext {
             guard let record = favoritesModuleStore.selectedRecord else { return }
             switch FavoriteSource.source(for: record) {
             case .gallery:
-                guard let item = favoritesModuleStore.galleryItem(for: record) else { return }
+                guard let item = GalleryFavoritesBridge.galleryItems(from: [record]).first else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .gallery(item))
             case .missKon:
-                guard let item = favoritesModuleStore.missKonItem(for: record) else { return }
+                guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
             case .wallhaven, nil:
                 return

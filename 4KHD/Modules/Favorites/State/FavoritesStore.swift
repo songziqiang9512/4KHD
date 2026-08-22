@@ -15,6 +15,178 @@ enum FavoritesStoreError: LocalizedError, Equatable {
     }
 }
 
+private struct FavoritesStorageSnapshot: Sendable {
+    let favorites: [FavoriteRecord]
+    let revision: Int
+    let didMigrateLegacyData: Bool
+}
+
+private struct FavoritesStorageImportResult: Sendable {
+    let snapshot: FavoritesStorageSnapshot
+    let addedCount: Int
+    let updatedCount: Int
+    let skippedCount: Int
+}
+
+/// Owns the authoritative snapshot and all file mutations. Methods intentionally
+/// perform synchronous file IO on this actor so a transaction never yields
+/// between reading the current snapshot and atomically publishing its successor.
+private actor FavoritesStorageCoordinator {
+    private static let backupFileName = "favorites.json.bak"
+
+    private let fileURL: URL?
+    private var favorites: [FavoriteRecord] = []
+    private var revision = 0
+
+    init(fileURL: URL?) {
+        self.fileURL = fileURL
+    }
+
+    func bootstrap(legacyData: Data?) -> FavoritesStorageSnapshot {
+        load(legacyData: legacyData)
+    }
+
+    func reload(legacyData: Data?) -> FavoritesStorageSnapshot {
+        load(legacyData: legacyData)
+    }
+
+    func currentSnapshot() -> FavoritesStorageSnapshot {
+        snapshot(didMigrateLegacyData: false)
+    }
+
+    func toggle(_ record: FavoriteRecord) throws -> (snapshot: FavoritesStorageSnapshot, isFavorite: Bool) {
+        var updated = favorites
+        let isFavorite: Bool
+        if let index = updated.firstIndex(where: { $0.detailURL == record.detailURL }) {
+            updated.remove(at: index)
+            isFavorite = false
+        } else {
+            updated.insert(record, at: 0)
+            isFavorite = true
+        }
+        try commit(updated)
+        return (snapshot(didMigrateLegacyData: false), isFavorite)
+    }
+
+    func importRecords(_ imported: [FavoriteRecord]) throws -> FavoritesStorageImportResult {
+        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: favorites.map { ($0.detailURL, $0) })
+        var orderedDetailURLs = favorites.map(\.detailURL)
+        var addedCount = 0
+        var updatedCount = 0
+        var skippedCount = 0
+
+        for favorite in imported {
+            guard Self.isValidFavorite(favorite) else {
+                skippedCount += 1
+                continue
+            }
+            if mergedByDetailURL[favorite.detailURL] == nil {
+                orderedDetailURLs.append(favorite.detailURL)
+                addedCount += 1
+            } else {
+                updatedCount += 1
+            }
+            mergedByDetailURL[favorite.detailURL] = favorite
+        }
+
+        try commit(orderedDetailURLs.compactMap { mergedByDetailURL[$0] })
+        return FavoritesStorageImportResult(
+            snapshot: snapshot(didMigrateLegacyData: false),
+            addedCount: addedCount,
+            updatedCount: updatedCount,
+            skippedCount: skippedCount
+        )
+    }
+
+    func removeAll() throws -> FavoritesStorageSnapshot {
+        try commit([])
+        return snapshot(didMigrateLegacyData: false)
+    }
+
+    private func load(legacyData: Data?) -> FavoritesStorageSnapshot {
+        let fileFavorites = fileURL.flatMap(Self.readFavorites)
+        let backupFavorites = fileURL.flatMap { Self.readFavorites($0.deletingLastPathComponent().appendingPathComponent(Self.backupFileName)) }
+        let legacyFavorites = legacyData.flatMap { try? JSONDecoder().decode([FavoriteRecord].self, from: $0) }
+        var didMigrateLegacyData = false
+
+        if let legacyFavorites {
+            favorites = Self.merge(fileFavorites ?? backupFavorites ?? [], legacyFavorites)
+            if let fileURL {
+                do {
+                    try Self.write(favorites, to: fileURL)
+                    didMigrateLegacyData = true
+                } catch {
+                    didMigrateLegacyData = false
+                }
+            }
+        } else {
+            favorites = fileFavorites ?? backupFavorites ?? []
+            if fileFavorites == nil, let fileURL, !favorites.isEmpty {
+                try? Self.write(favorites, to: fileURL)
+            }
+        }
+        revision += 1
+        return snapshot(didMigrateLegacyData: didMigrateLegacyData)
+    }
+
+    private func commit(_ updated: [FavoriteRecord]) throws {
+        guard let fileURL else { throw FavoritesStoreError.storageUnavailable }
+        do {
+            try Self.write(updated, to: fileURL)
+        } catch {
+            os_log(.error, "FavoritesStore: save failed: \(error.localizedDescription)")
+            throw FavoritesStoreError.persistenceFailed
+        }
+        favorites = updated
+        revision += 1
+    }
+
+    private func snapshot(didMigrateLegacyData: Bool) -> FavoritesStorageSnapshot {
+        FavoritesStorageSnapshot(
+            favorites: favorites,
+            revision: revision,
+            didMigrateLegacyData: didMigrateLegacyData
+        )
+    }
+
+    private static func readFavorites(_ fileURL: URL) -> [FavoriteRecord]? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode([FavoriteRecord].self, from: data)
+    }
+
+    private static func merge(_ primary: [FavoriteRecord], _ secondary: [FavoriteRecord]) -> [FavoriteRecord] {
+        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: primary.map { ($0.detailURL, $0) })
+        var orderedDetailURLs = primary.map(\.detailURL)
+        for favorite in secondary where mergedByDetailURL[favorite.detailURL] == nil {
+            mergedByDetailURL[favorite.detailURL] = favorite
+            orderedDetailURLs.append(favorite.detailURL)
+        }
+        return orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
+    }
+
+    private static func write(_ snapshot: [FavoriteRecord], to fileURL: URL) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let nextData = try JSONEncoder().encode(snapshot)
+        let backupURL = fileURL.deletingLastPathComponent().appendingPathComponent(backupFileName)
+
+        // Preserve only a decodable last-known-good main file. Backup update
+        // happens before the atomic main replacement; if either step fails the
+        // in-memory snapshot remains unchanged.
+        if let currentData = try? Data(contentsOf: fileURL),
+           (try? JSONDecoder().decode([FavoriteRecord].self, from: currentData)) != nil {
+            try currentData.write(to: backupURL, options: .atomic)
+        }
+        try nextData.write(to: fileURL, options: .atomic)
+    }
+
+    private static func isValidFavorite(_ favorite: FavoriteRecord) -> Bool {
+        !favorite.id.isEmpty
+            && !favorite.sourceID.isEmpty
+            && URL(string: favorite.detailURL) != nil
+    }
+}
+
 /// 收藏列表 + 持久化。
 /// 这里只管理收藏记录本身，不承载具体业务模块的展示模型。
 @MainActor
@@ -34,11 +206,6 @@ final class FavoritesStore {
         var importedCount: Int { addedCount + updatedCount }
     }
 
-    private struct LoadResult: Sendable {
-        let favorites: [FavoriteRecord]
-        let didMigrateLegacyData: Bool
-    }
-
     private(set) var favorites: [FavoriteRecord] = []
     private(set) var isLoaded = false
     /// favorites 每次变更自增,供派生缓存(FavoritesModuleStore.visibleRecords)识别失效。
@@ -47,17 +214,10 @@ final class FavoritesStore {
     @ObservationIgnored private var favoriteDetailURLs = Set<String>()
 
     @ObservationIgnored private static let defaultsKey = "com.songziqiang.4khd.favoriteItems.v1"
-    @ObservationIgnored private nonisolated static let backupFileName = "favorites.json.bak"
-    @ObservationIgnored private let favoritesFileURL: URL?
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let storage: FavoritesStorageCoordinator
     @ObservationIgnored private var loadTask: Task<Void, Never>?
-    @ObservationIgnored var onFavoritesChanged: (() -> Void)? {
-        didSet {
-            if isLoaded {
-                onFavoritesChanged?()
-            }
-        }
-    }
+    @ObservationIgnored private var appliedStorageRevision = 0
 
     /// File-based storage in Application Support — Apple recommends against
     /// storing large collections in UserDefaults.
@@ -69,26 +229,20 @@ final class FavoritesStore {
     }
 
     init(fileURL: URL? = nil, defaults: UserDefaults = .standard) {
-        favoritesFileURL = fileURL ?? Self.defaultFavoritesFileURL
+        let resolvedFileURL = fileURL ?? Self.defaultFavoritesFileURL
         self.defaults = defaults
-        let targetURL = favoritesFileURL
+        storage = FavoritesStorageCoordinator(fileURL: resolvedFileURL)
         let legacyData = defaults.data(forKey: Self.defaultsKey)
         loadTask = Task { [weak self] in
-            let result = await Task.detached(priority: .utility) {
-                Self.loadSnapshot(fileURL: targetURL, legacyData: legacyData)
-            }.value
-            guard !Task.isCancelled, let self else { return }
-            favorites = result.favorites
-            self.favoriteDetailURLs = Set(self.favorites.map(\.detailURL))
-            self.favoritesRevision += 1
+            guard let self else { return }
+            let result = await storage.bootstrap(legacyData: legacyData)
+            guard !Task.isCancelled else { return }
+            apply(result)
             isLoaded = true
             if result.didMigrateLegacyData {
                 defaults.removeObject(forKey: Self.defaultsKey)
             }
             loadTask = nil
-            markFavoriteCachesPersistent()
-            DetailPageImageCache.shared.prune()
-            onFavoritesChanged?()
         }
     }
 
@@ -106,33 +260,19 @@ final class FavoritesStore {
     @discardableResult
     func toggle(_ record: FavoriteRecord) async throws -> Bool {
         await waitUntilLoaded()
-        guard let detailURL = URL(string: record.detailURL) else { return false }
-        var updatedFavorites = favorites
-        let isFavorite: Bool
-        if let index = updatedFavorites.firstIndex(where: { $0.detailURL == record.detailURL }) {
-            updatedFavorites.remove(at: index)
-            isFavorite = false
-        } else {
-            // Favorites views initially expose a bounded prefix. Put a newly
-            // saved item first so the user sees it immediately.
-            updatedFavorites.insert(record, at: 0)
-            isFavorite = true
-        }
-        try await persist(updatedFavorites)
-        favorites = updatedFavorites
-        favoriteDetailURLs = Set(updatedFavorites.map(\.detailURL))
-        favoritesRevision += 1
-        DetailPageImageCache.shared.setPersistent(isFavorite, forDetailURL: detailURL)
-        onFavoritesChanged?()
-        return isFavorite
+        guard URL(string: record.detailURL) != nil else { return false }
+        let result = try await storage.toggle(record)
+        apply(result.snapshot)
+        return result.isFavorite
     }
 
     func exportFavorites(to fileURL: URL) async throws {
         await waitUntilLoaded()
+        let current = await storage.currentSnapshot().favorites
         let backup = BackupFile(
             formatVersion: 1,
             exportedAt: Date(),
-            favorites: favorites
+            favorites: current
         )
         try await Task.detached(priority: .utility) {
             let data = try Self.makeJSONEncoder().encode(backup)
@@ -148,55 +288,19 @@ final class FavoritesStore {
             return try Self.decodeBackupFavorites(from: data)
         }.value
 
-        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: favorites.map { ($0.detailURL, $0) })
-        var orderedDetailURLs = favorites.map(\.detailURL)
-        var addedCount = 0
-        var updatedCount = 0
-        var skippedCount = 0
-
-        for favorite in importedFavorites {
-            guard Self.isValidFavorite(favorite) else {
-                skippedCount += 1
-                continue
-            }
-            if mergedByDetailURL[favorite.detailURL] == nil {
-                orderedDetailURLs.append(favorite.detailURL)
-                addedCount += 1
-            } else {
-                updatedCount += 1
-            }
-            mergedByDetailURL[favorite.detailURL] = favorite
-        }
-
-        let updatedFavorites = orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
-        try await persist(updatedFavorites)
-        favorites = updatedFavorites
-        favoriteDetailURLs = Set(updatedFavorites.map(\.detailURL))
-        favoritesRevision += 1
-        markFavoriteCachesPersistent()
-        DetailPageImageCache.shared.prune()
-        onFavoritesChanged?()
+        let result = try await storage.importRecords(importedFavorites)
+        apply(result.snapshot)
 
         return ImportResult(
-            addedCount: addedCount,
-            updatedCount: updatedCount,
-            skippedCount: skippedCount
+            addedCount: result.addedCount,
+            updatedCount: result.updatedCount,
+            skippedCount: result.skippedCount
         )
     }
 
     func removeAllFavorites() async throws {
         await waitUntilLoaded()
-        let previousFavorites = favorites
-        try await persist([])
-        favorites = []
-        favoriteDetailURLs = []
-        favoritesRevision += 1
-        for favorite in previousFavorites {
-            if let detailURL = URL(string: favorite.detailURL) {
-                DetailPageImageCache.shared.setPersistent(false, forDetailURL: detailURL)
-            }
-        }
-        onFavoritesChanged?()
+        apply(try await storage.removeAll())
     }
 
     // MARK: - 持久化
@@ -211,109 +315,32 @@ final class FavoritesStore {
     /// app replacement can discover data written by the previous process.
     func reloadFromDisk() async {
         await waitUntilLoaded()
-        let targetURL = favoritesFileURL
         let legacyData = defaults.data(forKey: Self.defaultsKey)
-        let result = await Task.detached(priority: .utility) {
-            Self.loadSnapshot(fileURL: targetURL, legacyData: legacyData)
-        }.value
+        let result = await storage.reload(legacyData: legacyData)
         guard !Task.isCancelled else { return }
-        favorites = result.favorites
-        favoriteDetailURLs = Set(self.favorites.map(\.detailURL))
-        favoritesRevision += 1
+        apply(result)
         isLoaded = true
         if result.didMigrateLegacyData {
             defaults.removeObject(forKey: Self.defaultsKey)
         }
-        markFavoriteCachesPersistent()
+    }
+
+    private func apply(_ snapshot: FavoritesStorageSnapshot) {
+        guard snapshot.revision > appliedStorageRevision else { return }
+        appliedStorageRevision = snapshot.revision
+        let previousURLs = favoriteDetailURLs
+        let nextURLs = Set(snapshot.favorites.map(\.detailURL))
+        favorites = snapshot.favorites
+        favoriteDetailURLs = nextURLs
+        favoritesRevision += 1
+
+        for removedURL in previousURLs.subtracting(nextURLs).compactMap(URL.init(string:)) {
+            DetailPageImageCache.shared.setPersistent(false, forDetailURL: removedURL)
+        }
+        for addedURL in nextURLs.subtracting(previousURLs).compactMap(URL.init(string:)) {
+            DetailPageImageCache.shared.setPersistent(true, forDetailURL: addedURL)
+        }
         DetailPageImageCache.shared.prune()
-        onFavoritesChanged?()
-    }
-
-    private func markFavoriteCachesPersistent() {
-        // 把已收藏画廊的 detail cache 都标为 persistent。
-        for favorite in favorites {
-            if let detailURL = URL(string: favorite.detailURL) {
-                DetailPageImageCache.shared.setPersistent(true, forDetailURL: detailURL)
-            }
-        }
-    }
-
-    private func persist(_ snapshot: [FavoriteRecord]) async throws {
-        guard let favoritesFileURL else {
-            throw FavoritesStoreError.storageUnavailable
-        }
-        do {
-            try await Task.detached(priority: .utility) {
-                try Self.write(snapshot, to: favoritesFileURL)
-            }.value
-        } catch {
-            os_log(.error, "FavoritesStore: save failed: \(error.localizedDescription)")
-            throw FavoritesStoreError.persistenceFailed
-        }
-    }
-
-    private nonisolated static func loadSnapshot(fileURL: URL?, legacyData: Data?) -> LoadResult {
-        let fileFavorites: [FavoriteRecord]? = {
-            guard let fileURL,
-                  let data = try? Data(contentsOf: fileURL) else { return nil }
-            return try? JSONDecoder().decode([FavoriteRecord].self, from: data)
-        }()
-        let backupFavorites: [FavoriteRecord]? = {
-            guard let fileURL,
-                  let data = try? Data(contentsOf: fileURL.deletingLastPathComponent().appendingPathComponent(backupFileName)) else { return nil }
-            return try? JSONDecoder().decode([FavoriteRecord].self, from: data)
-        }()
-        let legacyFavorites = legacyData.flatMap {
-            try? JSONDecoder().decode([FavoriteRecord].self, from: $0)
-        }
-
-        guard let legacyFavorites else {
-            let recovered = fileFavorites ?? backupFavorites ?? []
-            if fileFavorites == nil, let fileURL, !recovered.isEmpty {
-                try? write(recovered, to: fileURL)
-            }
-            return LoadResult(favorites: recovered, didMigrateLegacyData: false)
-        }
-
-        let mergedFavorites = mergeFavorites(fileFavorites ?? backupFavorites ?? [], legacyFavorites)
-        guard let fileURL else {
-            return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: false)
-        }
-        do {
-            try write(mergedFavorites, to: fileURL)
-            return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: true)
-        } catch {
-            return LoadResult(favorites: mergedFavorites, didMigrateLegacyData: false)
-        }
-    }
-
-    private nonisolated static func mergeFavorites(
-        _ primary: [FavoriteRecord],
-        _ secondary: [FavoriteRecord]
-    ) -> [FavoriteRecord] {
-        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: primary.map { ($0.detailURL, $0) })
-        var orderedDetailURLs = primary.map(\.detailURL)
-        for favorite in secondary {
-            guard !mergedByDetailURL.keys.contains(favorite.detailURL) else { continue }
-            mergedByDetailURL[favorite.detailURL] = favorite
-            orderedDetailURLs.append(favorite.detailURL)
-        }
-        return orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
-    }
-
-    private nonisolated static func write(_ snapshot: [FavoriteRecord], to fileURL: URL) throws {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let data = try JSONEncoder().encode(snapshot)
-        let backupURL = fileURL.deletingLastPathComponent().appendingPathComponent(backupFileName)
-        if fileManager.fileExists(atPath: fileURL.path) {
-            try? fileManager.removeItem(at: backupURL)
-            try? fileManager.copyItem(at: fileURL, to: backupURL)
-        }
-        try data.write(to: fileURL, options: .atomicWrite)
     }
 
     private nonisolated static func makeJSONEncoder() -> JSONEncoder {
@@ -336,9 +363,4 @@ final class FavoritesStore {
         return try makeJSONDecoder().decode([FavoriteRecord].self, from: data)
     }
 
-    private nonisolated static func isValidFavorite(_ favorite: FavoriteRecord) -> Bool {
-        !favorite.id.isEmpty
-            && !favorite.sourceID.isEmpty
-            && URL(string: favorite.detailURL) != nil
-    }
 }

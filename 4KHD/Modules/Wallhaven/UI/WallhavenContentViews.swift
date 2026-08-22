@@ -151,7 +151,7 @@ final class WallhavenGridItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("WallhavenGridItemView")
 
     private let cardView = WorkspaceThumbnailGridCardView()
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var representedID: Wallpaper.ID?
     private var currentThumbURL: URL?
     var thumbnailMaxPixelSize: CGFloat = 512

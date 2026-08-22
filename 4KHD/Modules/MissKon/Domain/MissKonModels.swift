@@ -75,7 +75,7 @@ enum MissKonSection: String, CaseIterable, Identifiable, Codable {
     var isNetworkBacked: Bool { siteURL != nil }
 }
 
-struct MissKonItem: Identifiable, Codable {
+struct MissKonItem: Identifiable, Codable, Hashable {
     let id: String
     let section: MissKonSection
     let title: String

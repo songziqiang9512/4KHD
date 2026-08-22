@@ -1,8 +1,7 @@
 import Foundation
 import Observation
 
-/// 收藏模块的详情状态:统一 slot 模型,按记录来源走对应解析器
-/// (Gallery → DetailPageHTMLResolver,MissKon → MissKonDetailResolver),
+/// 收藏模块的详情状态:统一 slot 模型,按来源适配器解析,
 /// 行为与 MissKon 详情一致:占位 slot + 渐进分页解析 + 失败页移除。
 /// Wallhaven 收藏记录只有封面一张图,直接单 slot 展示,不解析。
 @MainActor
@@ -28,6 +27,11 @@ final class FavoritesDetailStore {
     private var knownPageURLs: [URL] = []
     /// Per-page in-flight tasks.
     private var pageTasks: [URL: Task<Void, Never>] = [:]
+    @ObservationIgnored private let sourceAdapters: FavoriteSourceAdapterRegistry
+
+    init(sourceAdapters: FavoriteSourceAdapterRegistry = .shared) {
+        self.sourceAdapters = sourceAdapters
+    }
 
     var selectedSlot: FavoritesImageSlot? {
         guard let selectedSlotID else { return nil }
@@ -57,25 +61,20 @@ final class FavoritesDetailStore {
 
         guard let record, let source = currentSource else { return }
 
+        guard let content = sourceAdapters.adapter(for: source)?.detailContent(record) else { return }
         let pageURLs: [URL]
         let estimatedImageCount: Int
-        switch source {
-        case .gallery:
-            guard let item = GalleryFavoritesBridge.galleryItems(from: [record]).first else { return }
-            pageURLs = item.pageURLs
-            estimatedImageCount = item.imageCount
-        case .missKon:
-            guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return }
-            pageURLs = item.pageURLs
-            estimatedImageCount = item.imageCount
-        case .wallhaven:
-            // 单图:直接用封面 URL,无需解析。
+        switch content {
+        case .paged(let urls, let count):
+            pageURLs = urls
+            estimatedImageCount = count
+        case .singleImage(let imageURL):
             imageSlots = [FavoritesImageSlot(
                 id: "\(record.id)-cover",
                 displayIndex: 0,
                 pageURL: nil,
                 pageImageIndex: 0,
-                knownURL: record.coverURL.flatMap(URL.init(string:))
+                knownURL: imageURL
             )]
             selectedSlotID = imageSlots.first?.id
             return
@@ -169,6 +168,8 @@ final class FavoritesDetailStore {
     func selectSlot(at displayIndex: Int) {
         guard imageSlots.indices.contains(displayIndex) else { return }
         selectedSlotID = imageSlots[displayIndex].id
+        ensurePageLoadedForSlot(at: displayIndex)
+        ensureNextDetailPageLoadedIfApproachingEnd(from: displayIndex)
     }
 
     // MARK: - 页加载
@@ -178,13 +179,13 @@ final class FavoritesDetailStore {
               !resolvedPages.keys.contains(pageURL),
               !failedPageURLs.contains(pageURL) else { return }
 
-        let recordID = currentRecord?.id
+        let recordSnapshot = currentRecord
         pageTasks[pageURL] = Task { [weak self] in
             guard let self else { return }
             do {
                 let page = try await self.resolvePage(pageURL)
                 guard !Task.isCancelled,
-                      self.currentRecord?.id == recordID,
+                      self.currentRecord == recordSnapshot,
                       self.pageTasks[pageURL] != nil else { return }
                 self.reconcileKnownPageURLs(with: page.pageURLs, requestedPageURL: pageURL)
                 self.resolvedPages[pageURL] = page
@@ -198,7 +199,7 @@ final class FavoritesDetailStore {
                 }
             } catch {
                 guard !Task.isCancelled,
-                      self.currentRecord?.id == recordID,
+                      self.currentRecord == recordSnapshot,
                       self.pageTasks[pageURL] != nil else { return }
                 self.pageTasks[pageURL] = nil
                 self.failedPageURLs.insert(pageURL)
@@ -224,16 +225,12 @@ final class FavoritesDetailStore {
     }
 
     private func resolvePage(_ pageURL: URL) async throws -> ResolvedPage {
-        switch currentSource {
-        case .gallery:
-            let page = try await DetailPageHTMLResolver.resolve(pageURL: pageURL)
-            return ResolvedPage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
-        case .missKon:
-            let page = try await MissKonDetailResolver.resolve(pageURL: pageURL)
-            return ResolvedPage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
-        case .wallhaven, nil:
+        guard let record = currentRecord,
+              let adapter = sourceAdapters.adapter(for: record) else {
             throw URLError(.unsupportedURL)
         }
+        let page = try await adapter.resolvePage(pageURL)
+        return ResolvedPage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
     }
 
     private func loadNextUnresolvedPage() {
@@ -255,7 +252,7 @@ final class FavoritesDetailStore {
         var seen = Set<URL>()
         let normalized = resolvedPageURLs
             .filter { seen.insert($0).inserted }
-            .sorted { ($0.trailingPageNumber ?? 1) < ($1.trailingPageNumber ?? 1) }
+            .sorted { ($0.detailPageNumber ?? 1) < ($1.detailPageNumber ?? 1) }
         guard normalized.contains(requestedPageURL) else { return }
 
         let resolvedSet = Set(normalized)

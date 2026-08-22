@@ -1,6 +1,11 @@
 import Foundation
 import UniformTypeIdentifiers
 
+nonisolated struct LocalLibraryRootBookmarkRecord: Codable, Sendable {
+    let path: String
+    let bookmarkData: Data?
+}
+
 @MainActor
 @Observable
 final class LocalLibraryStore {
@@ -13,16 +18,27 @@ final class LocalLibraryStore {
     private(set) var isScanning = false
 
     @ObservationIgnored private var rootURLs: [URL] = []
+    @ObservationIgnored private var bookmarkRecordsByPath: [String: LocalLibraryRootBookmarkRecord] = [:]
+    @ObservationIgnored private var securityScopedAccessByPath: [String: (url: URL, didStart: Bool)] = [:]
     @ObservationIgnored private var excludedFolderPathsByRootPath: [String: Set<String>] = [:]
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var cachedAllImages: [LocalImageItem] = []
     @ObservationIgnored private var cachedAllImagesRootSignature: [String] = []
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private static let rootBookmarksDefaultsKey = "com.songziqiang.4khd.localRootBookmarks.v3"
     @ObservationIgnored private static let rootFoldersDefaultsKey = "com.songziqiang.4khd.localRootFolders.v2"
     @ObservationIgnored private static let legacyRootFoldersDefaultsKey = "com.songziqiang.4khd.localFolders.v1"
     @ObservationIgnored private static let excludedFoldersDefaultsKey = "com.songziqiang.4khd.localExcludedFolders.v1"
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         loadRootFolders()
+    }
+
+    deinit {
+        for access in securityScopedAccessByPath.values where access.didStart {
+            access.url.stopAccessingSecurityScopedResource()
+        }
     }
 
     var selectedFolder: LocalFolderNode? {
@@ -51,18 +67,21 @@ final class LocalLibraryStore {
 
     func importRootFolder(_ folderURL: URL) {
         let url = folderURL.standardizedFileURL
+        installBookmarkAndAccess(for: url)
         isScanning = true
         scanTask?.cancel()
         let wasAlreadyAdded = rootURLs.contains(url)
         scanTask = Task { [weak self] in
             let excludedPaths = self?.excludedFolderPathsByRootPath[url.path, default: []] ?? []
-            let root = await Task.detached(priority: .userInitiated) {
-                Self.scanRoot(at: url, excluding: excludedPaths)
-            }.value
+            let root = await Self.scanRootInWorker(at: url, excluding: excludedPaths)
 
             // 被更新的扫描取消时不动 isScanning，否则会覆盖新任务刚设置的 true。
             guard !Task.isCancelled else { return }
             guard let root else {
+                if !wasAlreadyAdded {
+                    self?.releaseSecurityScopedAccess(forPath: url.path)
+                    self?.bookmarkRecordsByPath[url.path] = nil
+                }
                 self?.isScanning = false
                 return
             }
@@ -88,8 +107,11 @@ final class LocalLibraryStore {
     }
 
     func removeRoot(_ root: LocalLibraryRoot) {
+        releaseSecurityScopedAccess(forPath: root.url.path)
+        bookmarkRecordsByPath[root.url.path] = nil
         rootURLs.removeAll { $0 == root.url }
         roots.removeAll { $0.id == root.id }
+        localPixelSizeCache.removeEntries(under: root.url)
         excludedFolderPathsByRootPath[root.url.path] = nil
         saveRootFolders()
         saveExcludedFolders()
@@ -184,11 +206,31 @@ final class LocalLibraryStore {
     }
 
     private func loadRootFolders() {
-        let storedPaths = (UserDefaults.standard.array(forKey: Self.rootFoldersDefaultsKey) as? [String])
-            ?? (UserDefaults.standard.array(forKey: Self.legacyRootFoldersDefaultsKey) as? [String])
+        let bookmarkRecords: [LocalLibraryRootBookmarkRecord]? = defaults
+            .data(forKey: Self.rootBookmarksDefaultsKey)
+            .flatMap { try? JSONDecoder().decode([LocalLibraryRootBookmarkRecord].self, from: $0) }
+        let storedPaths = (defaults.array(forKey: Self.rootFoldersDefaultsKey) as? [String])
+            ?? (defaults.array(forKey: Self.legacyRootFoldersDefaultsKey) as? [String])
             ?? []
+        let records = bookmarkRecords ?? storedPaths.map {
+            LocalLibraryRootBookmarkRecord(path: $0, bookmarkData: nil)
+        }
         loadExcludedFolders()
-        rootURLs = storedPaths.map { URL(fileURLWithPath: $0).standardizedFileURL }
+        var resolvedURLs: [URL] = []
+        for record in records {
+            let resolved = resolveBookmark(record) ?? URL(fileURLWithPath: record.path).standardizedFileURL
+            resolvedURLs.append(resolved)
+            let refreshedRecord = makeBookmarkRecord(for: resolved) ?? LocalLibraryRootBookmarkRecord(
+                path: resolved.path,
+                bookmarkData: record.bookmarkData
+            )
+            bookmarkRecordsByPath[resolved.path] = refreshedRecord
+            registerSecurityScopedAccess(for: resolved)
+        }
+        rootURLs = resolvedURLs
+        if bookmarkRecords == nil, !records.isEmpty {
+            saveRootFolders()
+        }
         roots = []
         selectedFolderID = Self.allImagesFolderID
         isScanning = !rootURLs.isEmpty
@@ -207,17 +249,26 @@ final class LocalLibraryStore {
     }
 
     private func saveRootFolders() {
-        UserDefaults.standard.set(rootURLs.map(\.path), forKey: Self.rootFoldersDefaultsKey)
+        let records = rootURLs.map { url in
+            bookmarkRecordsByPath[url.path]
+                ?? makeBookmarkRecord(for: url)
+                ?? LocalLibraryRootBookmarkRecord(path: url.path, bookmarkData: nil)
+        }
+        if let data = try? JSONEncoder().encode(records) {
+            defaults.set(data, forKey: Self.rootBookmarksDefaultsKey)
+        }
+        defaults.removeObject(forKey: Self.rootFoldersDefaultsKey)
+        defaults.removeObject(forKey: Self.legacyRootFoldersDefaultsKey)
     }
 
     private func saveExcludedFolders() {
         let payload = excludedFolderPathsByRootPath.mapValues { Array($0).sorted() }
         guard let data = try? JSONEncoder().encode(payload) else { return }
-        UserDefaults.standard.set(data, forKey: Self.excludedFoldersDefaultsKey)
+        defaults.set(data, forKey: Self.excludedFoldersDefaultsKey)
     }
 
     private func loadExcludedFolders() {
-        guard let data = UserDefaults.standard.data(forKey: Self.excludedFoldersDefaultsKey),
+        guard let data = defaults.data(forKey: Self.excludedFoldersDefaultsKey),
               let payload = try? JSONDecoder().decode([String: [String]].self, from: data) else {
             excludedFolderPathsByRootPath = [:]
             return
@@ -230,9 +281,7 @@ final class LocalLibraryStore {
         isScanning = true
         scanTask?.cancel()
         scanTask = Task { [weak self] in
-            let scannedRoot = await Task.detached(priority: .userInitiated) {
-                Self.scanRoot(at: url, excluding: excludedPaths)
-            }.value
+            let scannedRoot = await Self.scanRootInWorker(at: url, excluding: excludedPaths)
 
             guard !Task.isCancelled else { return }
             if let scannedRoot,
@@ -288,10 +337,68 @@ final class LocalLibraryStore {
         }
     }
 
+    private func installBookmarkAndAccess(for url: URL) {
+        releaseSecurityScopedAccess(forPath: url.path)
+        bookmarkRecordsByPath[url.path] = makeBookmarkRecord(for: url)
+            ?? LocalLibraryRootBookmarkRecord(path: url.path, bookmarkData: nil)
+        registerSecurityScopedAccess(for: url)
+    }
+
+    private func resolveBookmark(_ record: LocalLibraryRootBookmarkRecord) -> URL? {
+        guard let bookmarkData = record.bookmarkData else { return nil }
+        var isStale = false
+        return try? URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [.withSecurityScope, .withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ).standardizedFileURL
+    }
+
+    private func makeBookmarkRecord(for url: URL) -> LocalLibraryRootBookmarkRecord? {
+        guard let data = try? url.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else {
+            return nil
+        }
+        return LocalLibraryRootBookmarkRecord(path: url.path, bookmarkData: data)
+    }
+
+    private func registerSecurityScopedAccess(for url: URL) {
+        guard securityScopedAccessByPath[url.path] == nil else { return }
+        securityScopedAccessByPath[url.path] = (url, url.startAccessingSecurityScopedResource())
+    }
+
+    private func releaseSecurityScopedAccess(forPath path: String) {
+        guard let access = securityScopedAccessByPath.removeValue(forKey: path), access.didStart else { return }
+        access.url.stopAccessingSecurityScopedResource()
+    }
+
     private nonisolated static func scanRoot(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalLibraryRoot? {
         guard !Task.isCancelled else { return nil }
-        guard let tree = scanFolder(at: url, excluding: excludedFolderPaths), tree.imageCount > 0 else { return nil }
+        var visitedDirectoryPaths = Set<String>()
+        guard let tree = scanFolder(
+            at: url,
+            excluding: excludedFolderPaths,
+            visitedDirectoryPaths: &visitedDirectoryPaths
+        ), tree.imageCount > 0 else { return nil }
         return LocalLibraryRoot(url: url, tree: tree)
+    }
+
+    private nonisolated static func scanRootInWorker(
+        at url: URL,
+        excluding excludedFolderPaths: Set<String>
+    ) async -> LocalLibraryRoot? {
+        let worker = Task.detached(priority: .userInitiated) {
+            scanRoot(at: url, excluding: excludedFolderPaths)
+        }
+        return await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     private nonisolated static func scanRoots(
@@ -318,15 +425,31 @@ final class LocalLibraryStore {
         }
     }
 
-    private nonisolated static func scanFolder(at url: URL, excluding excludedFolderPaths: Set<String>) -> LocalFolderNode? {
+    private nonisolated static func scanFolder(
+        at url: URL,
+        excluding excludedFolderPaths: Set<String>,
+        visitedDirectoryPaths: inout Set<String>
+    ) -> LocalFolderNode? {
         guard !Task.isCancelled else { return nil }
         let standardizedURL = url.standardizedFileURL
         guard !excludedFolderPaths.contains(standardizedURL.path) else { return nil }
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .contentTypeKey]
+        let resolvedDirectoryPath = standardizedURL.resolvingSymlinksInPath().path
+        guard visitedDirectoryPaths.insert(resolvedDirectoryPath).inserted else { return nil }
+        let keys: Set<URLResourceKey> = [
+            .isDirectoryKey,
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+            .isPackageKey,
+            .contentTypeKey
+        ]
+        guard let directoryValues = try? standardizedURL.resourceValues(forKeys: keys),
+              directoryValues.isPackage != true else {
+            return nil
+        }
         guard let children = try? FileManager.default.contentsOfDirectory(
             at: standardizedURL,
             includingPropertiesForKeys: Array(keys),
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
             return nil
         }
@@ -337,8 +460,14 @@ final class LocalLibraryStore {
         for child in children {
             if Task.isCancelled { return nil }
             guard let values = try? child.resourceValues(forKeys: keys) else { continue }
-            if values.isDirectory == true {
-                if let folder = scanFolder(at: child, excluding: excludedFolderPaths), folder.imageCount > 0 {
+            if values.isDirectory == true,
+               values.isSymbolicLink != true,
+               values.isPackage != true {
+                if let folder = scanFolder(
+                    at: child,
+                    excluding: excludedFolderPaths,
+                    visitedDirectoryPaths: &visitedDirectoryPaths
+                ), folder.imageCount > 0 {
                     folders.append(folder)
                 }
             } else if values.isRegularFile == true,
@@ -427,15 +556,24 @@ final class LocalLibraryStore {
 
 /// 像素尺寸缓存:(mtime, fileSize) 未变时直接复用,重扫/导入不再全量读图头。
 /// 多个根目录的扫描任务并发执行,锁保护共享字典。
-nonisolated private final class LocalPixelSizeCache: @unchecked Sendable {
+nonisolated final class LocalPixelSizeCache: @unchecked Sendable {
     private struct Entry {
         let modificationDate: Date?
         let fileSize: Int
         let size: (width: Int, height: Int)?
+        var lastAccess: UInt64
     }
 
     private let lock = NSLock()
     private var entries: [URL: Entry] = [:]
+    private var accessCounter: UInt64 = 0
+    private let maxEntryCount: Int
+    private let trimTargetCount: Int
+
+    init(maxEntryCount: Int = 20_000) {
+        self.maxEntryCount = max(maxEntryCount, 1)
+        self.trimTargetCount = max(Int(Double(maxEntryCount) * 0.9), 1)
+    }
 
     func size(for url: URL) -> (width: Int, height: Int)? {
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
@@ -445,9 +583,12 @@ nonisolated private final class LocalPixelSizeCache: @unchecked Sendable {
         }
         let modificationDate = values?.contentModificationDate
         lock.lock()
-        if let entry = entries[url],
+        accessCounter &+= 1
+        if var entry = entries[url],
            entry.modificationDate == modificationDate,
            entry.fileSize == fileSize {
+            entry.lastAccess = accessCounter
+            entries[url] = entry
             lock.unlock()
             return entry.size
         }
@@ -455,10 +596,46 @@ nonisolated private final class LocalPixelSizeCache: @unchecked Sendable {
         // 图头读取放锁外,保持多根目录扫描的并发性;并发 miss 时重复读取结果相同。
         let size = pixelSize(for: url)
         lock.lock()
-        entries[url] = Entry(modificationDate: modificationDate, fileSize: fileSize, size: size)
+        accessCounter &+= 1
+        entries[url] = Entry(
+            modificationDate: modificationDate,
+            fileSize: fileSize,
+            size: size,
+            lastAccess: accessCounter
+        )
+        trimIfNeeded()
         lock.unlock()
         return size
     }
+
+    func removeEntries(under rootURL: URL) {
+        let rootPath = rootURL.standardizedFileURL.path
+        let childPrefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        lock.lock()
+        entries = entries.filter { url, _ in
+            let path = url.standardizedFileURL.path
+            return path != rootPath && !path.hasPrefix(childPrefix)
+        }
+        lock.unlock()
+    }
+
+    var entryCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.count
+    }
+
+    private func trimIfNeeded() {
+        guard entries.count > maxEntryCount else { return }
+        let removeCount = entries.count - trimTargetCount
+        let oldestURLs = entries
+            .sorted { $0.value.lastAccess < $1.value.lastAccess }
+            .prefix(removeCount)
+            .map(\.key)
+        for url in oldestURLs {
+            entries[url] = nil
+        }
+    }
 }
 
-nonisolated(unsafe) private let localPixelSizeCache = LocalPixelSizeCache()
+nonisolated private let localPixelSizeCache = LocalPixelSizeCache()

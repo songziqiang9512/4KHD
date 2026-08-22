@@ -223,8 +223,10 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
         ) { [weak self] _ in
-            self?.updateItemSize()
-            self?.scheduleThumbnailPrefetch()
+            Task { @MainActor [weak self] in
+                self?.updateItemSize()
+                self?.scheduleThumbnailPrefetch()
+            }
         }
 
         gridLayout.columnSpacing = 8
@@ -452,7 +454,7 @@ final class MissKonGridCollectionView: WorkspaceCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
     var doubleClickHandler: ((IndexPath) -> Void)?
 
-    override func accessibilityLabel() -> String? { "MissKon Grid" }
+    override func accessibilityLabel() -> String? { "MissKon 图片网格" }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)

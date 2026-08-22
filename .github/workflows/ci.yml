@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 4khd-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Test Debug app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project 4KHD.xcodeproj \
+            -scheme 4KHD \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/TestDerivedData \
+            test
+
+      - name: Compile unsigned Release app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project 4KHD.xcodeproj \
+            -scheme 4KHD \
+            -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/ReleaseDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Enforce AppKit production UI
+        run: |
+          set -euo pipefail
+          if rg -n 'import SwiftUI|NSHostingController|NSViewRepresentable|AnyView' 4KHD --glob '*.swift'; then
+            echo 'Production SwiftUI API usage is forbidden.' >&2
+            exit 1
+          fi
+
+      - name: Patch hygiene
+        run: git diff --check

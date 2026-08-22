@@ -370,7 +370,7 @@ private enum MainMenuBuilder {
         )
         menu.addItem(
             NSMenuItem(
-                title: "实际大小",
+                title: "适合窗口",
                 action: #selector(WorkspaceSplitViewController.resetCurrentZoom(_:)),
                 keyEquivalent: "0"
             )

@@ -87,7 +87,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         gridView.onOpenDetail = { [weak self] in self?.detailPane.setPresented(true) }
         gridView.onNeedsMore = { [weak self] in self?.library.loadMoreListIfNeeded() }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
-        gridView.onRetry = { [weak self] in self?.library.refreshFromNetwork() }
+        gridView.onRetry = { [weak self] in self?.library.retryLastFailure() }
         gridView.contextMenuProvider = { [weak self] item in self?.makeContextMenu(for: item) }
     }
 
@@ -298,7 +298,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             footer.onRetry = { [weak self] in
                 guard let self else { return }
                 if self.library.feedErrorMessage != nil {
-                    self.library.refreshFromNetwork()
+                    self.library.retryLastFailure()
                 } else {
                     self.library.loadMoreListIfNeeded()
                 }
@@ -450,7 +450,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
 final class MissKonContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
-    override func accessibilityLabel() -> String? { "MissKon List" }
+    override func accessibilityLabel() -> String? { "MissKon 图片列表" }
 }
 
 private struct ListFooterState: Equatable {

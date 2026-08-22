@@ -84,7 +84,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         gridView.onOpenDetail = { [weak self] in self?.detailPane.setPresented(true) }
         gridView.onNeedsMore = { [weak self] in self?.library.loadMoreIfNeeded() }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
-        gridView.onRetry = { [weak self] in self?.library.refreshFromNetwork() }
+        gridView.onRetry = { [weak self] in self?.library.retryLastFailure() }
         gridView.contextMenuProvider = { [weak self] wallpaper in self?.makeContextMenu(for: wallpaper) }
     }
 
@@ -247,7 +247,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
             footer.configure(isRefreshing: library.isRefreshingList, errorMessage: library.feedErrorMessage, canLoadMore: library.canLoadMoreList, hasItems: !library.wallpapers.isEmpty)
             footer.onRetry = { [weak self] in
                 guard let self else { return }
-                if self.library.feedErrorMessage != nil { self.library.refreshFromNetwork() }
+                if self.library.feedErrorMessage != nil { self.library.retryLastFailure() }
                 else { self.library.loadMoreIfNeeded() }
             }
             return footer
@@ -399,5 +399,5 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
 
 final class WallhavenContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
-    override func accessibilityLabel() -> String? { "Wallhaven List" }
+    override func accessibilityLabel() -> String? { "Wallhaven 图片列表" }
 }

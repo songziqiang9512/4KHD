@@ -201,7 +201,9 @@ final class LocalImageGridContainerView: NSView {
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
-            self?.schedulePrefetch()
+            Task { @MainActor [weak self] in
+                self?.schedulePrefetch()
+            }
         }
         addSubview(scrollView)
         NSLayoutConstraint.activate([

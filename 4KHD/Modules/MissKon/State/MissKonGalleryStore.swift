@@ -59,7 +59,11 @@ final class MissKonGalleryStore {
     var imageSlots: [MissKonImageSlot] { detail.imageSlots }
     var selectedSlotID: MissKonImageSlot.ID? {
         get { detail.selectedSlotID }
-        set { detail.selectedSlotID = newValue }
+        set {
+            if let newValue {
+                detail.selectSlot(id: newValue)
+            }
+        }
     }
     var isResolving: Bool { detail.isResolving }
     var errorMessage: String? { detail.errorMessage }
@@ -72,6 +76,7 @@ final class MissKonGalleryStore {
     }
 
     func refreshFromNetwork() { feed.refreshFromNetwork() }
+    func retryLastFailure() { feed.retryLastFailure() }
     func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
     func loadMoreListIfNeeded() { feed.loadMoreListIfNeeded() }
     func setSearchText(_ text: String) { feed.setSearchText(text) }

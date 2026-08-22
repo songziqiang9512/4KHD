@@ -11,10 +11,12 @@ class RemoteImageView: NSView {
     var mode: Mode = .aspectFill { didSet { needsLayout = true } }
     var cornerRadius: CGFloat = 6 { didSet { layer?.cornerRadius = cornerRadius; needsLayout = true } }
     var configureRequest: ((inout URLRequest) -> Void)?
+    /// 仅详情区的“上一张保持到下一张就绪”路径应开启；普通可复用 cell 必须清除旧图。
+    var preservesCurrentImageUntilLoaded = false
 
     private let imageView = NSImageView()
     private let placeholderImageView = NSImageView()
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var loadedURL: URL?
 
     override init(frame frameRect: NSRect) {
@@ -24,7 +26,12 @@ class RemoteImageView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    deinit { imageTask?.cancel() }
+    deinit {
+        let pendingTask = imageTask
+        Task { @MainActor in
+            pendingTask?.cancel()
+        }
+    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -40,9 +47,14 @@ class RemoteImageView: NSView {
     func setImage(url: URL?, maxPixelSize: CGFloat = 220) {
         // 同 URL 且已有图才跳过：加载失败的缩略图滚出再滚回时重新尝试。
         guard loadedURL != url || imageView.image == nil else { return }
+        let identityChanged = loadedURL != url
         imageTask?.cancel()
         loadedURL = url
         imageView.alphaValue = 1
+        if identityChanged, !preservesCurrentImageUntilLoaded {
+            imageView.image = nil
+            placeholderImageView.isHidden = false
+        }
         guard let url else {
             imageView.image = nil
             placeholderImageView.isHidden = false
@@ -85,10 +97,17 @@ class RemoteImageView: NSView {
         imageTask?.cancel()
         imageTask = nil
         loadedURL = nil
-        if imageView.image == nil {
-            placeholderImageView.isHidden = false
-        }
+        imageView.image = nil
+        placeholderImageView.isHidden = false
     }
+
+#if DEBUG
+    var displayedImageForTesting: NSImage? { imageView.image }
+
+    func setDisplayedImageForTesting(_ image: NSImage?) {
+        imageView.image = image
+    }
+#endif
 
     private func setupView() {
         wantsLayer = true

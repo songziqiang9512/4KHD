@@ -5,8 +5,6 @@ struct CachedDetailImagePage: Sendable {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]
-    /// MissKon 详情页 HTML 中的 MediaFire 下载短链;其他模块不使用。
-    let mediaFireURL: URL?
 }
 
 nonisolated final class DetailPageImageCache: @unchecked Sendable {
@@ -19,8 +17,6 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         let pageURLs: [URL]
         var updatedAt: Date
         var isPersistent: Bool
-        /// 可选字段;旧缓存数据解码时缺字段自动为 nil。
-        var mediaFireURL: URL?
     }
 
     private let lock = NSLock()
@@ -72,8 +68,7 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         return CachedDetailImagePage(
             pageURL: entry.pageURL,
             imageURLs: entry.imageURLs,
-            pageURLs: entry.pageURLs,
-            mediaFireURL: entry.mediaFireURL
+            pageURLs: entry.pageURLs
         )
     }
 
@@ -81,7 +76,7 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         store(pageURL: page.pageURL, imageURLs: page.imageURLs, pageURLs: page.pageURLs)
     }
 
-    func store(pageURL: URL, imageURLs: [URL], pageURLs: [URL], mediaFireURL: URL? = nil) {
+    func store(pageURL: URL, imageURLs: [URL], pageURLs: [URL]) {
         lock.lock()
         let key = pageURL.absoluteString
         let existing = storage[key]
@@ -91,8 +86,7 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
             imageURLs: imageURLs,
             pageURLs: pageURLs,
             updatedAt: Date(),
-            isPersistent: persistentOverrides[detailPath] ?? existing?.isPersistent ?? false,
-            mediaFireURL: mediaFireURL ?? existing?.mediaFireURL
+            isPersistent: persistentOverrides[detailPath] ?? existing?.isPersistent ?? false
         )
         cachedDetailPaths.insert(detailPath)
         pruneEntriesLocked()

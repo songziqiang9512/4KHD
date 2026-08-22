@@ -31,6 +31,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     )
     private var didBootstrap = false
     private var didRestoreSplitViewState = false
+    private var didAttemptFullScreenRestore = false
+    private var pendingFullScreenRestore = false
     private var isRestoringSplitViewState = false
     private var isApplyingRememberedSidebarWidth = false
     private var lastPresentedSplitViewWidths: [Int]?
@@ -55,8 +57,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     init(appContext: WorkspaceAppContext) {
         self.appContext = appContext
         sidebarController = WorkspaceSidebarViewController(appContext: appContext)
-        contentController = WorkspaceColumnHostController(backgroundMaterial: .contentBackground)
-        detailController = WorkspaceColumnHostController(backgroundMaterial: .contentBackground)
+        contentController = WorkspaceColumnHostController()
+        detailController = WorkspaceColumnHostController()
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
         contentItem = NSSplitViewItem(contentListWithViewController: contentController)
         detailItem = NSSplitViewItem(viewController: detailController)
@@ -80,24 +82,12 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         addSplitViewItem(detailItem)
         installObservers()
         bootstrapIfNeeded()
-
-        let titlebarView = NSVisualEffectView()
-        titlebarView.material = .titlebar
-        titlebarView.blendingMode = .withinWindow
-        titlebarView.state = .active
-        titlebarView.translatesAutoresizingMaskIntoConstraints = false
-        view.subviews.insert(titlebarView, at: 0)
-        NSLayoutConstraint.activate([
-            titlebarView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            titlebarView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            titlebarView.topAnchor.constraint(equalTo: view.topAnchor),
-            titlebarView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
     }
 
     override func viewDidAppear() {
         super.viewDidAppear()
         restoreSplitViewStateIfNeeded()
+        restoreFullScreenStateIfNeeded()
     }
 
     override func keyDown(with event: NSEvent) {
@@ -375,8 +365,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 
     private func makeKeyboardContext() -> WorkspaceKeyboardContext {
         WorkspaceKeyboardContext(
-            toggleSidebar: { [weak self] in
-                self?.toggleWorkspaceSidebar(nil)
+            resetZoom: { [weak self] in
+                self?.resetCurrentZoom(nil)
             },
             toggleDetailPane: { [weak self] in
                 self?.toggleWorkspaceDetailPane(nil)
@@ -449,6 +439,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         var savedWidths: [Int]?
         var savedIsSidebarHidden = false
         if let state = windowStateStore.load() {
+            pendingFullScreenRestore = state.isFullScreen
             expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
             cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
             cacheSidebarWidth(state.splitViewWidths.first)
@@ -568,6 +559,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             self.isRestoringSplitViewState = true
             defer { self.isRestoringSplitViewState = false }
             if let state = self.windowStateStore.load(), state.splitViewWidths.count == 3 {
+                self.pendingFullScreenRestore = state.isFullScreen
                 self.cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
                 self.cacheSidebarWidth(state.splitViewWidths.first)
                 self.restoreSplitViewState(state)
@@ -587,7 +579,6 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     private func restoreSplitViewState(_ state: WorkspaceWindowState) {
-        restoreFullScreenState(state.isFullScreen)
         expandedSidebarNodeIDs = state.expandedSidebarNodeIDs
         cachePresentedSplitViewWidths(state.presentedSplitViewWidths ?? state.splitViewWidths)
         cacheSidebarWidth(state.splitViewWidths.first)
@@ -595,11 +586,17 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         splitLayoutController.restoreSplitViewWidths(state.splitViewWidths, isSidebarHidden: state.isSidebarHidden)
     }
 
-    private func restoreFullScreenState(_ isFullScreen: Bool) {
-        guard isFullScreen,
-              let window = view.window,
-              !window.styleMask.contains(.fullScreen) else { return }
-        window.toggleFullScreen(self)
+    private func restoreFullScreenStateIfNeeded() {
+        guard !didAttemptFullScreenRestore else { return }
+        didAttemptFullScreenRestore = true
+        guard pendingFullScreenRestore else { return }
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self,
+                  let window = self.view.window,
+                  !window.styleMask.contains(.fullScreen) else { return }
+            window.toggleFullScreen(self)
+        }
     }
 
     override func splitViewDidResizeSubviews(_ notification: Notification) {

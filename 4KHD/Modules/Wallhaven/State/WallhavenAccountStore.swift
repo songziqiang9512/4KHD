@@ -3,9 +3,6 @@ import Foundation
 @MainActor
 @Observable
 final class WallhavenAccountStore {
-    /// Non-nil when the last UserDefaults write failed.
-    var keyStorageError: String?
-
     /// True during init so the didSet doesn't re-write to UserDefaults.
     private var isLoading = true
 
@@ -17,10 +14,8 @@ final class WallhavenAccountStore {
             guard !isLoading else { return }
             if let key = apiKey, !key.isEmpty {
                 UserDefaults.standard.set(key, forKey: Self.apiKeyDefaultsKey)
-                keyStorageError = nil
             } else {
                 UserDefaults.standard.removeObject(forKey: Self.apiKeyDefaultsKey)
-                keyStorageError = nil
                 if purity != .sfw { purity = .sfw }
             }
         }

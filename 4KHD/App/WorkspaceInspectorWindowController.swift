@@ -133,7 +133,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
             observedImageID = nil
             currentMetadata = nil
             guard let item = appContext.galleryStore.selectedItem else {
-                applyEmptyState(module: "4KHDGallery")
+                applyEmptyState(module: "4KHD 在线图库")
                 return
             }
             apply(item: item)
@@ -150,7 +150,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
             metadataTask?.cancel()
             observedImageID = nil
             currentMetadata = nil
-            guard let wallpaper = appContext.wallhavenStore.selectedWallpaper else {
+            guard let wallpaper = appContext.wallhavenStore.effectiveSelectedWallpaper else {
                 applyEmptyState(module: "Wallhaven")
                 return
             }
@@ -160,7 +160,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
             observedImageID = nil
             currentMetadata = nil
             guard let record = appContext.favoritesModuleStore.selectedRecord else {
-                applyEmptyState(module: "Favorites")
+                applyEmptyState(module: "在线收藏")
                 return
             }
             applyFavoriteRecord(record)
@@ -169,7 +169,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 observedImageID = nil
                 currentMetadata = nil
                 metadataTask?.cancel()
-                applyEmptyState(module: "LocalLibrary")
+                applyEmptyState(module: "本地图库")
                 return
             }
 
@@ -253,99 +253,99 @@ private final class WorkspaceInspectorViewController: NSViewController {
     }
 
     private func applyEmptyState(module: String) {
-        titleLabel.stringValue = "No Selection"
+        titleLabel.stringValue = "未选择项目"
         moduleLabel.stringValue = module
-        primaryLabel.stringValue = "Kind"
+        primaryLabel.stringValue = "类型"
         resolutionValue.stringValue = "-"
-        secondaryLabel.stringValue = "Count"
+        secondaryLabel.stringValue = "数量"
         fileSizeValue.stringValue = "-"
-        formatLabel.stringValue = "Format"
+        formatLabel.stringValue = "格式"
         formatValue.stringValue = "-"
-        tertiaryLabel.stringValue = "Section"
+        tertiaryLabel.stringValue = "栏目"
         modifiedValue.stringValue = "-"
-        quaternaryLabel.stringValue = "URL"
+        quaternaryLabel.stringValue = "链接"
         resetAvailability()
-        pathLabel.stringValue = "Path"
+        pathLabel.stringValue = "路径"
         pathValue.stringValue = "-"
     }
 
     private func apply(image: LocalImageItem, metadata: LocalImageMetadata?) {
         titleLabel.stringValue = image.title
-        moduleLabel.stringValue = "LocalLibrary"
-        primaryLabel.stringValue = "Resolution"
+        moduleLabel.stringValue = "本地图库"
+        primaryLabel.stringValue = "分辨率"
         resolutionValue.stringValue = formattedResolution(metadata) ?? "-"
-        secondaryLabel.stringValue = "Size"
+        secondaryLabel.stringValue = "大小"
         fileSizeValue.stringValue = metadata?.fileSize.map {
             ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
         } ?? "-"
-        formatLabel.stringValue = "Format"
+        formatLabel.stringValue = "格式"
         formatValue.stringValue = image.url.pathExtension.uppercased().nilIfEmpty ?? "-"
-        tertiaryLabel.stringValue = "Modified"
+        tertiaryLabel.stringValue = "修改日期"
         modifiedValue.stringValue = metadata?.modifiedDate?.formatted(date: .numeric, time: .omitted) ?? "-"
-        quaternaryLabel.stringValue = "Status"
+        quaternaryLabel.stringValue = "状态"
         if metadata?.fileExists == false {
             applyAvailability(fileMissing: true)
         } else {
             applyAvailability(fileMissing: false)
         }
-        pathLabel.stringValue = "Path"
+        pathLabel.stringValue = "路径"
         pathValue.stringValue = image.url.path
     }
 
     private func apply(item: GalleryItem) {
         titleLabel.stringValue = item.title
-        moduleLabel.stringValue = "4KHDGallery"
-        primaryLabel.stringValue = "Kind"
+        moduleLabel.stringValue = "4KHD 在线图库"
+        primaryLabel.stringValue = "类型"
         resolutionValue.stringValue = item.kind.rawValue
-        secondaryLabel.stringValue = "Images"
+        secondaryLabel.stringValue = "图片数"
         fileSizeValue.stringValue = "\(item.imageCount)"
-        formatLabel.stringValue = "Format"
+        formatLabel.stringValue = "格式"
         formatValue.stringValue = "-"
-        tertiaryLabel.stringValue = "Section"
+        tertiaryLabel.stringValue = "栏目"
         modifiedValue.stringValue = item.section.title
-        quaternaryLabel.stringValue = "Favorite"
+        quaternaryLabel.stringValue = "已收藏"
         availabilityIconView.isHidden = true
-        availabilityTextField.stringValue = appContext.galleryStore.isFavorite(item) ? "Yes" : "No"
+        availabilityTextField.stringValue = appContext.galleryStore.isFavorite(item) ? "是" : "否"
         availabilityTextField.textColor = .secondaryLabelColor
-        pathLabel.stringValue = "URL"
+        pathLabel.stringValue = "链接"
         pathValue.stringValue = item.detailURL.absoluteString
     }
 
     private func applyMissKon(item: MissKonItem) {
         titleLabel.stringValue = item.title
         moduleLabel.stringValue = "MissKon"
-        primaryLabel.stringValue = "Tags"
+        primaryLabel.stringValue = "标签"
         resolutionValue.stringValue = item.tags.isEmpty ? "-" : item.tags.joined(separator: ", ")
-        secondaryLabel.stringValue = "Images"
+        secondaryLabel.stringValue = "图片数"
         fileSizeValue.stringValue = "\(item.imageCount)"
-        formatLabel.stringValue = "Pages"
+        formatLabel.stringValue = "页数"
         formatValue.stringValue = "\(item.pageCount)"
-        tertiaryLabel.stringValue = "Section"
+        tertiaryLabel.stringValue = "栏目"
         modifiedValue.stringValue = item.section.title
-        quaternaryLabel.stringValue = "Favorite"
+        quaternaryLabel.stringValue = "已收藏"
         availabilityIconView.isHidden = true
-        availabilityTextField.stringValue = appContext.missKonStore.isFavorite(item) ? "Yes" : "No"
+        availabilityTextField.stringValue = appContext.missKonStore.isFavorite(item) ? "是" : "否"
         availabilityTextField.textColor = .secondaryLabelColor
-        pathLabel.stringValue = "URL"
+        pathLabel.stringValue = "链接"
         pathValue.stringValue = item.detailURL.absoluteString
     }
 
     private func applyFavoriteRecord(_ record: FavoriteRecord) {
         titleLabel.stringValue = record.title
-        moduleLabel.stringValue = "Favorites"
-        primaryLabel.stringValue = "Source"
+        moduleLabel.stringValue = "在线收藏"
+        primaryLabel.stringValue = "来源"
         resolutionValue.stringValue = FavoriteSource.source(for: record)?.title ?? "-"
-        secondaryLabel.stringValue = "Images"
+        secondaryLabel.stringValue = "图片数"
         fileSizeValue.stringValue = "\(record.imageCount)"
-        formatLabel.stringValue = "Pages"
+        formatLabel.stringValue = "页数"
         formatValue.stringValue = "\(record.pageCount)"
-        tertiaryLabel.stringValue = "Subtitle"
+        tertiaryLabel.stringValue = "描述"
         modifiedValue.stringValue = record.subtitle.nilIfEmpty ?? "-"
-        quaternaryLabel.stringValue = "Favorite"
+        quaternaryLabel.stringValue = "已收藏"
         availabilityIconView.isHidden = true
-        availabilityTextField.stringValue = "Yes"
+        availabilityTextField.stringValue = "是"
         availabilityTextField.textColor = .secondaryLabelColor
-        pathLabel.stringValue = "URL"
+        pathLabel.stringValue = "链接"
         pathValue.stringValue = record.detailURL
     }
 
@@ -359,36 +359,37 @@ private final class WorkspaceInspectorViewController: NSViewController {
     private func applyWallhaven(wallpaper: Wallpaper) {
         titleLabel.stringValue = wallpaper.tags.prefix(5).joined(separator: ", ").nilIfEmpty ?? wallpaper.displayName
         moduleLabel.stringValue = "Wallhaven"
-        primaryLabel.stringValue = "Resolution"
+        primaryLabel.stringValue = "分辨率"
         resolutionValue.stringValue = wallpaper.resolutionText
-        secondaryLabel.stringValue = "Size"
+        secondaryLabel.stringValue = "大小"
         fileSizeValue.stringValue = wallpaper.formattedFileSize
-        formatLabel.stringValue = "Format"
+        formatLabel.stringValue = "格式"
         formatValue.stringValue = wallpaper.fileType?.replacingOccurrences(of: "image/", with: "").uppercased() ?? "-"
-        tertiaryLabel.stringValue = "Category"
+        tertiaryLabel.stringValue = "分类"
         modifiedValue.stringValue = wallpaper.category ?? "-"
-        quaternaryLabel.stringValue = "Purity"
+        quaternaryLabel.stringValue = "内容分级"
         availabilityIconView.isHidden = true
         availabilityTextField.stringValue = wallpaper.purity.title
         availabilityTextField.textColor = .secondaryLabelColor
-        pathLabel.stringValue = "URL"
+        pathLabel.stringValue = "链接"
         pathValue.stringValue = wallpaper.sourcePageUrl.absoluteString
     }
 
     private func applyAvailability(fileMissing: Bool) {
         if fileMissing {
-            if #available(macOS 11.0, *) {
-                let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
-                availabilityIconView.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
-                availabilityIconView.symbolConfiguration = config
-            }
+            let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+            availabilityIconView.image = NSImage(
+                systemSymbolName: "exclamationmark.triangle.fill",
+                accessibilityDescription: "原始文件不可用"
+            )
+            availabilityIconView.symbolConfiguration = config
             availabilityIconView.isHidden = false
-            availabilityTextField.stringValue = "Original file unavailable"
+            availabilityTextField.stringValue = "原始文件不可用"
             availabilityTextField.textColor = .systemOrange
         } else {
             availabilityIconView.image = nil
             availabilityIconView.isHidden = true
-            availabilityTextField.stringValue = "Available"
+            availabilityTextField.stringValue = "可用"
             availabilityTextField.textColor = .secondaryLabelColor
         }
     }
@@ -407,6 +408,8 @@ private final class WorkspaceInspectorViewController: NSViewController {
             _ = appContext.missKonStore.section
             _ = appContext.missKonStore.favorites.favorites
             _ = appContext.wallhavenStore.selectedWallpaperID
+            _ = appContext.wallhavenStore.effectiveSelectedWallpaper
+            _ = appContext.wallhavenStore.isResolvingDetail
             _ = appContext.wallhavenStore.favorites.favorites
             _ = appContext.favoritesModuleStore.selectedRecordID
             _ = appContext.favoritesModuleStore.selectedRecord

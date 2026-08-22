@@ -30,14 +30,14 @@ enum WallhavenUploaderResolver {
             resolution: .any,
             ratio: .any,
             page: page,
-            seed: nil,
-            collection: nil
+            seed: nil
         )
         let searchError: Error?
         do {
             let result = try await apiClient.search(parameters: parameters, apiKey: apiKey)
-            if !result.wallpapers.isEmpty {
-                return result.wallpapers
+            let validated = validatedWallpapers(result.wallpapers, username: username, purity: purity)
+            if !validated.isEmpty {
+                return validated
             }
             searchError = nil
         } catch {
@@ -62,7 +62,7 @@ enum WallhavenUploaderResolver {
         // Limit to 16 IDs and 4 concurrent to avoid hammering the API.
         let targetIDs = Array(ids.prefix(16))
         guard !targetIDs.isEmpty else { return [] }
-        let wallpapers = await withTaskGroup(of: Wallpaper?.self) { group in
+        let resolvedWallpapers = await withTaskGroup(of: Wallpaper?.self) { group in
             var cursor = 0
             var running = 0
             var byID: [String: Wallpaper] = [:]
@@ -81,6 +81,7 @@ enum WallhavenUploaderResolver {
             }
             return targetIDs.compactMap { byID[$0] }
         }
+        let wallpapers = validatedWallpapers(resolvedWallpapers, username: username, purity: purity)
         guard !wallpapers.isEmpty else {
             if let searchError { throw searchError }
             throw ResolverError.detailsUnavailable
@@ -88,19 +89,40 @@ enum WallhavenUploaderResolver {
         return wallpapers
     }
 
+    nonisolated static func validatedWallpapers(
+        _ wallpapers: [Wallpaper],
+        username: String,
+        purity: WallhavenPurity
+    ) -> [Wallpaper] {
+        wallpapers.filter { wallpaper in
+            guard purity.allows(wallpaper.purity),
+                  let uploader = wallpaper.uploader?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !uploader.isEmpty else {
+                return false
+            }
+            return uploader.caseInsensitiveCompare(username.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+        }
+    }
+
     // MARK: - HTML scraping
 
     private static func fetchUploadsHTML(username: String, page: Int) async throws -> String {
-        let urlString = page <= 1
-            ? "https://wallhaven.cc/user/\(username)/uploads"
-            : "https://wallhaven.cc/user/\(username)/uploads?page=\(page)"
-        guard let url = URL(string: urlString) else {
+        guard var components = URLComponents(
+            url: URL(string: "https://wallhaven.cc/user")!
+                .appendingPathComponent(username)
+                .appendingPathComponent("uploads"),
+            resolvingAgainstBaseURL: false
+        ) else {
             throw WallhavenAPIError.invalidURL
         }
+        if page > 1 { components.queryItems = [URLQueryItem(name: "page", value: "\(page)")] }
+        guard let url = components.url else { throw WallhavenAPIError.invalidURL }
+        try OnlineSourcePolicy.validate(url, source: .wallhaven, resource: .html)
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         request.setValue("4KHD macOS/1.0", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
+        try OnlineSourcePolicy.validate(response, source: .wallhaven, resource: .html)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw WallhavenAPIError.decodingFailed
         }

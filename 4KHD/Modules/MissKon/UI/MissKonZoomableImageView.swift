@@ -9,7 +9,7 @@ final class MissKonZoomableImageView: WorkspaceZoomableImageView {
     private let placeholderLabel = NSTextField(labelWithString: "解析中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
     private var retryAction: (() -> Void)?
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var loadedURL: URL?
     /// 正在网络加载的 URL:同一 URL 的在途请求被再次调用时直接复用,不取消重启
     /// (封面 URL 与详情首图 URL 相同时,详情会紧接着封面再次 setImageURL)。

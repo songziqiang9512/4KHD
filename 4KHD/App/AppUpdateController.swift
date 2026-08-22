@@ -7,17 +7,21 @@ final class AppUpdateController {
     static let shared = AppUpdateController()
 
     private let updaterController: SPUStandardUpdaterController
+    private let isUpdaterConfigured: Bool
 
     private init() {
         #if DEBUG
+        isUpdaterConfigured = false
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
         #else
+        let publicKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
+        isUpdaterConfigured = Self.isValidSparklePublicKey(publicKey)
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: isUpdaterConfigured,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
@@ -33,7 +37,27 @@ final class AppUpdateController {
         )
         presentAppAlert(alert, in: appModalHostWindow())
         #else
+        guard isUpdaterConfigured else {
+            let alert = makeAppAlert(
+                title: "自动更新尚未配置",
+                message: "此构建缺少有效的 Sparkle 公钥，请从官方发布页重新下载安装。",
+                buttons: ["好"]
+            )
+            presentAppAlert(alert, in: appModalHostWindow())
+            return
+        }
         updaterController.checkForUpdates(sender)
         #endif
+    }
+
+    private static func isValidSparklePublicKey(_ value: String?) -> Bool {
+        guard let value,
+              !value.isEmpty,
+              !value.contains("$("),
+              let decoded = Data(base64Encoded: value),
+              decoded.count == 32 else {
+            return false
+        }
+        return true
     }
 }

@@ -2,6 +2,10 @@ import Foundation
 
 enum AlbumDownloadFileNaming {
     private nonisolated static let invalidCharacters = CharacterSet(charactersIn: "/\\:*?\"<>|")
+        .union(.controlCharacters)
+    private nonisolated static let allowedImageExtensions: Set<String> = [
+        "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp"
+    ]
 
     /// 非法字符替换为 "-"、去首尾空白、截 80 字符,空结果回退「未命名图集」。
     nonisolated static func sanitizedFolderName(_ name: String) -> String {
@@ -11,8 +15,8 @@ enum AlbumDownloadFileNaming {
         return capped.isEmpty ? "未命名图集" : capped
     }
 
-    /// 在 root 下为图集取目录:目录不存在直接用规整名;存在且为空则复用;
-    /// 存在且非空则依次尝试 "name (2)"、"name (3)"…。
+    /// 在 root 下为图集取一个尚不存在的目录名。既有空目录也不复用，
+    /// 防止下载任务写入或清理用户自行创建的目录。
     /// reservedPaths 排除本次会话内已分配给其他任务的目录(即使尚未创建),
     /// 防止同名图集并发下载写进同一目录互相覆盖。
     nonisolated static func uniqueDestinationFolder(
@@ -24,9 +28,6 @@ enum AlbumDownloadFileNaming {
         var candidate = root.appendingPathComponent(base, isDirectory: true)
         var index = 2
         while FileManager.default.fileExists(atPath: candidate.path) || reservedPaths.contains(candidate.path) {
-            if !reservedPaths.contains(candidate.path), isDirectoryEmpty(candidate) {
-                return candidate
-            }
             candidate = root.appendingPathComponent("\(base) (\(index))", isDirectory: true)
             index += 1
         }
@@ -56,17 +57,6 @@ enum AlbumDownloadFileNaming {
         return folder.appendingPathComponent(candidate)
     }
 
-    private nonisolated static func isDirectoryEmpty(_ url: URL) -> Bool {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else {
-            return false
-        }
-        return contents.isEmpty
-    }
-
     private nonisolated static func splitFileName(
         _ rawName: String,
         preferredExtension: String?
@@ -74,13 +64,30 @@ enum AlbumDownloadFileNaming {
         let fallback: (base: String, ext: String)
         if let dotIndex = rawName.lastIndex(of: "."),
            rawName.index(after: dotIndex) != rawName.endIndex {
-            let base = String(rawName[..<dotIndex])
-            fallback = (base.isEmpty ? "image" : base, String(rawName[dotIndex...]))
+            let base = sanitizedFileBase(String(rawName[..<dotIndex]))
+            let rawExtension = String(rawName[rawName.index(after: dotIndex)...])
+            fallback = (base, normalizedImageExtension(rawExtension))
         } else {
-            fallback = (rawName, ".jpg")
+            fallback = (sanitizedFileBase(rawName), ".jpg")
         }
         guard let preferredExtension else { return fallback }
-        return (fallback.base, "." + preferredExtension)
+        return (fallback.base, normalizedImageExtension(preferredExtension))
+    }
+
+    private nonisolated static func sanitizedFileBase(_ rawName: String) -> String {
+        let scalars = rawName.unicodeScalars.map { invalidCharacters.contains($0) ? "-" : String($0) }
+        let trimmed = scalars.joined()
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        let capped = String(trimmed.prefix(120))
+        return capped.isEmpty ? "image" : capped
+    }
+
+    private nonisolated static func normalizedImageExtension(_ rawExtension: String) -> String {
+        let normalized = rawExtension
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .lowercased()
+        guard allowedImageExtensions.contains(normalized) else { return ".jpg" }
+        return "." + normalized
     }
 }
 

@@ -8,15 +8,81 @@ struct WorkspaceModuleControllerContext {
     let sidebarDisclosure: SidebarDisclosureState
 }
 
+struct WorkspaceModulePresentationProfile: Equatable {
+    enum DetailActions: Equatable {
+        case none
+        case localFile
+        case wallhaven
+    }
+
+    enum FilmstripAvailability: Equatable {
+        case none
+        case selection
+        case resolvedImage
+        case detail
+    }
+
+    let showsGridColumns: Bool
+    let showsLocalSort: Bool
+    let showsImportFolder: Bool
+    let showsFavorite: Bool
+    let showsOnlineSave: Bool
+    let showsWallhavenControls: Bool
+    let showsFavoritesFilter: Bool
+    let filmstripAvailability: FilmstripAvailability
+    let refreshRequiresSelection: Bool
+    let detailActions: DetailActions
+
+    static let standard = WorkspaceModulePresentationProfile(
+        showsGridColumns: false,
+        showsLocalSort: false,
+        showsImportFolder: false,
+        showsFavorite: false,
+        showsOnlineSave: false,
+        showsWallhavenControls: false,
+        showsFavoritesFilter: false,
+        filmstripAvailability: .none,
+        refreshRequiresSelection: false,
+        detailActions: .none
+    )
+
+    var supportsFilmstrip: Bool {
+        filmstripAvailability != .none
+    }
+}
+
 struct WorkspaceModuleDescriptor {
     let id: WorkspaceModuleID
     let displayName: String
+    let presentation: WorkspaceModulePresentationProfile
     let defaultRoute: @MainActor () -> WorkspaceRoute
     let makeContentController: @MainActor (_ context: WorkspaceModuleControllerContext) -> NSViewController
     let makeDetailController: @MainActor (_ context: WorkspaceModuleControllerContext) -> NSViewController
     let normalizeRoute: @MainActor (_ route: WorkspaceRoute) -> WorkspaceRoute
     let applyRoute: @MainActor (_ route: WorkspaceRoute) -> Void
     let bootstrap: @MainActor () -> Void
+
+    init(
+        id: WorkspaceModuleID,
+        displayName: String,
+        presentation: WorkspaceModulePresentationProfile = .standard,
+        defaultRoute: @escaping @MainActor () -> WorkspaceRoute,
+        makeContentController: @escaping @MainActor (_ context: WorkspaceModuleControllerContext) -> NSViewController,
+        makeDetailController: @escaping @MainActor (_ context: WorkspaceModuleControllerContext) -> NSViewController,
+        normalizeRoute: @escaping @MainActor (_ route: WorkspaceRoute) -> WorkspaceRoute,
+        applyRoute: @escaping @MainActor (_ route: WorkspaceRoute) -> Void,
+        bootstrap: @escaping @MainActor () -> Void
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.presentation = presentation
+        self.defaultRoute = defaultRoute
+        self.makeContentController = makeContentController
+        self.makeDetailController = makeDetailController
+        self.normalizeRoute = normalizeRoute
+        self.applyRoute = applyRoute
+        self.bootstrap = bootstrap
+    }
 }
 
 @MainActor

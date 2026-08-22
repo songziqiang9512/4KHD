@@ -19,20 +19,20 @@ final class AlbumDownloadFileNamingTests: XCTestCase {
 
     // MARK: - 目录冲突序号
 
-    func testUniqueDestinationFolderReusesEmptyAndSuffixesNonEmpty() throws {
+    func testUniqueDestinationFolderNeverReusesExistingDirectory() throws {
         let root = makeTempFolder()
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-        // 空目录直接复用
+        // 用户已有空目录也不复用。
         let empty = root.appendingPathComponent("图集 A", isDirectory: true)
         try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
         XCTAssertEqual(
-            AlbumDownloadFileNaming.uniqueDestinationFolder(root: root, albumName: "图集 A").path,
-            empty.path
+            AlbumDownloadFileNaming.uniqueDestinationFolder(root: root, albumName: "图集 A").lastPathComponent,
+            "图集 A (2)"
         )
 
-        // 非空目录 → "图集 A (2)"
+        // 非空仍从同一个序号继续。
         try Data([0x01]).write(to: empty.appendingPathComponent("x.jpg"))
         let suffixed = AlbumDownloadFileNaming.uniqueDestinationFolder(root: root, albumName: "图集 A")
         XCTAssertEqual(suffixed.lastPathComponent, "图集 A (2)")
@@ -46,6 +46,24 @@ final class AlbumDownloadFileNamingTests: XCTestCase {
         // 不存在则直接取规整名
         let fresh = AlbumDownloadFileNaming.uniqueDestinationFolder(root: root, albumName: "新图集")
         XCTAssertEqual(fresh.lastPathComponent, "新图集")
+    }
+
+    func testUniqueFileNameSanitizesBaseLengthAndExtension() throws {
+        let folder = makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let illegal = try AlbumDownloadFileNaming.uniqueFileName(
+            for: XCTUnwrap(URL(string: "https://x.com/%3Cbad%3E.php")),
+            in: folder
+        )
+        XCTAssertEqual(illegal.lastPathComponent, "-bad-.jpg")
+
+        let longName = String(repeating: "长", count: 180) + ".jpeg"
+        let longURL = try XCTUnwrap(URL(string: "https://x.com/\(longName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)!)"))
+        let capped = AlbumDownloadFileNaming.uniqueFileName(for: longURL, in: folder)
+        XCTAssertLessThanOrEqual(capped.deletingPathExtension().lastPathComponent.count, 120)
+        XCTAssertEqual(capped.pathExtension, "jpeg")
     }
 
     // MARK: - 文件名 fallback 与冲突

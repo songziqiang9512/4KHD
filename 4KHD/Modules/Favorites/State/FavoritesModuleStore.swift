@@ -4,7 +4,7 @@ import Observation
 /// 统一收藏模块的状态:对 FavoritesStore 的记录按来源筛选,
 /// 并维护当前选中记录。记录顺序保持 FavoritesStore 原始顺序。
 /// visibleRecords 为计算属性,直接派生自 favoritesStore.favorites,
-/// 收藏变化经 @Observable 观察链自动传导,无需 onFavoritesChanged。
+/// 收藏变化经 @Observable 观察链自动传导,无需额外回调链。
 @MainActor
 @Observable
 final class FavoritesModuleStore {
@@ -87,12 +87,4 @@ final class FavoritesModuleStore {
         selectedRecordID = visibleRecords.first?.id
     }
 
-    /// 单元素调用 bridge 把记录重建为模块 item,供「保存整个图集」等入口复用。
-    func galleryItem(for record: FavoriteRecord) -> GalleryItem? {
-        GalleryFavoritesBridge.galleryItems(from: [record]).first
-    }
-
-    func missKonItem(for record: FavoriteRecord) -> MissKonItem? {
-        MissKonFavoritesBridge.missKonItems(from: [record]).first
-    }
 }

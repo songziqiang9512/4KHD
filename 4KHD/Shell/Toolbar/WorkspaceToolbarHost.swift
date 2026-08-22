@@ -119,6 +119,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     private func defaultItemIdentifiers() -> [NSToolbarItem.Identifier] {
+        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
         var identifiers: [NSToolbarItem.Identifier] = [
             .flexibleSpace,
             .toggleSidebar,
@@ -126,32 +127,33 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.refresh,
             .flexibleSpace
         ]
-        if currentModuleID == .localLibrary {
+        if profile.showsLocalSort {
             identifiers.append(ItemID.localGridColumns)
             identifiers.append(ItemID.localSort)
-            identifiers.append(ItemID.importFolder)
-        }
-        if currentModuleID == .missKon || currentModuleID == .fourKHDGallery || currentModuleID == .wallhaven || currentModuleID == .favorites {
+        } else if profile.showsGridColumns {
             identifiers.append(ItemID.localGridColumns)
         }
-        if currentModuleID == .wallhaven {
+        if profile.showsImportFolder {
+            identifiers.append(ItemID.importFolder)
+        }
+        if profile.showsWallhavenControls {
             identifiers.append(ItemID.wallhavenFilters)
         }
-        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .wallhaven || currentModuleID == .favorites {
+        if profile.showsFavorite {
             identifiers.append(ItemID.favorite)
         }
-        if currentModuleID == .fourKHDGallery || currentModuleID == .missKon || currentModuleID == .favorites {
+        if profile.showsOnlineSave {
             identifiers.append(ItemID.onlineSave)
             identifiers.append(ItemID.onlineInfo)
         }
-        if currentModuleID == .wallhaven {
+        if profile.showsWallhavenControls {
             if appContext.wallhavenStore.activeSearchQuery != nil || appContext.wallhavenStore.isBrowsingUploader {
                 identifiers.append(ItemID.wallhavenBack)
             }
             identifiers.append(ItemID.wallhavenSave)
             identifiers.append(ItemID.wallhavenInfo)
         }
-        if currentModuleID == .localLibrary {
+        if profile.detailActions != .none {
             identifiers.append(ItemID.detailActions)
         }
         identifiers += [
@@ -160,10 +162,10 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.share,
             ItemID.detailPane
         ]
-        if currentModuleID == .favorites {
+        if profile.showsFavoritesFilter {
             identifiers.append(ItemID.favoritesFilter)
         }
-        if currentModuleID != .wallhaven {
+        if profile.supportsFilmstrip {
             identifiers.append(ItemID.filmstrip)
         }
         identifiers.append(ItemID.search)
@@ -438,7 +440,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case ItemID.filmstrip:
             canUseFilmstrip
         case ItemID.immersive:
-            true
+            appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.detailActions:
             appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.share:
@@ -485,18 +487,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case 1: delta = -1
         default: return
         }
-        switch currentModuleID {
-        case .missKon:
-            appContext.toolbarContext.adjustMissKonGridColumns(delta: delta)
-        case .wallhaven:
-            appContext.toolbarContext.adjustWallhavenGridColumns(delta: delta)
-        case .fourKHDGallery:
-            appContext.toolbarContext.adjustGalleryGridColumns(delta: delta)
-        case .favorites:
-            appContext.toolbarContext.adjustGridColumns(delta: delta, for: .favorites)
-        default:
-            appContext.toolbarContext.adjustLocalGridColumns(delta: delta)
-        }
+        appContext.toolbarContext.adjustGridColumns(delta: delta, for: currentModuleID)
         refresh()
     }
 
@@ -710,14 +701,19 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         guard let filmstripItem else { return }
         let isPresented: Bool
         let isEnabled: Bool
-        if currentModuleID == .wallhaven {
+        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
+        if !profile.supportsFilmstrip {
             isPresented = false
             isEnabled = false
         } else {
             let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
             isPresented = f.isFilmstripPresented
-            isEnabled = currentModuleID == .localLibrary ? f.hasSelection
-                : currentModuleID == .missKon ? f.canSaveImage : f.canResetZoom
+            switch profile.filmstripAvailability {
+            case .selection: isEnabled = f.hasSelection
+            case .resolvedImage: isEnabled = f.canSaveImage
+            case .detail: isEnabled = f.canResetZoom
+            case .none: isEnabled = false
+            }
         }
         filmstripItem.image = NSImage(
             systemSymbolName: isPresented ? "rectangle.bottomthird.inset.filled" : "rectangle",
@@ -730,6 +726,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func updateImmersiveItem() {
         guard let immersiveItem else { return }
         let isImmersive = splitController?.isImmersiveMode == true
+        immersiveItem.isEnabled = appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         immersiveItem.image = NSImage(
             systemSymbolName: isImmersive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
             accessibilityDescription: isImmersive ? "退出大图模式" : "进入大图模式"
@@ -757,7 +754,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private var canRefreshCurrentModule: Bool {
         let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
-        return !f.isRefreshing && (currentModuleID != .localLibrary || f.hasSelection)
+        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
+        return !f.isRefreshing && (!profile.refreshRequiresSelection || f.hasSelection)
     }
 
     private var canFavoriteCurrentModule: Bool {
@@ -773,23 +771,19 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     private var canSaveCurrentAlbum: Bool {
-        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case .gallery(let snapshot):
-            snapshot.canSaveAlbum
-        case .missKon(let snapshot):
-            snapshot.canSaveAlbum
-        case .favorites(let snapshot):
-            snapshot.canSaveAlbum
-        case .local, .wallhaven:
-            false
-        }
+        appContext.toolbarContext.snapshot(for: currentModuleID).fields.canSaveAlbum
     }
 
     private var canUseFilmstrip: Bool {
-        if currentModuleID == .wallhaven { return false }
+        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
+        guard profile.supportsFilmstrip else { return false }
         let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
-        return currentModuleID == .localLibrary ? f.hasSelection
-            : currentModuleID == .missKon ? f.canSaveImage : f.canResetZoom
+        switch profile.filmstripAvailability {
+        case .selection: return f.hasSelection
+        case .resolvedImage: return f.canSaveImage
+        case .detail: return f.canResetZoom
+        case .none: return false
+        }
     }
 
     private var canShareCurrentModule: Bool {
@@ -846,7 +840,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func makeDetailActionsMenu() -> NSMenu {
         let menu = NSMenu(title: "操作")
-        switch currentModuleID {
+        let detailActions = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation.detailActions ?? .none
+        switch detailActions {
         case .wallhaven:
             let openItem = NSMenuItem(title: "在 Wallhaven 打开", action: #selector(openCurrentReference(_:)), keyEquivalent: "")
             openItem.target = self
@@ -863,7 +858,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
-        case .localLibrary:
+        case .localFile:
             let saveItem = NSMenuItem(title: "保存副本...", action: #selector(saveCurrentImage(_:)), keyEquivalent: "")
             saveItem.target = self
             saveItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "保存图片")
@@ -884,7 +879,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             infoItem.target = self
             infoItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "显示简介")
             menu.addItem(infoItem)
-        case .fourKHDGallery, .missKon, .favorites:
+        case .none:
             break
         }
         return menu
@@ -1105,16 +1100,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .alertFirstButtonReturn:
             let key = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             store.apiKey = key.isEmpty ? nil : key
-            if let error = store.keyStorageError {
-                let errorAlert = NSAlert()
-                errorAlert.messageText = "保存失败，API Key 未启用"
-                errorAlert.informativeText = error
-                errorAlert.alertStyle = .warning
-                errorAlert.runModal()
-                // Key was rolled back; don't refresh with invalid state.
-            } else {
-                appContext.wallhavenStore.refreshFromNetwork()
-            }
+            appContext.wallhavenStore.refreshFromNetwork()
         case .alertThirdButtonReturn:
             store.apiKey = nil
             appContext.wallhavenStore.refreshFromNetwork()

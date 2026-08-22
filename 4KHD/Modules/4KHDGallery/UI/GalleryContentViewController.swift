@@ -114,7 +114,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             self?.library.loadMoreListIfNeeded()
         }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
-        gridView.onRetry = { [weak self] in self?.library.refreshFromNetwork() }
+        gridView.onRetry = { [weak self] in self?.library.retryLastFailure() }
         gridView.contextMenuProvider = { [weak self] item in
             self?.makeContextMenu(for: item)
         }
@@ -429,7 +429,7 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
             view.onRetry = { [weak self] in
                 guard let self else { return }
                 if self.library.feedErrorMessage != nil {
-                    self.library.refreshFromNetwork()
+                    self.library.retryLastFailure()
                 } else {
                     self.library.loadMoreListIfNeeded()
                 }
@@ -456,6 +456,6 @@ final class GalleryContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
 
     override func accessibilityLabel() -> String? {
-        "4KHD Gallery List"
+        "4KHD 图片列表"
     }
 }

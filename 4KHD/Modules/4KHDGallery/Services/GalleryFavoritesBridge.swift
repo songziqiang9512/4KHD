@@ -21,7 +21,7 @@ enum GalleryFavoritesBridge {
 
     private nonisolated static func toGalleryItem(_ record: FavoriteRecord) -> GalleryItem? {
         guard let detailURL = URL(string: record.detailURL),
-              isAllowedHost(detailURL.host) else {
+              OnlineSourcePolicy.allows(detailURL, source: .gallery, resource: .html) else {
             return nil
         }
         // Older snapshots stored module/source names instead of a section.
@@ -29,6 +29,7 @@ enum GalleryFavoritesBridge {
         let section = GallerySection(rawValue: record.sourceID) ?? .latest
 
         let coverURL = record.coverURL.flatMap(URL.init(string:))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .gallery, resource: .media) ? $0 : nil }
         let pageURLs = pageURLs(detailURL: detailURL, pageCount: record.pageCount)
         return GalleryItem(
             id: record.id,
@@ -39,7 +40,7 @@ enum GalleryFavoritesBridge {
             subtitle: record.subtitle,
             detailURL: detailURL,
             coverURL: coverURL,
-            coverAspectRatio: coverURL.flatMap(GalleryCoverAspectRatio.aspectRatio),
+            coverAspectRatio: coverURL.flatMap(RemoteImageURLAspectRatio.aspectRatio),
             imageCount: record.imageCount,
             pageCount: record.pageCount,
             pageURLs: pageURLs,
@@ -52,10 +53,5 @@ enum GalleryFavoritesBridge {
         return (1...count).map { pageNumber in
             pageNumber == 1 ? detailURL : detailURL.appendingPathComponent("\(pageNumber)")
         }
-    }
-
-    private nonisolated static func isAllowedHost(_ host: String?) -> Bool {
-        guard let host = host?.lowercased() else { return false }
-        return host == "4khd.com" || host.hasSuffix(".4khd.com")
     }
 }

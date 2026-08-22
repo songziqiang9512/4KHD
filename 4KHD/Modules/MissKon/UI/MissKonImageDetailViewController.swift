@@ -312,9 +312,6 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             }
         }
 
-        // Trigger next page load when approaching the end of resolved images.
-        library.detail.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
-
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
         updateSaveStatus()
 

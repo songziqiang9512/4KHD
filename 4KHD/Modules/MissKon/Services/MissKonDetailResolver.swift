@@ -9,12 +9,13 @@ enum MissKonDetailResolver {
     private static let mediaFireAnchorRegex = regex(#"<a\b(?=[^>]*href=["']([^"']+)["'])[^>]*>(?:(?!</a>).)*Download link:\s*MediaFire"#)
 
     static func resolve(pageURL: URL) async throws -> MissKonResolvedImagePage {
-        if let cached = DetailPageImageCache.shared.page(for: pageURL) {
+        if let cached = DetailPageImageCache.shared.page(for: pageURL),
+           let metadata = MissKonDetailMetadataCache.shared.metadata(for: pageURL) {
             return MissKonResolvedImagePage(
                 pageURL: cached.pageURL,
                 imageURLs: cached.imageURLs,
                 pageURLs: cached.pageURLs,
-                mediaFireURL: cached.mediaFireURL
+                mediaFireURL: metadata.mediaFireURL
             )
         }
 
@@ -40,9 +41,9 @@ enum MissKonDetailResolver {
         DetailPageImageCache.shared.store(
             pageURL: page.pageURL,
             imageURLs: page.imageURLs,
-            pageURLs: page.pageURLs,
-            mediaFireURL: page.mediaFireURL
+            pageURLs: page.pageURLs
         )
+        MissKonDetailMetadataCache.shared.store(pageURL: page.pageURL, mediaFireURL: page.mediaFireURL)
         return page
     }
 
@@ -56,8 +57,9 @@ enum MissKonDetailResolver {
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {
-        let request = MissKonRequestFactory.makeHTMLRequest(url: url)
+        let request = try MissKonRequestFactory.makeHTMLRequest(url: url)
         let (data, response) = try await URLSession.shared.data(for: request)
+        try OnlineSourcePolicy.validate(response, source: .missKon, resource: .html)
         if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
             throw URLError(.badServerResponse)
         }
@@ -144,12 +146,7 @@ enum MissKonDetailResolver {
         let urls = allUrls
             .compactMap { $0.removingPercentEncoding ?? decodeHTML($0) }
             .compactMap(URL.init(string:))
-            .filter { url in
-                let host = url.host?.lowercased() ?? ""
-                return host == "misskon.com"
-                    || host.hasSuffix(".misskon.com")
-                    || host.hasSuffix(".mrcong.com")
-            }
+            .filter { OnlineSourcePolicy.allows($0, source: .missKon, resource: .media) }
         return orderedUnique(urls)
     }
 

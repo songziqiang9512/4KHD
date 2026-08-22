@@ -73,8 +73,9 @@ enum MissKonListResolver {
 
     private static func fetchHTML(_ url: URL) async throws -> String {
         try await requestCoalescer.value(for: url) {
-            let request = MissKonRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+            let request = try MissKonRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
             let (data, response) = try await URLSession.shared.data(for: request)
+            try OnlineSourcePolicy.validate(response, source: .missKon, resource: .html)
             if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
                 throw MissKonListResolverError.httpStatus(httpResponse.statusCode)
             }
@@ -132,7 +133,8 @@ enum MissKonListResolver {
 
         for url in nextLinks {
             let urlString = url.absoluteString
-            if urlString.contains("/page/\(currentPage + 1)") || urlString.hasSuffix("/\(currentPage + 1)") {
+            if OnlineSourcePolicy.allows(url, source: .missKon, resource: .html),
+               urlString.contains("/page/\(currentPage + 1)") || urlString.hasSuffix("/\(currentPage + 1)") {
                 return url
             }
         }
@@ -179,13 +181,15 @@ enum MissKonListResolver {
         let titleBlock = firstMatch(titleRegex, in: html) ?? ""
         let detailURL = firstMatch(detailURLRegex, in: titleBlock)
             .flatMap(URL.init(string:))
-        guard let detailURL else { return nil }
+        guard let detailURL,
+              OnlineSourcePolicy.allows(detailURL, source: .missKon, resource: .html) else { return nil }
 
         // Cover URL: prefer data-src over src, skip SVG placeholders
         let coverMatches = allMatches(coverSrcRegex, in: html)
         let coverURL = coverMatches
             .first { !$0.hasPrefix("data:image/svg") && !$0.hasSuffix(".svg") }
             .flatMap(URL.init(string:))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .missKon, resource: .media) ? $0 : nil }
 
         let coverAspectRatio = coverAspectRatioFromHTML(html)
 

@@ -60,7 +60,7 @@
 ```
 4KHD/
   App/          — 应用入口、偏好设置、Inspector
-  Shell/        — 三栏工作区、侧边栏、工具栏、模块路由
+  Shell/        — 三栏工作区、侧边栏、工具栏、模块路由与展示能力描述符
   Shared/       — 跨模块能力（图片缓存、键盘处理、UI 组件、共享基类）
   Modules/
     4KHDGallery/ — 4KHD.com 在线图库
@@ -71,12 +71,14 @@
 4KHDTests/      — XCTest 回归测试
 ```
 
+Shell 通过 `WorkspaceModuleDescriptor` 组装每个模块的 content/detail controller 与工具栏能力；Favorites 通过 App 注册的 source adapter 使用各在线源能力，业务模块之间不直接引用具体实现。
+
 详见 `AGENTS.md`。
 
 ## 开发
 
 ### 环境
-- macOS 26+
+- macOS 26.4+
 - Xcode 26+
 - Swift 6
 - AppKit
@@ -110,8 +112,9 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 
 - Gallery 详情页解析结果：`~/Library/Application Support/4KHD/DetailPageCache/pages.json`
 - MissKon 列表缓存：`~/Library/Application Support/4KHD/MissKon/feed-cache.json`
+- MissKon 详情 metadata：`~/Library/Application Support/4KHD/MissKon/DetailMetadata/pages.json`
 - Wallhaven 详情缓存：`~/Library/Application Support/4KHD/Wallhaven/detail-cache.json`
-- 本地缩略图：`~/Library/Application Support/4KHD/LocalImageThumbnails/`（最多 1GB / 20,000 文件）
+- 本地缩略图：`~/Library/Caches/4KHD/LocalImageThumbnails/`（最多 1GB / 20,000 文件；旧 Application Support 目录会迁移或清理）
 - 在线图片：Nuke 管线管理（384MB 内存缓存 + 单一可配置磁盘缓存）
 - 收藏记录：`~/Library/Application Support/4KHD/favorites.json`；写入前保留 `favorites.json.bak`，主文件损坏时自动恢复
 - Wallhaven API Key：UserDefaults 存储

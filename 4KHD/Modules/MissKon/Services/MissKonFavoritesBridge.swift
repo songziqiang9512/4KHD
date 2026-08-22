@@ -21,12 +21,13 @@ enum MissKonFavoritesBridge {
 
     private nonisolated static func toMissKonItem(_ record: FavoriteRecord) -> MissKonItem? {
         guard let detailURL = URL(string: record.detailURL),
-              isAllowedHost(detailURL.host) else {
+              OnlineSourcePolicy.allows(detailURL, source: .missKon, resource: .html) else {
             return nil
         }
         let section = MissKonSection(rawValue: record.sourceID) ?? .latest
 
         let coverURL = record.coverURL.flatMap(URL.init(string:))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .missKon, resource: .media) ? $0 : nil }
         let pageURLs = pageURLs(detailURL: detailURL, pageCount: record.pageCount)
         return MissKonItem(
             id: record.id,
@@ -49,10 +50,5 @@ enum MissKonFavoritesBridge {
         return (1...count).map { pageNumber in
             pageNumber == 1 ? detailURL : URL(string: "\(baseWithSlash)\(pageNumber)/") ?? detailURL
         }
-    }
-
-    private nonisolated static func isAllowedHost(_ host: String?) -> Bool {
-        guard let host = host?.lowercased() else { return false }
-        return host == "misskon.com" || host.hasSuffix(".misskon.com")
     }
 }

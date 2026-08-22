@@ -76,7 +76,7 @@ final class FavoritesGridItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("FavoritesGridItemView")
 
     private let cardView = WorkspaceThumbnailGridCardView()
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var representedID: FavoriteRecord.ID?
     private var currentCoverURL: URL?
     var thumbnailMaxPixelSize: CGFloat = 512
@@ -124,7 +124,7 @@ final class FavoritesGridItemView: NSCollectionViewItem {
         if idChanged || urlChanged {
             loadCover(record: record, source: source, onAspectRatio: onAspectRatio)
         } else if let coverURL {
-            let ratio = GalleryCoverAspectRatio.aspectRatio(from: coverURL)
+            let ratio = RemoteImageURLAspectRatio.aspectRatio(from: coverURL)
             if let ratio {
                 onAspectRatio(CGFloat(ratio))
             }
@@ -192,7 +192,7 @@ final class FavoritesGridCollectionView: WorkspaceCollectionView {
     var doubleClickHandler: ((IndexPath) -> Void)?
 
     override func accessibilityLabel() -> String? {
-        "收藏 Grid"
+        "在线收藏图片网格"
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -409,8 +409,10 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: gridScrollView.contentView, queue: .main
         ) { [weak self] _ in
-            self?.updateItemSize()
-            self?.scheduleThumbnailPrefetch()
+            Task { @MainActor [weak self] in
+                self?.updateItemSize()
+                self?.scheduleThumbnailPrefetch()
+            }
         }
 
         // 与 MissKon/4KHD 网格完全一致的间距。
@@ -424,7 +426,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
             let record = self.records[indexPath.item]
             if let ratio = self.aspectRatiosByRecordID[record.id], ratio.isFinite, ratio > 0 { return ratio }
             if let coverURL = record.coverURL.flatMap(URL.init(string:)),
-               let ratio = GalleryCoverAspectRatio.aspectRatio(from: coverURL),
+               let ratio = RemoteImageURLAspectRatio.aspectRatio(from: coverURL),
                ratio.isFinite, ratio > 0
             {
                 return CGFloat(ratio)

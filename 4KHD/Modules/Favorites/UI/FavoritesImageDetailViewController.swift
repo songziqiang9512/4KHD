@@ -22,7 +22,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
     private let statusLabel = NSTextField(labelWithString: "")
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var isObserving = false
-    private var currentRecordID: FavoriteRecord.ID?
+    private var currentRecordIdentity: String?
     private var currentSlotID: FavoritesImageSlot.ID?
     private var currentImageURL: URL?
     private var isDetailReady = false
@@ -215,12 +215,12 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         let record = moduleStore.selectedRecord
 
         // 选中变化时重建 detail 状态。
-        if record?.id != detailStore.currentRecord?.id {
+        if record != detailStore.currentRecord {
             detailStore.prepare(record: record)
         }
 
         guard let record else {
-            currentRecordID = nil
+            currentRecordIdentity = nil
             currentSlotID = nil
             currentImageURL = nil
             detailFailed = false
@@ -299,8 +299,11 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         previousButton.isEnabled = selectedIndex > 0
         nextButton.isEnabled = selectedIndex < slots.count - 1
 
-        if currentRecordID != record.id {
-            currentRecordID = record.id
+        let recordIdentity = "\(source?.rawValue ?? "unknown")|\(record.id)|\(record.detailURL)"
+        if currentRecordIdentity != recordIdentity {
+            currentRecordIdentity = recordIdentity
+            currentSlotID = nil
+            currentImageURL = nil
             detailInteraction.saveMessage = ""
             isDetailReady = false
             RemoteImagePipeline.shared.stopDetailPrefetching()
@@ -328,8 +331,6 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
                 detailStore.ensurePageLoadedForSlot(at: selectedIndex)
             }
         }
-
-        detailStore.ensureNextDetailPageLoadedIfApproachingEnd(from: selectedIndex)
 
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
         updateSaveStatus()

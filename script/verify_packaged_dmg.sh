@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 /path/to/package.dmg AppName" >&2
+if [[ $# -lt 2 || $# -gt 4 ]]; then
+  echo "Usage: $0 /path/to/package.dmg AppName [expected-marketing-version] [expected-build-version]" >&2
   exit 2
 fi
 
 dmg_path="$1"
 app_name="$2"
+expected_marketing_version="${3:-}"
+expected_build_version="${4:-}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 expect_signed_release="${EXPECT_SIGNED_RELEASE:-0}"
 expect_notarized_dmg="${EXPECT_NOTARIZED_DMG:-0}"
 
@@ -72,7 +75,7 @@ copied_root="$(mktemp -d)"
 copied_app="$copied_root/$app_name.app"
 ditto "$app_bundle" "$copied_app"
 
-codesign --verify --strict --deep --verbose=4 "$copied_app"
+"$script_dir/verify_release_app.sh" "$copied_app" "$expected_marketing_version" "$expected_build_version"
 
 if [[ "$expect_notarized_dmg" == "1" ]]; then
   xcrun stapler validate "$copied_app"

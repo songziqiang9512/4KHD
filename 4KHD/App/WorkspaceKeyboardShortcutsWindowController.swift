@@ -59,7 +59,7 @@ private final class WorkspaceKeyboardShortcutsViewController: NSViewController {
             title: "显示",
             shortcuts: [
                 Shortcut(title: "切换工具栏", keys: "⌘T"),
-                Shortcut(title: "实际大小", keys: "⌘0"),
+                Shortcut(title: "适合窗口", keys: "⌘0"),
                 Shortcut(title: "增加网格列数", keys: "⌘-"),
                 Shortcut(title: "减少网格列数", keys: "⌘="),
                 Shortcut(title: "切换详情区", keys: "⌘\\"),

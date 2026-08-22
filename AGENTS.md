@@ -78,6 +78,8 @@
 | `DetailNavigationButton` | `Shared/UI/Detail/` | 详情区导航按钮（圆形毛玻璃） |
 | `RemoteImagePipeline` | `Shared/Services/` | Nuke 图片加载管线（含 thumbnailPrefetcher + detailPrefetcher 分离） |
 | `DetailPageImageCache` | `Shared/Services/` | 详情页图片 URL 缓存（7 天过期，500/800 容量限制） |
+| `OnlineSourcePolicy` | `Shared/Services/` | 在线源 HTTPS、host allowlist、重定向与媒体 URL 统一门禁 |
+| `RemoteImageURLAspectRatio` | `Shared/Services/` | 从已知图片 URL 参数提取通用宽高比 |
 | `SharingPresenter` | `Shared/Platform/` | 系统分享面板弹出 |
 | `WorkspaceKeyboardHandler` | `Shared/Platform/` | 键盘事件分发 |
 | `WorkspaceCoalescingQueue` | `Shared/Platform/` | 合并高频刷新 |
@@ -101,8 +103,8 @@
 
 - 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven，rawValue 作路由 itemID）
 - 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整
-- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动：Gallery 记录走 `DetailPageHTMLResolver`、MissKon 记录走 `MissKonDetailResolver` 渐进解析，Wallhaven 记录单图（封面）
-- **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图加载必须按来源设置 `imageRequestConfigurator`（各模块防盗链 Referer）
+- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven 的具体类型
+- **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图的防盗链请求配置从对应 `FavoriteSourceAdapter` 获取
 - 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
 - Gallery/MissKon 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
 
@@ -114,6 +116,7 @@
 - **失败页处理**：失败页占位 slot 自动移除；全部失败显示"解析失败"重试按钮
 - **分页阈值**：fallback 猜测使用 `articleCount > 12`（top30 等无显式分页标签）
 - **缓存修复**：`restoreSectionCache` 在 `cachedNextPageURLs[section] == nil` 时自动触发刷新
+- **业务缓存归属**：MediaFire 等 MissKon 专属详情 metadata 只存入 `MissKonDetailMetadataCache`，不得写回 Shared 的 `DetailPageImageCache` schema
 - **详情区封面优先**：打开详情时查 Nuke 内存缓存（4096px → 512px 回退），命中直接显示不闪烁
 
 ### Wallhaven 模块
@@ -145,6 +148,7 @@
 ### 全局约束
 
 - 修改 Shell 集成任何模块时，先搜索 `case .模块名` 覆盖所有 switch
+- 工具栏展示能力统一声明在 `WorkspaceModuleDescriptor.presentation`；新增模块先补 descriptor profile，不要在 `WorkspaceToolbarHost` 追加 moduleID 条件链
 - 修改任何在线模块时，以 `4KHDGallery` 的状态流和 UI 行为为参考
 - 在线模块异步结果必须按请求时的 section/query 回写，不能在 `await` 后直接读当前 section 写状态
 - 收藏桥和详情图片解析必须使用 exact/subdomain allowlist，不要用 `host.contains(...)`

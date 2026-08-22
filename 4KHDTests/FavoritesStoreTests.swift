@@ -3,6 +3,29 @@ import XCTest
 
 final class FavoritesStoreTests: XCTestCase {
     @MainActor
+    func testConcurrentTogglesAreSerializedWithoutLostUpdates() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileURL = root.appendingPathComponent("favorites.json")
+        let backupURL = root.appendingPathComponent("favorites.json.bak")
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "4KHDTests-\(UUID().uuidString)"))
+        let store = FavoritesStore(fileURL: fileURL, defaults: defaults)
+        await store.waitUntilLoaded()
+
+        async let first = store.toggle(Self.record)
+        async let second = store.toggle(Self.secondRecord)
+        let results = try await (first, second)
+
+        XCTAssertTrue(results.0)
+        XCTAssertTrue(results.1)
+        XCTAssertEqual(Set(store.favorites.map(\.detailURL)), [Self.record.detailURL, Self.secondRecord.detailURL])
+        let persisted = try JSONDecoder().decode([FavoriteRecord].self, from: Data(contentsOf: fileURL))
+        XCTAssertEqual(Set(persisted.map(\.detailURL)), [Self.record.detailURL, Self.secondRecord.detailURL])
+        XCTAssertNoThrow(try JSONDecoder().decode([FavoriteRecord].self, from: Data(contentsOf: backupURL)))
+    }
+
+    @MainActor
     func testTogglePersistsBeforePublishingState() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
@@ -104,25 +127,7 @@ final class FavoritesStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testLateFavoritesCallbackRegistrationRefreshesLoadedStore() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let fileURL = root.appendingPathComponent("favorites.json")
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try JSONEncoder().encode([Self.record]).write(to: fileURL)
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "4KHDTests-\(UUID().uuidString)"))
-        let store = FavoritesStore(fileURL: fileURL, defaults: defaults)
-        await store.waitUntilLoaded()
-
-        var callbackCount = 0
-        store.onFavoritesChanged = { callbackCount += 1 }
-
-        XCTAssertEqual(callbackCount, 1)
-    }
-
-    @MainActor
-    func testRemoveAllFavoritesPersistsEmptySnapshotAndPublishesChange() async throws {
+    func testRemoveAllFavoritesPersistsEmptySnapshot() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -132,14 +137,10 @@ final class FavoritesStoreTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "4KHDTests-\(UUID().uuidString)"))
         let store = FavoritesStore(fileURL: fileURL, defaults: defaults)
         await store.waitUntilLoaded()
-        var callbackCount = 0
-        store.onFavoritesChanged = { callbackCount += 1 }
-
         try await store.removeAllFavorites()
 
         XCTAssertTrue(store.favorites.isEmpty)
         XCTAssertEqual(try JSONDecoder().decode([FavoriteRecord].self, from: Data(contentsOf: fileURL)), [])
-        XCTAssertEqual(callbackCount, 2)
     }
 
     @MainActor
@@ -198,6 +199,18 @@ final class FavoritesStoreTests: XCTestCase {
         detailURL: "https://www.4khd.com/content/sample.html",
         coverURL: nil,
         imageCount: 1,
+        pageCount: 1
+    )
+
+    private static let secondRecord = FavoriteRecord(
+        id: "sample-2",
+        sourceID: "misskon",
+        title: "Sample 2",
+        rawTitle: "Sample 2",
+        subtitle: "Test",
+        detailURL: "https://misskon.com/content/sample-2/",
+        coverURL: nil,
+        imageCount: 2,
         pageCount: 1
     )
 }

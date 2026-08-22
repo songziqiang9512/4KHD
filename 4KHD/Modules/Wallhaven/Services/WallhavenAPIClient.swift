@@ -72,40 +72,6 @@ struct WallhavenAPIClient {
         return wallpaper
     }
 
-    func settings(apiKey: String) async throws -> WallhavenSettings {
-        let url = baseURL.appendingPathComponent("settings")
-        let response: SettingsResponse = try await request(url: url, apiKey: apiKey)
-        return response.session
-    }
-
-    func collections(apiKey: String) async throws -> [WallhavenCollection] {
-        let url = baseURL.appendingPathComponent("collections")
-        let response: CollectionsResponse = try await request(url: url, apiKey: apiKey)
-        return response.items
-    }
-
-    func collectionWallpapers(
-        username: String,
-        collectionID: Int,
-        purity: WallhavenPurity,
-        page: Int,
-        apiKey: String?
-    ) async throws -> WallhavenPage {
-        var components = URLComponents(
-            url: baseURL
-                .appendingPathComponent("collections")
-                .appendingPathComponent(username)
-                .appendingPathComponent("\(collectionID)"),
-            resolvingAgainstBaseURL: false
-        )
-        components?.queryItems = [
-            URLQueryItem(name: "purity", value: purity.apiValue),
-            URLQueryItem(name: "page", value: "\(page)")
-        ]
-        guard let url = components?.url else { throw WallhavenAPIError.invalidURL }
-        return try await requestPage(url: url, apiKey: apiKey)
-    }
-
     private func requestPage(url: URL, apiKey: String?) async throws -> WallhavenPage {
         let response: SearchResponse = try await request(url: url, apiKey: apiKey)
         return WallhavenPage(
@@ -123,8 +89,9 @@ struct WallhavenAPIClient {
             if attempt > 0 {
                 try await Task.sleep(nanoseconds: Self.retryDelay)
             }
-            let urlRequest = WallhavenRequestFactory.makeAPIRequest(url: url, apiKey: apiKey)
+            let urlRequest = try WallhavenRequestFactory.makeAPIRequest(url: url, apiKey: apiKey)
             let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            try OnlineSourcePolicy.validate(response, source: .wallhaven, resource: .api)
             if let httpResponse = response as? HTTPURLResponse {
                 switch httpResponse.statusCode {
                 case 200..<300:
@@ -155,14 +122,6 @@ private struct SearchResponse: Decodable {
 
 private struct DetailResponse: Decodable {
     let data: WallhavenWallpaperDTO
-}
-
-private struct SettingsResponse: Decodable {
-    let data: WallhavenSettingsDTO
-}
-
-private struct CollectionsResponse: Decodable {
-    let data: [WallhavenCollectionDTO]
 }
 
 private struct WallhavenMetaDTO: Decodable {
@@ -238,9 +197,18 @@ private struct WallhavenWallpaperDTO: Decodable {
 
     var wallpaper: Wallpaper? {
         guard let id,
-              let sourcePageUrl = url.flatMap(URL.init(string:)) else {
+              let sourcePageUrl = url.flatMap(URL.init(string:)),
+              OnlineSourcePolicy.allows(sourcePageUrl, source: .wallhaven, resource: .html) else {
             return nil
         }
+        // `source` is publisher-provided metadata and is never fetched automatically.
+        let sourceURL = source.flatMap(URL.init(string:))
+        let thumbnailURL = thumbs?.small.flatMap(URL.init(string:))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .wallhaven, resource: .media) ? $0 : nil }
+        let previewURL = (thumbs?.large.flatMap(URL.init(string:)) ?? thumbs?.original.flatMap(URL.init(string:)))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .wallhaven, resource: .media) ? $0 : nil }
+        let fullImageURL = path.flatMap(URL.init(string:))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .wallhaven, resource: .media) ? $0 : nil }
         let width = dimensionX
         let height = dimensionY
         let resolutionText: String
@@ -256,10 +224,10 @@ private struct WallhavenWallpaperDTO: Decodable {
             displayName: "Wallhaven \(id)",
             source: .wallhaven,
             sourcePageUrl: sourcePageUrl,
-            sourceUrl: source.flatMap(URL.init(string:)),
-            thumbnailUrl: thumbs?.small.flatMap(URL.init(string:)),
-            previewUrl: thumbs?.large.flatMap(URL.init(string:)) ?? thumbs?.original.flatMap(URL.init(string:)),
-            fullImageUrl: path.flatMap(URL.init(string:)),
+            sourceUrl: sourceURL,
+            thumbnailUrl: thumbnailURL,
+            previewUrl: previewURL,
+            fullImageUrl: fullImageURL,
             width: width,
             height: height,
             resolutionText: resolutionText,
@@ -274,87 +242,6 @@ private struct WallhavenWallpaperDTO: Decodable {
             favorites: favorites,
             uploader: uploader?.username
         )
-    }
-}
-
-private struct WallhavenSettingsDTO: Decodable {
-    let thumbSize: String?
-    let perPage: String?
-    let purity: [String]?
-    let categories: [String]?
-    let resolutions: [String]?
-    let aspectRatios: [String]?
-    let toplistRange: String?
-    let tagBlacklist: [String]?
-    let userBlacklist: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case thumbSize = "thumb_size"
-        case perPage = "per_page"
-        case purity
-        case categories
-        case resolutions
-        case aspectRatios = "aspect_ratios"
-        case toplistRange = "toplist_range"
-        case tagBlacklist = "tag_blacklist"
-        case userBlacklist = "user_blacklist"
-    }
-}
-
-private struct WallhavenCollectionDTO: Decodable {
-    let id: Int?
-    let label: String?
-    let views: Int?
-    let isPublic: Int?
-    let count: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case label
-        case views
-        case isPublic = "public"
-        case count
-    }
-}
-
-private extension WallhavenSettingsDTO {
-    var settings: WallhavenSettings {
-        WallhavenSettings(
-            thumbSize: thumbSize,
-            perPage: perPage,
-            purity: purity ?? [],
-            categories: categories ?? [],
-            resolutions: resolutions ?? [],
-            aspectRatios: aspectRatios ?? [],
-            toplistRange: toplistRange,
-            tagBlacklist: tagBlacklist ?? [],
-            userBlacklist: userBlacklist ?? []
-        )
-    }
-}
-
-private extension WallhavenCollectionDTO {
-    var collection: WallhavenCollection? {
-        guard let id else { return nil }
-        return WallhavenCollection(
-            id: id,
-            label: label?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Collection \(id)",
-            views: views,
-            isPublic: isPublic == 1,
-            count: count
-        )
-    }
-}
-
-private extension SettingsResponse {
-    var session: WallhavenSettings {
-        data.settings
-    }
-}
-
-private extension CollectionsResponse {
-    var items: [WallhavenCollection] {
-        data.compactMap(\.collection)
     }
 }
 

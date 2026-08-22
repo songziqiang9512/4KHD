@@ -1,7 +1,8 @@
 import Foundation
 
 enum GalleryRequestFactory {
-    nonisolated static func makeHTMLRequest(url: URL, cachePolicy: URLRequest.CachePolicy = .returnCacheDataElseLoad) -> URLRequest {
+    nonisolated static func makeHTMLRequest(url: URL, cachePolicy: URLRequest.CachePolicy = .returnCacheDataElseLoad) throws -> URLRequest {
+        try OnlineSourcePolicy.validate(url, source: .gallery, resource: .html)
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.cachePolicy = cachePolicy
@@ -11,6 +12,11 @@ enum GalleryRequestFactory {
     }
 
     nonisolated static func configureImageRequest(_ request: inout URLRequest) {
+        guard let url = request.url,
+              OnlineSourcePolicy.allows(url, source: .gallery, resource: .media) else {
+            request.url = nil
+            return
+        }
         configureCommonHeaders(&request)
         request.setValue("image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
     }

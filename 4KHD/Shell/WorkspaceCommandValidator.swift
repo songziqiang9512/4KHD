@@ -46,10 +46,10 @@ final class WorkspaceCommandValidator {
             return canAdjustLocalGridColumns(-1, moduleID: state.currentModuleID)
         case #selector(WorkspaceSplitViewController.selectLocalSortFieldFromMenu(_:)):
             updateLocalSortFieldValidationItem(item, moduleID: state.currentModuleID)
-            return state.currentModuleID == .localLibrary
+            return presentation(for: state.currentModuleID).showsLocalSort
         case #selector(WorkspaceSplitViewController.selectLocalSortDirectionFromMenu(_:)):
             updateLocalSortDirectionValidationItem(item, moduleID: state.currentModuleID)
-            return state.currentModuleID == .localLibrary
+            return presentation(for: state.currentModuleID).showsLocalSort
         case #selector(WorkspaceSplitViewController.openCurrentReference(_:)):
             return state.currentReference != nil
         case #selector(WorkspaceSplitViewController.showCurrentInspector(_:)):
@@ -91,7 +91,12 @@ final class WorkspaceCommandValidator {
 
     private func canRefreshCurrentModule(_ moduleID: WorkspaceModuleID) -> Bool {
         let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
-        return !fields.isRefreshing && (moduleID != .localLibrary || fields.hasSelection)
+        let profile = presentation(for: moduleID)
+        return !fields.isRefreshing && (!profile.refreshRequiresSelection || fields.hasSelection)
+    }
+
+    private func presentation(for moduleID: WorkspaceModuleID) -> WorkspaceModulePresentationProfile {
+        appContext.moduleRegistry.descriptor(for: moduleID)?.presentation ?? .standard
     }
 
     private func canShareCurrentModule(_ moduleID: WorkspaceModuleID) -> Bool {

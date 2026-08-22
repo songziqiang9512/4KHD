@@ -52,6 +52,7 @@ final class OnlineParserRegressionTests: XCTestCase {
     func testGalleryLatestPaginationUsesRealPageLinkWhenPresent() throws {
         let pageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/"))
         let html = #"""
+        <link rel="next" href="https://www.4khd.com/page/2">
         <li class="wp-block-post"><a href="https://www.4khd.com/content/test.html">Test</a></li>
         <span class="page-numbers current">1</span>
         <a class="page-numbers" href="https://www.4khd.com/?query-3-page=2">2</a>
@@ -80,6 +81,7 @@ final class OnlineParserRegressionTests: XCTestCase {
     func testGalleryLatestPaginationFallsBackToIncrementWithoutPageLinks() throws {
         let pageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/"))
         let html = #"""
+        <link rel="next" href="https://www.4khd.com/page/4">
         <li class="wp-block-post"><a href="https://www.4khd.com/content/test.html">Test</a></li>
         <span class="page-numbers current">3</span>
         """#

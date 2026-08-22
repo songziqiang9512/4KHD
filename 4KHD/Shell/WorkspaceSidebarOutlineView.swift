@@ -17,7 +17,7 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
     }
 
     override func accessibilityLabel() -> String? {
-        "Workspace Sidebar"
+        "工作区侧边栏"
     }
 
     override func viewWillStartLiveResize() {

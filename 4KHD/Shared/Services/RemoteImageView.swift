@@ -46,6 +46,62 @@ enum OnlineCacheLimit: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
+final class RemoteImageLoadTask {
+    let id = UUID()
+
+    private var activeTask: ImageTask?
+    private var retryWorkItem: DispatchWorkItem?
+    private var isFinished = false
+    private let onCancel: @MainActor (UUID) -> Void
+
+    init(onCancel: @escaping @MainActor (UUID) -> Void = { _ in }) {
+        self.onCancel = onCancel
+    }
+
+    var isCancelled: Bool { isFinished }
+
+    func install(_ task: ImageTask) {
+        guard !isFinished else {
+            task.cancel()
+            return
+        }
+        activeTask = task
+    }
+
+    func scheduleRetry(after delay: TimeInterval, operation: @escaping @MainActor () -> Void) {
+        guard !isFinished else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isFinished else { return }
+                self.retryWorkItem = nil
+                operation()
+            }
+        }
+        retryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    func cancel() {
+        guard !isFinished else { return }
+        isFinished = true
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        activeTask?.cancel()
+        activeTask = nil
+        onCancel(id)
+    }
+
+    fileprivate func finish() {
+        guard !isFinished else { return }
+        isFinished = true
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        activeTask = nil
+    }
+}
+
+@MainActor
 final class RemoteImagePipeline {
     static let shared = RemoteImagePipeline()
 
@@ -55,6 +111,9 @@ final class RemoteImagePipeline {
     private let urlCache: URLCache
     private let dataCache: DataCache?
     private var inFlightTasks = Set<ImageTask>()
+    private var loadTasks: [UUID: RemoteImageLoadTask] = [:]
+    private var cacheGeneration = 0
+    private var isClearingCaches = false
     /// 失败 URL 短期负缓存：坏图链接在快速滚动时每次滚入都会重新请求，
     /// 记录 60s 内直接跳过，避免反复占用并发配额。只作用于缩略图级
     /// （≤ .normal）请求，详情图（.high/.veryHigh）的显式重试不受影响。
@@ -65,7 +124,9 @@ final class RemoteImagePipeline {
         let cacheLimit = OnlineCacheLimit.current.byteLimit
         let urlCache = Self.makeURLCache()
         var configuration = ImagePipeline.Configuration()
-        configuration.dataLoader = DataLoader(configuration: Self.urlSessionConfiguration(urlCache: urlCache))
+        let dataLoader = DataLoader(configuration: Self.urlSessionConfiguration(urlCache: urlCache))
+        dataLoader.delegate = OnlineRedirectGuard.shared
+        configuration.dataLoader = dataLoader
         configuration.imageCache = ImageCache(costLimit: 288 * 1024 * 1024, countLimit: 700)
         if let dataCache = try? DataCache(name: AppStorageFolders.imageCacheFolderName) {
             dataCache.sizeLimit = cacheLimit
@@ -109,18 +170,28 @@ final class RemoteImagePipeline {
         }
     }
 
-    func clearAllCaches() {
+    func clearAllCaches() async {
+        guard !isClearingCaches else { return }
+        isClearingCaches = true
+        cacheGeneration += 1
         detailPrefetcher.stopPrefetching()
         thumbnailPrefetcher.stopPrefetching()
+        let activeLoadTasks = Array(loadTasks.values)
+        activeLoadTasks.forEach { $0.cancel() }
+        loadTasks.removeAll()
         inFlightTasks.forEach { $0.cancel() }
         inFlightTasks.removeAll()
         pipeline.cache.removeAll()
         failedURLs.removeAll()
         urlCache.removeAllCachedResponses()
-        // DataCache 磁盘层的 removeAll 是同步遍历删除,放后台避免卡主线程。
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.dataCache?.removeAll()
+        if let dataCache {
+            // DataCache 的删除是同步磁盘遍历；等待完成后再向设置面板报告成功，
+            // 避免旧任务或随后刷新的请求与磁盘删除交错。
+            await Task.detached(priority: .utility) {
+                dataCache.removeAll()
+            }.value
         }
+        isClearingCaches = false
     }
 
     func request(
@@ -154,32 +225,61 @@ final class RemoteImagePipeline {
     }
 
     @discardableResult
-    func loadImage(with request: ImageRequest, completion: @escaping (NSImage?) -> Void) -> ImageTask? {
+    func loadImage(with request: ImageRequest, completion: @escaping (NSImage?) -> Void) -> RemoteImageLoadTask? {
+        guard !isClearingCaches else {
+            completion(nil)
+            return nil
+        }
         if isNegativeCacheEligible(request), let url = request.url, let failedAt = failedURLs[url],
            Date().timeIntervalSince(failedAt) < negativeCacheWindow {
             completion(nil)
             return nil
         }
+        let requestGeneration = cacheGeneration
+        let loadTask = RemoteImageLoadTask { [weak self] id in
+            self?.loadTasks[id] = nil
+        }
+        loadTasks[loadTask.id] = loadTask
         let task = pipeline.loadImage(with: request) { [weak self] result in
+            guard let self else {
+                loadTask.cancel()
+                return
+            }
+            guard !loadTask.isCancelled, self.cacheGeneration == requestGeneration else {
+                self.finish(loadTask)
+                return
+            }
             switch result {
             case .success(let response):
-                completion(response.image)
-                self?.pruneFinishedTasks()
-            case .failure(let error):
-                if let url = request.url, self?.isNegativeCacheEligible(request) == true {
-                    self?.recordFailure(for: url)
+                if let url = request.url {
+                    self.failedURLs[url] = nil
                 }
-                if self?.isRetriableLoadingError(error) == true {
+                completion(response.image)
+                self.finish(loadTask)
+            case .failure(let error):
+                if self.isRetriableLoadingError(error) {
                     // 瞬时网络错误自动重试一次，避免一次抖动让缩略图/详情图永久空白。
-                    self?.retryLoadImageOnce(with: request, completion: completion)
+                    loadTask.scheduleRetry(after: 1) { [weak self, weak loadTask] in
+                        guard let self, let loadTask else { return }
+                        self.retryLoadImageOnce(
+                            with: request,
+                            generation: requestGeneration,
+                            loadTask: loadTask,
+                            completion: completion
+                        )
+                    }
                 } else {
+                    if let url = request.url, self.isNegativeCacheEligible(request) {
+                        self.recordFailure(for: url)
+                    }
                     completion(nil)
-                    self?.pruneFinishedTasks()
+                    self.finish(loadTask)
                 }
             }
         }
+        loadTask.install(task)
         track(task)
-        return task
+        return loadTask
     }
 
     /// 负缓存仅适用于缩略图/网格级请求（≤ .normal）：滚动复用场景下坏链接
@@ -200,27 +300,41 @@ final class RemoteImagePipeline {
         }
     }
 
-    private func retryLoadImageOnce(with request: ImageRequest, completion: @escaping (NSImage?) -> Void) {
-        // 短退避 1s 再重试：瞬时网络抖动时避免所有在途请求同时失败、同时重试的请求风暴。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+    private func retryLoadImageOnce(
+        with request: ImageRequest,
+        generation: Int,
+        loadTask: RemoteImageLoadTask,
+        completion: @escaping (NSImage?) -> Void
+    ) {
+        guard !loadTask.isCancelled, cacheGeneration == generation, !isClearingCaches else {
+            finish(loadTask)
+            return
+        }
+        let task = pipeline.loadImage(with: request) { [weak self] result in
             guard let self else {
-                completion(nil)
+                loadTask.cancel()
                 return
             }
-            let task = self.pipeline.loadImage(with: request) { [weak self] result in
-                switch result {
-                case .success(let response):
-                    completion(response.image)
-                case .failure:
-                    if let url = request.url, self?.isNegativeCacheEligible(request) == true {
-                        self?.recordFailure(for: url)
-                    }
-                    completion(nil)
-                }
-                self?.pruneFinishedTasks()
+            guard !loadTask.isCancelled, self.cacheGeneration == generation else {
+                self.finish(loadTask)
+                return
             }
-            self.track(task)
+            switch result {
+            case .success(let response):
+                if let url = request.url {
+                    self.failedURLs[url] = nil
+                }
+                completion(response.image)
+            case .failure:
+                if let url = request.url, self.isNegativeCacheEligible(request) {
+                    self.recordFailure(for: url)
+                }
+                completion(nil)
+            }
+            self.finish(loadTask)
         }
+        loadTask.install(task)
+        track(task)
     }
 
     private func isRetriableLoadingError(_ error: ImagePipeline.Error) -> Bool {
@@ -277,6 +391,12 @@ final class RemoteImagePipeline {
         inFlightTasks = inFlightTasks.filter { $0.state == .running }
     }
 
+    private func finish(_ loadTask: RemoteImageLoadTask) {
+        loadTask.finish()
+        loadTasks[loadTask.id] = nil
+        pruneFinishedTasks()
+    }
+
     private static func makeURLCache() -> URLCache {
         URLCache(
             memoryCapacity: 32 * 1024 * 1024,
@@ -303,13 +423,28 @@ actor LocalImageCache {
 
     static let shared = LocalImageCache()
 
-    private static let diskCacheDirectory: URL = {
+    private static let legacyDiskCacheDirectory: URL = {
         let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let directory = supportDirectory
+        return supportDirectory
             .appendingPathComponent("4KHD", isDirectory: true)
             .appendingPathComponent("LocalImageThumbnails", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }()
+
+    private static let diskCacheDirectory: URL = {
+        let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let directory = cacheDirectory
+            .appendingPathComponent("4KHD", isDirectory: true)
+            .appendingPathComponent("LocalImageThumbnails", isDirectory: true)
+        let fileManager = FileManager.default
+        let legacyDirectory = legacyDiskCacheDirectory
+        if !fileManager.fileExists(atPath: directory.path),
+           fileManager.fileExists(atPath: legacyDirectory.path) {
+            try? fileManager.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fileManager.moveItem(at: legacyDirectory, to: directory)
+        }
+        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }()
 
@@ -335,11 +470,23 @@ actor LocalImageCache {
     private let maxFailedSignatureCount = 4000
     private var loadsSinceDiskPrune = 0
     private var didScheduleInitialDiskPrune = false
+    private var diskPruneTask: Task<Void, Never>?
+    private var diskPruneID: UUID?
+    private var lastDiskPruneAt = Date.distantPast
+    private let diskPruneMinimumInterval: TimeInterval = 5 * 60
     private var cacheGeneration = 0
     private var isClearing = false
     private var clearWaiters: [CheckedContinuation<Void, Never>] = []
 
     private init() {}
+
+#if DEBUG
+    nonisolated static var diskCacheDirectoryForTesting: URL { diskCacheDirectory }
+
+    func clearMemoryOnlyForTesting() {
+        Self.cache.removeAllObjects()
+    }
+#endif
 
     nonisolated func cachedImage(
         for url: URL,
@@ -418,17 +565,25 @@ actor LocalImageCache {
         isClearing = true
         cacheGeneration += 1
         let activeTasks = inFlight.values.map(\.task)
+        let activePruneTask = diskPruneTask
+        activePruneTask?.cancel()
         for task in activeTasks {
             task.cancel()
         }
         for task in activeTasks {
             _ = await task.value
         }
+        if let activePruneTask {
+            _ = await activePruneTask.value
+        }
         inFlight.removeAll()
+        diskPruneTask = nil
+        diskPruneID = nil
         failedSignatures.removeAll()
         fileVersionCache.removeAll()
         loadsSinceDiskPrune = 0
         didScheduleInitialDiskPrune = false
+        lastDiskPruneAt = .distantPast
         Self.cache.removeAllObjects()
 
         do {
@@ -436,6 +591,9 @@ actor LocalImageCache {
                 let fileManager = FileManager.default
                 if fileManager.fileExists(atPath: Self.diskCacheDirectory.path) {
                     try fileManager.removeItem(at: Self.diskCacheDirectory)
+                }
+                if fileManager.fileExists(atPath: Self.legacyDiskCacheDirectory.path) {
+                    try fileManager.removeItem(at: Self.legacyDiskCacheDirectory)
                 }
                 try fileManager.createDirectory(
                     at: Self.diskCacheDirectory,
@@ -450,15 +608,33 @@ actor LocalImageCache {
     }
 
     private func scheduleDiskPruneIfNeeded() {
-        let shouldPrune = !didScheduleInitialDiskPrune || loadsSinceDiskPrune >= 100
+        let isInitialPrune = !didScheduleInitialDiskPrune
+        let shouldPrune = isInitialPrune || loadsSinceDiskPrune >= 100
         guard shouldPrune else { return }
+        guard diskPruneTask == nil else { return }
+        let now = Date()
+        guard isInitialPrune || now.timeIntervalSince(lastDiskPruneAt) >= diskPruneMinimumInterval else { return }
         didScheduleInitialDiskPrune = true
         loadsSinceDiskPrune = 0
+        lastDiskPruneAt = now
         // 与文件版本缓存同周期失效：文件可能被导入/覆盖，版本缓存不能无限期存活。
         fileVersionCache.removeAll()
-        Task.detached(priority: .background) {
+        let task = Task.detached(priority: .background) {
             Self.pruneDiskCache()
         }
+        let pruneID = UUID()
+        diskPruneTask = task
+        diskPruneID = pruneID
+        Task { [weak self] in
+            _ = await task.value
+            await self?.finishDiskPrune(id: pruneID)
+        }
+    }
+
+    private func finishDiskPrune(id: UUID) {
+        guard diskPruneID == id else { return }
+        diskPruneTask = nil
+        diskPruneID = nil
     }
 
     private func finishClearing() {
@@ -546,7 +722,15 @@ actor LocalImageCache {
             [kCGImageDestinationLossyCompressionQuality: 0.86] as CFDictionary
         )
         guard CGImageDestinationFinalize(destination) else { return }
-        try? FileManager.default.replaceItemAt(url, withItemAt: temporaryURL)
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: temporaryURL)
+            } else {
+                try FileManager.default.moveItem(at: temporaryURL, to: url)
+            }
+        } catch {
+            return
+        }
     }
 
     private nonisolated static func pruneDiskCache() {
@@ -581,6 +765,7 @@ actor LocalImageCache {
         var retainedBytes: Int64 = 0
         var retainedCount = 0
         for entry in entries {
+            guard !Task.isCancelled else { return }
             if retainedCount >= maxFileCount || retainedBytes + entry.size > maxBytes {
                 try? fileManager.removeItem(at: entry.url)
             } else {

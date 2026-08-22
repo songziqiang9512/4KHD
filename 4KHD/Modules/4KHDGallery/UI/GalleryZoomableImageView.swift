@@ -9,7 +9,7 @@ final class GalleryZoomableImageView: WorkspaceZoomableImageView {
     private let placeholderLabel = NSTextField(labelWithString: "解析中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
     private let openOriginalButton = NSButton(title: "打开原网页", target: nil, action: nil)
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var loadedURL: URL?
     private var retryAction: (() -> Void)?
     private var openOriginalAction: (() -> Void)?

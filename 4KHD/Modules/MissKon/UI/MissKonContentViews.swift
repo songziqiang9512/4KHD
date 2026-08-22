@@ -185,7 +185,7 @@ final class MissKonGridItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("MissKonGridItemView")
 
     private let cardView = WorkspaceThumbnailGridCardView()
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var representedID: MissKonItem.ID?
     private var currentCoverURL: URL?
     var thumbnailMaxPixelSize: CGFloat = 512

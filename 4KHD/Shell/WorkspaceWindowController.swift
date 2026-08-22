@@ -24,7 +24,6 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         window.backgroundColor = .windowBackgroundColor
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .automatic
-        window.toolbarStyle = .unified
         super.init(window: window)
         window.delegate = self
         window.setFrameUsingName(windowAutosaveName, force: true)

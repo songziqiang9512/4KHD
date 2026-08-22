@@ -307,7 +307,7 @@ final class AlbumDownloadOrchestratorTests: XCTestCase {
             estimatedImageCount: 3,
             initialPageURLs: [page2],
             resolvePage: { pageURL in
-                await recorder.recordAttempt(for: pageURL)
+                _ = await recorder.recordAttempt(for: pageURL)
                 if pageURL == page1 {
                     throw URLError(.cannotParseResponse)
                 }

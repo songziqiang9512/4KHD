@@ -10,9 +10,10 @@ final class WorkspacePreferencesWindowController: NSWindowController {
             favoritesStore: appContext.favoritesStore,
             clearCaches: {
                 var failures: [String] = []
-                RemoteImagePipeline.shared.clearAllCaches()
+                await RemoteImagePipeline.shared.clearAllCaches()
                 do {
                     try await DetailPageImageCache.shared.clear()
+                    try await MissKonDetailMetadataCache.shared.clear()
                 } catch {
                     failures.append("详情页")
                 }

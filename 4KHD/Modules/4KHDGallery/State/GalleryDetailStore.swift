@@ -19,9 +19,13 @@ final class GalleryDetailStore {
     @ObservationIgnored private var resolvedPageURLs: [GalleryItem.ID: [URL]] = [:]
     @ObservationIgnored private var requestedDetailPageURLs: [GalleryItem.ID: Set<URL>] = [:]
     @ObservationIgnored private var detailPageTasks: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored private var failedPageURLs: Set<URL> = []
     @ObservationIgnored private var pendingSelectionIndex: Int?
     @ObservationIgnored private let prefetchDistance = 6
+    @ObservationIgnored private let pageResolver: (URL) async throws -> ResolvedImagePage
+
+    init(pageResolver: @escaping (URL) async throws -> ResolvedImagePage = DetailPageHTMLResolver.resolve) {
+        self.pageResolver = pageResolver
+    }
 
     // MARK: - 派生
 
@@ -43,7 +47,6 @@ final class GalleryDetailStore {
     /// 切换 / 重选当前图集时调用：重建 slot、cursor、清掉 in-flight 任务。
     func prepare(for item: GalleryItem?) {
         errorMessage = nil
-        failedPageURLs.removeAll()
         cancelOutstandingDetailPageTasks()
         currentItem = item
         pendingSelectionIndex = nil
@@ -98,6 +101,7 @@ final class GalleryDetailStore {
     }
 
     func cancelOutstandingDetailPageLoads() {
+        rollbackOutstandingDetailPageRequests()
         cancelOutstandingDetailPageTasks()
         prefetchPageURL = nil
     }
@@ -115,11 +119,6 @@ final class GalleryDetailStore {
         let pageURLs = pageURLs(for: item)
         guard cursor < pageURLs.count else { return false }
         let pageURL = pageURLs[cursor]
-        guard !failedPageURLs.contains(pageURL) else {
-            // Skip previously-failed pages; advance cursor and try next.
-            itemPageCursors[item.id] = cursor + 1
-            return ensureNextDetailPageLoaded(reason: reason)
-        }
         guard requestedDetailPageURLs[item.id, default: []].insert(pageURL).inserted else {
             // 已发过请求还没回，视为在路上。
             return true
@@ -238,14 +237,15 @@ final class GalleryDetailStore {
         guard detailPageTasks[key] == nil else { return }
         errorMessage = nil
         detailPageTasks[key] = Task { [weak self] in
+            guard let self else { return }
             do {
-                let page = try await DetailPageHTMLResolver.resolve(pageURL: pageURL)
+                let page = try await self.pageResolver(pageURL)
                 guard !Task.isCancelled else { return }
-                self?.registerResolvedPage(page)
+                self.registerResolvedPage(page)
             } catch {
                 guard !Task.isCancelled else { return }
-                self?.errorMessage = "解析失败，请检查网络连接"
-                self?.markDetailPageResolutionFailed(pageURL)
+                self.errorMessage = "解析失败，请检查网络连接"
+                self.markDetailPageResolutionFailed(pageURL)
             }
         }
     }
@@ -255,22 +255,31 @@ final class GalleryDetailStore {
         if prefetchPageURL == pageURL {
             prefetchPageURL = nil
         }
-        failedPageURLs.insert(pageURL)
         if let request = requestedDetailPageIndexByURL.removeValue(forKey: pageURL) {
             itemPageCursors[request.itemID] = min(itemPageCursors[request.itemID, default: request.cursor], request.cursor)
+            requestedDetailPageURLs[request.itemID]?.remove(pageURL)
         }
-        for itemID in requestedDetailPageURLs.keys {
-            requestedDetailPageURLs[itemID]?.remove(pageURL)
-        }
-        // Advance to next page instead of infinite retry; failed pages are skipped
-        // by the failedPageURLs guard.  Bypass the pending-selection relay: this
-        // page failed, nothing else will resume the chain.
-        ensureNextDetailPageLoaded(reason: .approachingLoadedEnd)
+        // 失败页保持在当前 cursor，等待用户再次导航/接近尾部时重试；不能在本次
+        // 详情生命周期内永久跳过，也不能自动跨过缺失页破坏图集顺序。
     }
 
     private func cancelOutstandingDetailPageTasks() {
         detailPageTasks.values.forEach { $0.cancel() }
         detailPageTasks.removeAll()
+    }
+
+    private func rollbackOutstandingDetailPageRequests() {
+        let activePageURLs = requestedDetailPageIndexByURL.keys.filter {
+            detailPageTasks[$0.absoluteString] != nil
+        }
+        for pageURL in activePageURLs {
+            guard let request = requestedDetailPageIndexByURL.removeValue(forKey: pageURL) else { continue }
+            itemPageCursors[request.itemID] = min(
+                itemPageCursors[request.itemID, default: request.cursor],
+                request.cursor
+            )
+            requestedDetailPageURLs[request.itemID]?.remove(pageURL)
+        }
     }
 
     private func pageURLs(for item: GalleryItem) -> [URL] {

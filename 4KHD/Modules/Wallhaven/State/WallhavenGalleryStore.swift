@@ -60,6 +60,7 @@ final class WallhavenGalleryStore {
 
     func select(_ wallpaper: Wallpaper) { feed.select(wallpaper) }
     func refreshFromNetwork() { feed.refreshFromNetwork() }
+    func retryLastFailure() { feed.retryLastFailure() }
     func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
     func loadMoreIfNeeded() { feed.loadMoreIfNeeded() }
     func setSearchText(_ text: String) { feed.setSearchText(text) }

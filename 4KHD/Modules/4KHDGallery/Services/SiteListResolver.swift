@@ -72,8 +72,9 @@ enum SiteListResolver {
     }
 
     private static func fetchHTMLFromNetwork(_ url: URL) async throws -> String {
-        let request = GalleryRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        let request = try GalleryRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         let (data, response) = try await URLSession.shared.data(for: request)
+        try OnlineSourcePolicy.validate(response, source: .gallery, resource: .html)
         if let httpResponse = response as? HTTPURLResponse,
            !(200..<300).contains(httpResponse.statusCode) {
             throw URLError(.badServerResponse)
@@ -125,13 +126,13 @@ enum SiteListResolver {
 
         if let explicitNext = firstMatch(explicitNextRegex, in: html)
             .flatMap(decodeHTML)
-            .flatMap({ URL(string: $0, relativeTo: baseURL)?.absoluteURL }) {
+            .flatMap({ OnlineSourcePolicy.resolvedURL($0, relativeTo: baseURL, source: .gallery, resource: .html) }) {
             return explicitNext
         }
 
         if let nextLink = firstMatch(nextLinkRegex, in: html)
             .flatMap(decodeHTML)
-            .flatMap({ URL(string: $0, relativeTo: baseURL)?.absoluteURL }) {
+            .flatMap({ OnlineSourcePolicy.resolvedURL($0, relativeTo: baseURL, source: .gallery, resource: .html) }) {
             return nextLink
         }
 
@@ -139,13 +140,25 @@ enum SiteListResolver {
     }
 
     private static func latestNextPageURL(in html: String) -> URL? {
+        let baseURL = URL(string: "https://www.4khd.com/")!
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
         let hasPageLinks = queryPageRegex.firstMatch(in: html, range: range) != nil
         if hasPageLinks {
-            // 页面带页码链接时以真实链接为准：当前页之后无链接即视为末页，分页链正常终止。
-            let baseURL = URL(string: "https://www.4khd.com/")!
+            // 首页同时带有 SEO 全站分页 `/page/2` 和“最新”Query Block
+            // 分页 `?query-3-page=2`。两套游标不可混用，否则全站分页会在第三次
+            // 请求返回重复项，导致 feed 误判到达末页。
             return queryPaginationNextPageURL(in: html, baseURL: baseURL)
         }
+
+        // 某些版本只输出 Query Block 的“下一页”按钮而没有数字页码。
+        // 只接受属于“最新”查询的游标，忽略 Yoast 生成的全站 rel=next。
+        if let nextLink = firstMatch(nextLinkRegex, in: html)
+            .flatMap(decodeHTML)
+            .flatMap({ OnlineSourcePolicy.resolvedURL($0, relativeTo: baseURL, source: .gallery, resource: .html) }),
+           isLatestQueryPageURL(nextLink) {
+            return nextLink
+        }
+
         // 无页码链接的旧版分页：保持原有 +1 递增行为。
         let currentPage = firstMatch(currentPageRegex, in: html)
             .flatMap { Int($0.replacingOccurrences(of: ",", with: "")) } ?? 1
@@ -155,6 +168,12 @@ enum SiteListResolver {
         components.path = "/"
         components.queryItems = [URLQueryItem(name: "query-3-page", value: "\(currentPage + 1)")]
         return components.url
+    }
+
+    private static func isLatestQueryPageURL(_ url: URL) -> Bool {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains { item in
+            item.name == "query-3-page" && item.value.flatMap(Int.init) != nil
+        } == true
     }
 
     private static func queryPaginationNextPageURL(in html: String, baseURL: URL) -> URL? {
@@ -168,7 +187,7 @@ enum SiteListResolver {
                   let pageNumber = Int(html[pageRange].replacingOccurrences(of: ",", with: "")),
                   pageNumber > currentPage,
                   let href = decodeHTML(String(html[hrefRange])),
-                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL else {
+                  let url = OnlineSourcePolicy.resolvedURL(href, relativeTo: baseURL, source: .gallery, resource: .html) else {
                 return nil
             }
             return (pageNumber, url)
@@ -178,14 +197,16 @@ enum SiteListResolver {
 
     private static func makeItem(from html: String, section: GallerySection) -> GalleryItem? {
         guard let detailURL = firstMatch(detailURLRegex, in: html)
-            .flatMap(URL.init(string:)) else {
+            .flatMap(URL.init(string:)),
+              OnlineSourcePolicy.allows(detailURL, source: .gallery, resource: .html) else {
             return nil
         }
         let coverURL = firstMatch(coverURLRegex, in: html)
             .flatMap(decodeHTML)
             .flatMap(URL.init(string:))
             .map(GalleryImageURLNormalizer.normalized)
-        let coverAspectRatio = coverAspectRatioFromHTML(html) ?? coverURL.flatMap(GalleryCoverAspectRatio.aspectRatio)
+            .flatMap { OnlineSourcePolicy.allows($0, source: .gallery, resource: .media) ? $0 : nil }
+        let coverAspectRatio = coverAspectRatioFromHTML(html) ?? coverURL.flatMap(RemoteImageURLAspectRatio.aspectRatio)
         let rawTitle = firstMatch(titleRegex, in: html)
             .map(stripTags)
             .flatMap(decodeHTML)?

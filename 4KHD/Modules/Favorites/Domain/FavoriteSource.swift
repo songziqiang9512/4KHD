@@ -24,21 +24,17 @@ enum FavoriteSource: String, CaseIterable {
         }
     }
 
-    /// 封面加载所需的请求头配置(Referer 等),与各模块自己的 RemoteImageView 一致。
+    /// 具体来源的请求配置由 App 组装层注册,Favorites 不直接依赖业务模块。
+    @MainActor
     var imageRequestConfigurator: ((inout URLRequest) -> Void)? {
-        switch self {
-        case .gallery: GalleryRequestFactory.configureImageRequest
-        case .missKon: MissKonRequestFactory.configureImageRequest
-        case .wallhaven: WallhavenRequestFactory.configureImageRequest
-        }
+        FavoriteSourceAdapterRegistry.shared.adapter(for: self)?.configureImageRequest
     }
 
     static func source(for record: FavoriteRecord) -> FavoriteSource? {
-        guard let url = URL(string: record.detailURL),
-              let host = url.host?.lowercased() else { return nil }
-        if host == "4khd.com" || host.hasSuffix(".4khd.com") { return .gallery }
-        if host == "misskon.com" || host.hasSuffix(".misskon.com") { return .missKon }
-        if host == "wallhaven.cc" || host == "whvn.cc" || host.hasSuffix(".wallhaven.cc") { return .wallhaven }
+        guard let url = URL(string: record.detailURL) else { return nil }
+        if OnlineSourcePolicy.allows(url, source: .gallery, resource: .html) { return .gallery }
+        if OnlineSourcePolicy.allows(url, source: .missKon, resource: .html) { return .missKon }
+        if OnlineSourcePolicy.allows(url, source: .wallhaven, resource: .html) { return .wallhaven }
         return nil
     }
 }

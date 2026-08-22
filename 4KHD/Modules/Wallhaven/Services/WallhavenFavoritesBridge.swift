@@ -25,10 +25,11 @@ enum WallhavenFavoritesBridge {
 
     private nonisolated static func toWallpaper(_ record: FavoriteRecord) -> Wallpaper? {
         guard let detailURL = URL(string: record.detailURL),
-              isAllowedHost(detailURL.host) else {
+              OnlineSourcePolicy.allows(detailURL, source: .wallhaven, resource: .html) else {
             return nil
         }
         let coverURL = record.coverURL.flatMap(URL.init(string:))
+            .flatMap { OnlineSourcePolicy.allows($0, source: .wallhaven, resource: .media) ? $0 : nil }
         // 收藏记录的 subtitle 第三段保存的是 purity.title（见 record(from:)），反查恢复真实纯度。
         let purityText = record.subtitle.components(separatedBy: " · ").last
         let purity = WallhavenPurity.allCases.first { $0.title == purityText } ?? .sfw
@@ -55,10 +56,5 @@ enum WallhavenFavoritesBridge {
             favorites: nil,
             uploader: nil
         )
-    }
-
-    private nonisolated static func isAllowedHost(_ host: String?) -> Bool {
-        guard let host = host?.lowercased() else { return false }
-        return host == "wallhaven.cc" || host == "whvn.cc" || host.hasSuffix(".wallhaven.cc")
     }
 }

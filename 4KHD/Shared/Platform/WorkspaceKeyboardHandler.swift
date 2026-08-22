@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 struct WorkspaceKeyboardContext {
     var toggleSidebar: (() -> Void)?
+    var resetZoom: (() -> Void)?
     var toggleDetailPane: (() -> Void)?
     var focusSidebar: (() -> Bool)?
     var focusContent: (() -> Bool)?
@@ -39,10 +40,11 @@ enum WorkspaceKeyboardHandler {
             }
         }
 
-        if event.modifierFlags.intersection([.command]) == [.command] {
+        let commandModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if commandModifiers == [.command] {
             switch event.charactersIgnoringModifiers {
             case "0":
-                context.toggleSidebar?()
+                context.resetZoom?()
                 return true
             case "\\":
                 context.toggleDetailPane?()

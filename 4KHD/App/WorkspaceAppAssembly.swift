@@ -3,6 +3,7 @@ import AppKit
 enum WorkspaceAppAssembly {
     @MainActor
     static func makeAppContext() -> WorkspaceAppContext {
+        configureFavoriteSourceAdapters()
         let favoritesStore = FavoritesStore()
         let favoritesModuleStore = FavoritesModuleStore(favoritesStore: favoritesStore)
         let favoritesPreferences = FavoritesContentPreferences()
@@ -97,6 +98,45 @@ enum WorkspaceAppAssembly {
     }
 
     @MainActor
+    private static func configureFavoriteSourceAdapters() {
+        FavoriteSourceAdapterRegistry.shared.replaceAdapters([
+            FavoriteSourceAdapter(
+                source: .gallery,
+                detailContent: { record in
+                    guard let item = GalleryFavoritesBridge.galleryItems(from: [record]).first else { return nil }
+                    return .paged(pageURLs: item.pageURLs, estimatedImageCount: item.imageCount)
+                },
+                resolvePage: { url in
+                    let page = try await DetailPageHTMLResolver.resolve(pageURL: url)
+                    return FavoriteResolvedImagePage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+                },
+                configureImageRequest: GalleryRequestFactory.configureImageRequest
+            ),
+            FavoriteSourceAdapter(
+                source: .missKon,
+                detailContent: { record in
+                    guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return nil }
+                    return .paged(pageURLs: item.pageURLs, estimatedImageCount: item.imageCount)
+                },
+                resolvePage: { url in
+                    let page = try await MissKonDetailResolver.resolve(pageURL: url)
+                    return FavoriteResolvedImagePage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+                },
+                configureImageRequest: MissKonRequestFactory.configureImageRequest
+            ),
+            FavoriteSourceAdapter(
+                source: .wallhaven,
+                detailContent: { record in
+                    guard let wallpaper = WallhavenFavoritesBridge.wallpapers(from: [record]).first else { return nil }
+                    return .singleImage(wallpaper.cardCoverUrl)
+                },
+                resolvePage: { _ in throw URLError(.unsupportedURL) },
+                configureImageRequest: WallhavenRequestFactory.configureImageRequest
+            ),
+        ])
+    }
+
+    @MainActor
     private static func makeModuleRegistry(
         fourKHDGalleryStore: FourKHDGalleryStore,
         galleryPreferences: GalleryContentPreferences,
@@ -122,6 +162,12 @@ enum WorkspaceAppAssembly {
                 WorkspaceModuleDescriptor(
                     id: .localLibrary,
                     displayName: "LocalLibrary",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: true, showsImportFolder: true,
+                        showsFavorite: false, showsOnlineSave: false, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, filmstripAvailability: .selection,
+                        refreshRequiresSelection: true, detailActions: .localFile
+                    ),
                     defaultRoute: {
                         WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
                     },
@@ -164,6 +210,12 @@ enum WorkspaceAppAssembly {
                 WorkspaceModuleDescriptor(
                     id: .fourKHDGallery,
                     displayName: "4KHDGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, filmstripAvailability: .detail,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
                     defaultRoute: {
                         WorkspaceRoute(moduleID: .fourKHDGallery, itemID: GallerySection.latest.rawValue)
                     },
@@ -202,6 +254,12 @@ enum WorkspaceAppAssembly {
                 WorkspaceModuleDescriptor(
                     id: .missKon,
                     displayName: "MissKon",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, filmstripAvailability: .resolvedImage,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
                     defaultRoute: {
                         WorkspaceRoute(moduleID: .missKon, itemID: MissKonSection.latest.rawValue)
                     },
@@ -240,6 +298,12 @@ enum WorkspaceAppAssembly {
                 WorkspaceModuleDescriptor(
                     id: .wallhaven,
                     displayName: "Wallhaven",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: false, showsWallhavenControls: true,
+                        showsFavoritesFilter: false, filmstripAvailability: .none,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
                     defaultRoute: {
                         WorkspaceRoute(moduleID: .wallhaven, itemID: WallhavenSection.browse.rawValue)
                     },
@@ -277,6 +341,12 @@ enum WorkspaceAppAssembly {
                 WorkspaceModuleDescriptor(
                     id: .favorites,
                     displayName: "Favorites",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: true, filmstripAvailability: .detail,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
                     defaultRoute: {
                         WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
                     },

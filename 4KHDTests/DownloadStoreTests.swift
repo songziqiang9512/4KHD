@@ -175,9 +175,9 @@ final class DownloadStoreTests: XCTestCase {
         XCTAssertEqual(savedFiles.count, 2)
     }
 
-    // MARK: - 全部失败 → failed + 删空目录
+    // MARK: - 全部失败 → failed，目录保留
 
-    func testAllFailedTaskMarksFailedAndDeletesEmptyFolder() async throws {
+    func testAllFailedTaskMarksFailedAndKeepsTaskFolder() async throws {
         let store = DownloadStore()
         store.imageFetcher = { _, _ in nil }
         let root = makeStoreTempFolder()
@@ -192,7 +192,28 @@ final class DownloadStoreTests: XCTestCase {
         await waitUntil { store.tasks.first?.status == .failed }
         XCTAssertEqual(store.tasks[0].status, .failed)
         XCTAssertEqual(store.tasks[0].completedCount, 0)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationFolder.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destinationFolder.path))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: destinationFolder.path).isEmpty)
+    }
+
+    func testAllFailedTaskNeverUsesOrDeletesExistingEmptyFolder() async throws {
+        let store = DownloadStore()
+        store.imageFetcher = { _, _ in nil }
+        let root = makeStoreTempFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let existing = root.appendingPathComponent("图集 A", isDirectory: true)
+        try FileManager.default.createDirectory(at: existing, withIntermediateDirectories: true)
+        let source = try makeStoreSource(
+            detailURL: XCTUnwrap(URL(string: "https://www.4khd.com/a.html")),
+            title: "图集 A"
+        )
+
+        XCTAssertEqual(store.enqueueAlbum(source: source, destinationRoot: root), .enqueued)
+        XCTAssertNotEqual(store.tasks[0].destinationFolderURL, existing)
+        await waitUntil { store.tasks.first?.status == .failed }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: existing.path))
     }
 
     // MARK: - clearFinishedTasks

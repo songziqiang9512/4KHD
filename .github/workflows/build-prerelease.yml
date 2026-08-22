@@ -1,28 +1,38 @@
 name: Build Prerelease
 
 on:
-  push:
-    branches:
-      - "**"
-    tags-ignore:
-      - "**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Committed MARKETING_VERSION to publish (for example 1.8.5)
+        required: true
+        type: string
+      confirm_release:
+        description: Publish a signed prerelease and replace the Sparkle feed
+        required: true
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 concurrency:
-  group: build-prerelease-${{ github.ref }}
+  group: 4khd-release
   cancel-in-progress: false
 
 jobs:
-  build:
+  release:
+    if: github.ref == 'refs/heads/main' && inputs.confirm_release
     runs-on: macos-26
     timeout-minutes: 180
+    environment: release
+    permissions:
+      contents: write
+      actions: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout immutable source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -34,18 +44,37 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
 
-      - name: Resolve version
+      - name: Validate committed version
         id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
+          set -euo pipefail
           source script/version.env
-          version="$(script/resolve_version.sh --next)"
+          settings="$(xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Release -showBuildSettings)"
+          marketing_version="$(awk '/MARKETING_VERSION =/ { print $3; exit }' <<< "$settings")"
+          build_version="$(awk '/CURRENT_PROJECT_VERSION =/ { print $3; exit }' <<< "$settings")"
+          if [[ "$REQUESTED_VERSION" != "$marketing_version" ]]; then
+            echo "Requested version $REQUESTED_VERSION does not match committed MARKETING_VERSION $marketing_version" >&2
+            exit 1
+          fi
+          if ! [[ "$build_version" =~ ^[0-9]+$ ]]; then
+            echo "Committed build version is not numeric: $build_version" >&2
+            exit 1
+          fi
+          tag="build-$marketing_version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Release tag already exists and is immutable: $tag" >&2
+            exit 1
+          fi
+          git diff --exit-code
           short_sha="${GITHUB_SHA::7}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=build-$version" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$APP_NAME-$version-$short_sha.dmg" >> "$GITHUB_OUTPUT"
-          script/update_version.sh --next
+          echo "version=$marketing_version" >> "$GITHUB_OUTPUT"
+          echo "build_version=$build_version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$APP_NAME-$marketing_version-$short_sha.dmg" >> "$GITHUB_OUTPUT"
 
-      - name: Validate signing secrets
+      - name: Validate release secrets
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -54,6 +83,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
           set -euo pipefail
           missing=()
@@ -64,15 +95,16 @@ jobs:
             DEVELOPER_ID_APPLICATION \
             APPLE_ID \
             APPLE_APP_SPECIFIC_PASSWORD \
-            APPLE_TEAM_ID
+            APPLE_TEAM_ID \
+            SPARKLE_EDDSA_PRIVATE_KEY \
+            SPARKLE_PUBLIC_ED_KEY
           do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
           done
-
           if [[ "${#missing[@]}" -gt 0 ]]; then
-            printf 'Missing required GitHub Secrets:\n' >&2
+            printf 'Missing required release secrets:\n' >&2
             printf '  - %s\n' "${missing[@]}" >&2
             exit 1
           fi
@@ -86,31 +118,35 @@ jobs:
           set -euo pipefail
           certificate_path="$RUNNER_TEMP/developer_id_certificate.p12"
           keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
-
           echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
-          security import "$certificate_path" \
-            -P "$P12_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$keychain_path"
+          security import "$certificate_path" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
           security default-keychain -d user -s "$keychain_path"
           security find-identity -v -p codesigning "$keychain_path"
           echo "SIGNING_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
 
-      - name: Build app
+      - name: Run tests before signing
+        run: |
+          set -euo pipefail
+          source script/version.env
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/TestDerivedData \
+            test
+
+      - name: Build signed app
+        id: build
         env:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
           set -euo pipefail
           source script/version.env
@@ -118,32 +154,29 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$DEVELOPER_ID_APPLICATION" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN_PATH --timestamp --options runtime" \
             build
-
-      - name: Sign app bundle
-        id: sign
-        env:
-          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
-        run: |
-          set -euo pipefail
-          source script/version.env
           app_path="build/DerivedData/Build/Products/Release/$APP_NAME.app"
-          if [[ ! -d "$app_path" ]]; then
-            echo "App bundle not found: $app_path" >&2
-            exit 1
-          fi
-
-          script/sign_release_app.sh "$app_path" "$DEVELOPER_ID_APPLICATION" "$SIGNING_KEYCHAIN_PATH"
+          dsym_path="build/DerivedData/Build/Products/Release/$APP_NAME.app.dSYM"
+          dsym_archive="build/$APP_NAME-${{ steps.version.outputs.version }}.dSYM.zip"
+          [[ -d "$app_path" ]] || { echo "App bundle not found: $app_path" >&2; exit 1; }
+          [[ -d "$dsym_path" ]] || { echo "dSYM not found: $dsym_path" >&2; exit 1; }
+          script/verify_release_app.sh \
+            "$app_path" \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.version.outputs.build_version }}"
+          ditto -c -k --keepParent "$dsym_path" "$dsym_archive"
           echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
+          echo "dsym_archive=$dsym_archive" >> "$GITHUB_OUTPUT"
 
       - name: Notarize app bundle
-        id: notarize_app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -151,69 +184,60 @@ jobs:
         run: |
           set -euo pipefail
           source script/version.env
-          app_path="${{ steps.sign.outputs.app_path }}"
+          app_path="${{ steps.build.outputs.app_path }}"
           zip_path="build/$APP_NAME-${{ steps.version.outputs.version }}-app-notarization.zip"
-          mkdir -p build
           ditto -c -k --keepParent "$app_path" "$zip_path"
           script/notarize_with_log.sh "$zip_path" build/notary-app-submit.json build/notary-app-log.json
 
       - name: Staple notarized app bundle
         run: |
           set -euo pipefail
-          app_path="${{ steps.sign.outputs.app_path }}"
+          app_path="${{ steps.build.outputs.app_path }}"
           xcrun stapler staple "$app_path"
           xcrun stapler validate "$app_path"
           spctl --assess --type execute --verbose=4 "$app_path"
 
       - name: Create signed DMG
-        id: final_package
+        id: package
         env:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
           set -euo pipefail
           source script/version.env
-          app_path="${{ steps.sign.outputs.app_path }}"
+          app_path="${{ steps.build.outputs.app_path }}"
           dmg_path="build/${{ steps.version.outputs.artifact_name }}"
           script/create_dmg.sh "$app_path" "$dmg_path" "$APP_NAME"
           codesign --force --timestamp --sign "$DEVELOPER_ID_APPLICATION" --keychain "$SIGNING_KEYCHAIN_PATH" "$dmg_path"
           codesign --verify --verbose=4 "$dmg_path"
           echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
 
-      - name: Notarize and staple DMG
+      - name: Notarize, staple, and verify DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          dmg_path="${{ steps.final_package.outputs.dmg_path }}"
+          source script/version.env
+          dmg_path="${{ steps.package.outputs.dmg_path }}"
           script/notarize_with_log.sh "$dmg_path" build/notary-dmg-submit.json build/notary-dmg-log.json
           xcrun stapler staple "$dmg_path"
           xcrun stapler validate "$dmg_path"
           spctl -a -vvv --type open --context context:primary-signature "$dmg_path"
-          source script/version.env
-          EXPECT_SIGNED_RELEASE=1 EXPECT_NOTARIZED_DMG=1 script/verify_packaged_dmg.sh "$dmg_path" "$APP_NAME"
+          EXPECT_SIGNED_RELEASE=1 EXPECT_NOTARIZED_DMG=1 script/verify_packaged_dmg.sh \
+            "$dmg_path" \
+            "$APP_NAME" \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.version.outputs.build_version }}"
           shasum -a 256 "$dmg_path" | awk '{print $1 "  " $2}' > "${dmg_path}.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: 4KHD-${{ steps.version.outputs.version }}
-          path: |
-            ${{ steps.final_package.outputs.dmg_path }}
-            ${{ steps.final_package.outputs.dmg_path }}.sha256
-            build/notary-app-submit.json
-            build/notary-dmg-submit.json
-          if-no-files-found: error
 
       - name: Generate release notes
         id: notes
         run: |
           set -euo pipefail
           current_tag="${{ steps.version.outputs.tag }}"
-          previous_tag="$(git tag --list 'build-*' --sort=-creatordate | grep -v "^${current_tag}$" | head -n 1 || true)"
+          previous_tag="$(git tag --list 'build-*' --sort=-version:refname | grep -v "^${current_tag}$" | head -n 1 || true)"
           notes_file="build/release-notes.md"
-          mkdir -p build
           {
             echo "Prerelease ${{ steps.version.outputs.version }}"
             echo
@@ -227,58 +251,80 @@ jobs:
           } > "$notes_file"
           echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
 
-      - name: Create or update prerelease
+      - name: Download verified Sparkle publishing tools
+        id: sparkle
+        run: |
+          set -euo pipefail
+          sparkle_version="2.9.4"
+          sparkle_sha256="ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9"
+          sparkle_archive="$RUNNER_TEMP/Sparkle-${sparkle_version}.tar.xz"
+          sparkle_dir="$RUNNER_TEMP/sparkle"
+          mkdir -p "$sparkle_dir"
+          curl --fail --location --silent --show-error \
+            -o "$sparkle_archive" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${sparkle_version}/Sparkle-${sparkle_version}.tar.xz"
+          echo "$sparkle_sha256  $sparkle_archive" | shasum -a 256 --check
+          tar -xJf "$sparkle_archive" -C "$sparkle_dir"
+          echo "tool_dir=$sparkle_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Generate signed Sparkle appcast
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          source script/version.env
+          feed_dir="$RUNNER_TEMP/sparkle-feed"
+          dmg_path="${{ steps.package.outputs.dmg_path }}"
+          tag="${{ steps.version.outputs.tag }}"
+          release_notes="${{ steps.notes.outputs.notes_file }}"
+          dmg_filename="$(basename "$dmg_path" .dmg)"
+          mkdir -p "$feed_dir"
+          cp "$dmg_path" "$feed_dir/"
+          cp "$release_notes" "$feed_dir/${dmg_filename}.md"
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | \
+            "${{ steps.sparkle.outputs.tool_dir }}/bin/generate_appcast" \
+              --ed-key-file - \
+              --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/" \
+              --embed-release-notes \
+              --maximum-versions 1 \
+              --maximum-deltas 0 \
+              --link "https://github.com/${GITHUB_REPOSITORY}" \
+              -o build/appcast.xml \
+              "$feed_dir"
+          grep -q 'sparkle:edSignature=' build/appcast.xml
+          grep -q '<sparkle:shortVersionString>${{ steps.version.outputs.version }}</sparkle:shortVersionString>' build/appcast.xml
+
+      - name: Upload immutable build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: 4KHD-${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.package.outputs.dmg_path }}
+            ${{ steps.package.outputs.dmg_path }}.sha256
+            ${{ steps.build.outputs.dsym_archive }}
+            build/appcast.xml
+            build/notary-app-submit.json
+            build/notary-app-log.json
+            build/notary-dmg-submit.json
+            build/notary-dmg-log.json
+          if-no-files-found: error
+
+      - name: Create immutable prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tag="${{ steps.version.outputs.tag }}"
-          version="${{ steps.version.outputs.version }}"
-          dmg_path="${{ steps.final_package.outputs.dmg_path }}"
-          notes_file="${{ steps.notes.outputs.notes_file }}"
-
+          dmg_path="${{ steps.package.outputs.dmg_path }}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" \
-              --title "$version" \
-              --notes-file "$notes_file" \
-              --prerelease
-            gh release upload "$tag" "$dmg_path" "${dmg_path}.sha256" --clobber
-          else
-            gh release create "$tag" "$dmg_path" "${dmg_path}.sha256" \
-              --title "$version" \
-              --notes-file "$notes_file" \
-              --prerelease \
-              --target "$GITHUB_SHA"
+            echo "Release already exists and will not be mutated: $tag" >&2
+            exit 1
           fi
-
-      - name: Generate Sparkle appcast
-        run: |
-          set -euo pipefail
-          sparkle_version="2.9.4"
-          sparkle_dir="$RUNNER_TEMP/sparkle"
-          feed_dir="$RUNNER_TEMP/sparkle-feed"
-          source script/version.env
-          dmg_path="${{ steps.final_package.outputs.dmg_path }}"
-          tag="${{ steps.version.outputs.tag }}"
-          release_notes="${{ steps.notes.outputs.notes_file }}"
-          dmg_filename="$(basename "$dmg_path" .dmg)"
-
-          rm -rf "$sparkle_dir" "$feed_dir"
-          mkdir -p "$sparkle_dir" "$feed_dir"
-          curl --fail --location --silent --show-error \
-            "https://github.com/sparkle-project/Sparkle/releases/download/${sparkle_version}/Sparkle-${sparkle_version}.tar.xz" \
-            | tar -xJ -C "$sparkle_dir"
-
-          cp "$dmg_path" "$feed_dir/"
-          cp "$release_notes" "$feed_dir/${dmg_filename}.md"
-          "$sparkle_dir/bin/generate_appcast" \
-            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/" \
-            --embed-release-notes \
-            --maximum-versions 1 \
-            --maximum-deltas 0 \
-            --link "https://github.com/${GITHUB_REPOSITORY}" \
-            -o build/appcast.xml \
-            "$feed_dir"
+          gh release create "$tag" "$dmg_path" "${dmg_path}.sha256" "${{ steps.build.outputs.dsym_archive }}" \
+            --title "${{ steps.version.outputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            --prerelease \
+            --target "$GITHUB_SHA"
 
       - name: Publish Sparkle update feed
         env:

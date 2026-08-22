@@ -60,6 +60,7 @@ final class FourKHDGalleryStore {
     func submitSearch() { feed.submitSearch() }
     func clearSearch() { feed.clearSearch() }
     func refreshFromNetwork() { feed.refreshFromNetwork() }
+    func retryLastFailure() { feed.retryLastFailure() }
     func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
 
     func select(_ item: GalleryItem, force: Bool = false) {

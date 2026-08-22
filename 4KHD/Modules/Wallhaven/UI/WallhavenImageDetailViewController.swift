@@ -309,7 +309,10 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
             displayWallpaper.resolutionText,
             displayWallpaper.formattedFileSize,
             displayWallpaper.fileType?.replacingOccurrences(of: "image/", with: "").uppercased(),
-            displayWallpaper.category.map { "Category: \($0)" }
+            displayWallpaper.category.map {
+                let title = WallhavenCategory(rawValue: $0)?.title ?? $0
+                return "分类：\(title)"
+            }
         ].compactMap { $0 }.filter { !$0.isEmpty && $0 != "-" }
         infoLabel.stringValue = infoParts.joined(separator: " · ")
 
@@ -515,7 +518,7 @@ final class WallhavenDetailZoomableImageView: WorkspaceZoomableImageView {
     private let placeholderLabel = NSTextField(labelWithString: "加载中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
     private var retryAction: (() -> Void)?
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var loadedURL: URL?
     /// 正在网络加载的 URL:同一 URL 的在途请求被再次调用时直接复用,不取消重启。
     private var inFlightURL: URL?

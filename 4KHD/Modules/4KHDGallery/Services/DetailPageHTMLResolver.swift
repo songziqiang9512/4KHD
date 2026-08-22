@@ -20,8 +20,9 @@ enum DetailPageHTMLResolver {
     }
 
     private nonisolated static func fetchHTML(_ url: URL) async throws -> String {
-        let request = GalleryRequestFactory.makeHTMLRequest(url: url)
+        let request = try GalleryRequestFactory.makeHTMLRequest(url: url)
         let (data, response) = try await URLSession.shared.data(for: request)
+        try OnlineSourcePolicy.validate(response, source: .gallery, resource: .html)
         if let httpResponse = response as? HTTPURLResponse,
            !(200..<300).contains(httpResponse.statusCode) {
             throw URLError(.badServerResponse)
@@ -92,7 +93,7 @@ enum DetailPageHTMLResolver {
 
         var maxPageNumber = 1
         for url in sameGalleryAnchors {
-            if let n = url.trailingPageNumber { maxPageNumber = max(maxPageNumber, n) }
+            if let n = url.detailPageNumber { maxPageNumber = max(maxPageNumber, n) }
         }
         for regex in [currentLiRegex, currentSpanRegex] {
             if let text = matches(regex: regex, in: html).first,
@@ -100,7 +101,7 @@ enum DetailPageHTMLResolver {
                 maxPageNumber = max(maxPageNumber, n)
             }
         }
-        if let n = baseURL.trailingPageNumber {
+        if let n = baseURL.detailPageNumber {
             maxPageNumber = max(maxPageNumber, n)
         }
 
@@ -115,12 +116,7 @@ enum DetailPageHTMLResolver {
     /// 如果 URL 形如 `.../foo.html/N`，把末尾 `/N` 整段剥掉；否则原样返回。
     /// 用纯字符串处理，避开 `URL.deletingLastPathComponent()` 会引入尾斜杠的问题。
     private nonisolated static func stripTrailingPageSegment(from url: URL) -> URL {
-        guard let pageNumber = url.trailingPageNumber else { return url }
-        let suffix = "/\(pageNumber)"
-        let raw = url.absoluteString
-        guard raw.hasSuffix(suffix) else { return url }
-        let stripped = String(raw.dropLast(suffix.count))
-        return URL(string: stripped) ?? url
+        url.canonicalDetailPageURL
     }
 
     // Cached regexes to avoid recompilation on every call.
@@ -192,13 +188,7 @@ enum DetailPageHTMLResolver {
 
     private nonisolated static func isGalleryImageURL(_ url: URL) -> Bool {
         let value = url.absoluteString.lowercased()
-        guard let host = url.host?.lowercased() else {
-            return false
-        }
-        let isAllowedHost = host == "pic.4khd.com"
-            || host == "img.4khd.com"
-            || (host == "i0.wp.com" && url.path.hasPrefix("/pic.4khd.com/"))
-        guard isAllowedHost else { return false }
+        guard OnlineSourcePolicy.allows(url, source: .gallery, resource: .media) else { return false }
         return !value.contains("w1090-h1500-p-k-no-rw")
     }
 

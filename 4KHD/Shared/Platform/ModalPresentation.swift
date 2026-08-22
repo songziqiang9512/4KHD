@@ -51,45 +51,9 @@ func presentAppAlert(
     completion?(response)
 }
 
-// MARK: - NSAlert style extension
-
-private func centeredAlertString(_ text: String, font: NSFont) -> NSAttributedString {
-    let paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.alignment = .center
-    paragraphStyle.lineBreakMode = .byWordWrapping
-    return NSAttributedString(
-        string: text,
-        attributes: [
-            .font: font,
-            .paragraphStyle: paragraphStyle
-        ]
-    )
-}
-
 extension NSAlert {
-    /// Applies the app-wide dialog look: app icon, centered title /
-    /// informative text.
+    /// Keep dialogs on AppKit's public, native alert layout.
     func applyAppDialogStyle() {
         icon = NSApp.applicationIconImage
-
-        if !messageText.isEmpty {
-            setValue(
-                centeredAlertString(
-                    messageText,
-                    font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
-                ),
-                forKey: "attributedMessageText"
-            )
-        }
-
-        if !informativeText.isEmpty {
-            setValue(
-                centeredAlertString(
-                    informativeText,
-                    font: .systemFont(ofSize: NSFont.smallSystemFontSize)
-                ),
-                forKey: "attributedInformativeText"
-            )
-        }
     }
 }

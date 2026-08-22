@@ -244,7 +244,6 @@ final class DownloadStore {
             task.status = .cancelled
         } else if summary.completedCount == 0 {
             task.status = .failed
-            removeFolderIfEmpty(task.destinationFolderURL)
         } else {
             task.status = .completed
         }
@@ -256,13 +255,4 @@ final class DownloadStore {
         pumpQueue()
     }
 
-    private func removeFolderIfEmpty(_ url: URL) {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: nil,
-            options: []
-        ),
-            contents.isEmpty else { return }
-        try? FileManager.default.removeItem(at: url)
-    }
 }

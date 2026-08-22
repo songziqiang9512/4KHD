@@ -5,6 +5,15 @@ import OSLog
 @MainActor
 @Observable
 final class WallhavenFeedStore {
+    private enum FailedOperation: Equatable {
+        case browseInitial
+        case browsePage(Int)
+        case searchInitial(String)
+        case searchPage(String, Int)
+        case uploaderInitial(String)
+        case uploaderPage(String, Int)
+    }
+
     private let logger = Logger(subsystem: "com.songziqiang.4khd", category: "WallhavenFeed")
     var section: WallhavenSection = .browse
 
@@ -33,6 +42,7 @@ final class WallhavenFeedStore {
     private var searchDebounceTask: Task<Void, Never>?
     /// Request token to invalidate stale Task completions.
     private var listRequestToken = UUID()
+    private var failedOperation: FailedOperation?
 
     private func invalidateListRequests() { listRequestToken = UUID() }
     private func beginListRequest() -> UUID {
@@ -142,7 +152,10 @@ final class WallhavenFeedStore {
     }
 
     func select(_ wallpaper: Wallpaper) {
-        guard selectedWallpaperID != wallpaper.id else { return }
+        if selectedWallpaperID == wallpaper.id {
+            onSelectionChanged?(wallpaper)
+            return
+        }
         selectedWallpaperID = wallpaper.id
         onSelectionChanged?(wallpaper)
     }
@@ -179,6 +192,7 @@ final class WallhavenFeedStore {
 
     private func resetAndRefresh() {
         invalidateListRequests()
+        cancelResolveDetail()
         clearUploaderBrowsing()
         cancelAllTasks()
         resetInFlightMarkers()
@@ -188,6 +202,8 @@ final class WallhavenFeedStore {
         cachedPages[section] = nil
         cacheTimestamps[section] = nil
         wallpapers = []
+        selectedWallpaperID = nil
+        onSelectionChanged?(nil)
         currentPage = 1
         lastPage = 1
         seed = nil
@@ -226,6 +242,17 @@ final class WallhavenFeedStore {
         cachedPages.removeAll()
         cacheTimestamps.removeAll()
         detailCache.removeAll()
+        wallpapers = []
+        selectedWallpaperID = nil
+        resolvedWallpaper = nil
+        onSelectionChanged?(nil)
+        currentPage = 1
+        lastPage = 1
+        seed = nil
+        uploaderPage = 1
+        uploaderHasMore = isBrowsingUploader
+        canLoadMoreList = false
+        feedErrorMessage = nil
         let cacheDirectory = Self.detailCacheFileURL?.deletingLastPathComponent()
         let detailCacheWriteQueue = detailCacheWriteQueue
         try await Task.detached(priority: .utility) {
@@ -237,6 +264,7 @@ final class WallhavenFeedStore {
                 try FileManager.default.removeItem(at: cacheDirectory)
             }
         }.value
+        refreshFromNetwork()
     }
 
     // MARK: - Network
@@ -261,6 +289,7 @@ final class WallhavenFeedStore {
             uploaderHasMore = true
             isRefreshingList = true
             feedErrorMessage = nil
+            failedOperation = nil
             wallpapers = []
             canLoadMoreList = true
             let requestUsername = username
@@ -295,6 +324,7 @@ final class WallhavenFeedStore {
                           self.uploaderUsername == requestUsername
                     else { return }
                     self.feedErrorMessage = error.localizedDescription
+                    self.failedOperation = .uploaderInitial(requestUsername)
                 }
                 if self.listRequestToken == requestToken {
                     self.isRefreshingList = false
@@ -309,6 +339,7 @@ final class WallhavenFeedStore {
             return
         }
         isRefreshingList = true
+        failedOperation = nil
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: 1)
         inFlightPage = nil
@@ -334,19 +365,17 @@ final class WallhavenFeedStore {
                 self.seed = page.seed
                 self.canLoadMoreList = page.canLoadMore
                 self.feedErrorMessage = nil
-                let previousID = self.selectedWallpaperID
                 if self.selectedWallpaperID == nil || !page.wallpapers.contains(where: { $0.id == self.selectedWallpaperID }) {
                     self.selectedWallpaperID = page.wallpapers.first?.id
                 }
-                if self.selectedWallpaperID != previousID {
-                    self.onSelectionChanged?(self.selectedWallpaper)
-                }
+                self.onSelectionChanged?(self.selectedWallpaper)
             } catch {
                 guard !Task.isCancelled,
                       self.listRequestToken == requestToken,
                       self.section == searchSection
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
+                self.failedOperation = .browseInitial
             }
             if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
@@ -375,6 +404,7 @@ final class WallhavenFeedStore {
         guard inFlightPage != nextPage else { return }
         inFlightPage = nextPage
         isRefreshingList = true
+        failedOperation = nil
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: nextPage)
         loadTask?.cancel()
@@ -406,6 +436,7 @@ final class WallhavenFeedStore {
                       self.section == searchSection
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
+                self.failedOperation = .browsePage(nextPage)
             }
             if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
@@ -443,6 +474,7 @@ final class WallhavenFeedStore {
         activeSearchQuery = trimmed
         isRefreshingList = true
         feedErrorMessage = nil
+        failedOperation = nil
         cancelAllTasks()
         inFlightSearchPage = nil
         let requestToken = beginListRequest()
@@ -471,6 +503,7 @@ final class WallhavenFeedStore {
                       self.activeSearchQuery == requestQuery
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
+                self.failedOperation = .searchInitial(requestQuery)
             }
             if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
@@ -486,6 +519,7 @@ final class WallhavenFeedStore {
         guard inFlightSearchPage != nextPage else { return }
         inFlightSearchPage = nextPage
         isRefreshingList = true
+        failedOperation = nil
         let requestToken = beginListRequest()
         let (searchParams, searchApiKey) = makeSearchParameters(page: nextPage, query: requestQuery)
         searchLoadTask?.cancel()
@@ -512,6 +546,9 @@ final class WallhavenFeedStore {
                       self.activeSearchQuery == requestQuery
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
+                if let requestQuery {
+                    self.failedOperation = .searchPage(requestQuery, nextPage)
+                }
             }
             if self.listRequestToken == requestToken {
                 self.isRefreshingList = false
@@ -529,6 +566,7 @@ final class WallhavenFeedStore {
         searchText = ""
         canLoadMoreList = false
         isRefreshingList = false
+        failedOperation = nil
         restoreSectionCache()
     }
 
@@ -538,13 +576,10 @@ final class WallhavenFeedStore {
             (currentPage, lastPage, seed) = cachedPages[section] ?? (1, 1, nil)
             canLoadMoreList = currentPage < lastPage
             feedErrorMessage = nil
-            let previousID = selectedWallpaperID
             if selectedWallpaperID == nil || !cached.contains(where: { $0.id == selectedWallpaperID }) {
                 selectedWallpaperID = cached.first?.id
             }
-            if selectedWallpaperID != previousID {
-                onSelectionChanged?(selectedWallpaperID.flatMap { id in cached.first { $0.id == id } })
-            }
+            onSelectionChanged?(selectedWallpaperID.flatMap { id in cached.first { $0.id == id } })
             if let timestamp = cacheTimestamps[section],
                Date().timeIntervalSince(timestamp) > Self.cacheMaxAge {
                 refreshFromNetwork()
@@ -584,6 +619,7 @@ final class WallhavenFeedStore {
         inFlightUploaderPage = 1
         isRefreshingList = true
         feedErrorMessage = nil
+        failedOperation = nil
         wallpapers = []
         canLoadMoreList = true
         let requestToken = beginListRequest()
@@ -617,6 +653,7 @@ final class WallhavenFeedStore {
                       self.uploaderUsername == requestUsername
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
+                self.failedOperation = .uploaderInitial(requestUsername)
             }
             guard self.isBrowsingUploader, self.listRequestToken == requestToken else { return }
             self.isRefreshingList = false
@@ -639,6 +676,7 @@ final class WallhavenFeedStore {
         loadTask?.cancel()
         isRefreshingList = true
         feedErrorMessage = nil
+        failedOperation = nil
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -669,6 +707,7 @@ final class WallhavenFeedStore {
                       self.uploaderUsername == requestUsername
                 else { return }
                 self.feedErrorMessage = error.localizedDescription
+                self.failedOperation = .uploaderPage(requestUsername, requestPage)
             }
             guard self.isBrowsingUploader, self.listRequestToken == requestToken else { return }
             self.isRefreshingList = false
@@ -702,6 +741,38 @@ final class WallhavenFeedStore {
         selectedWallpaperID = saved.scrollItemID
         onSelectionChanged?(saved.scrollItemID.flatMap { id in saved.wallpapers.first { $0.id == id } })
         clearUploaderBrowsing()
+    }
+
+    func retryLastFailure() {
+        guard let failedOperation else {
+            loadMoreIfNeeded()
+            return
+        }
+        switch failedOperation {
+        case .browseInitial:
+            guard !isBrowsingUploader, activeSearchQuery == nil else { return }
+            refreshFromNetwork()
+        case .browsePage(let page):
+            guard !isBrowsingUploader,
+                  activeSearchQuery == nil,
+                  currentPage + 1 == page else { return }
+            loadMoreIfNeeded()
+        case .searchInitial(let query):
+            guard activeSearchQuery == query else { return }
+            submitSearch(query, force: true)
+        case .searchPage(let query, let page):
+            guard activeSearchQuery == query,
+                  currentPage + 1 == page else { return }
+            loadMoreSearchIfNeeded()
+        case .uploaderInitial(let username):
+            guard isBrowsingUploader, uploaderUsername == username else { return }
+            refreshFromNetwork()
+        case .uploaderPage(let username, let page):
+            guard isBrowsingUploader,
+                  uploaderUsername == username,
+                  uploaderPage + 1 == page else { return }
+            loadMoreUploaderWorks()
+        }
     }
 
     private func clearUploaderBrowsing() {
@@ -840,8 +911,7 @@ final class WallhavenFeedStore {
             resolution: resolution,
             ratio: ratio,
             page: page,
-            seed: sorting == .random ? seed : nil,
-            collection: nil
+            seed: sorting == .random ? seed : nil
         )
         return (p, accountStore.apiKey)
     }

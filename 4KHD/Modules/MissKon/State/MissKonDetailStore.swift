@@ -4,6 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class MissKonDetailStore {
+    typealias PageResolver = (URL) async throws -> MissKonResolvedImagePage
+
     var currentItem: MissKonItem?
     var imageSlots: [MissKonImageSlot] = []
     var selectedSlotID: MissKonImageSlot.ID?
@@ -19,6 +21,11 @@ final class MissKonDetailStore {
     private var knownPageURLs: [URL] = []
     /// Per-page in-flight tasks.
     private var pageTasks: [URL: Task<Void, Never>] = [:]
+    @ObservationIgnored private let pageResolver: PageResolver
+
+    init(pageResolver: @escaping PageResolver = MissKonDetailResolver.resolve(pageURL:)) {
+        self.pageResolver = pageResolver
+    }
 
     // MARK: - Cancel
 
@@ -44,7 +51,7 @@ final class MissKonDetailStore {
     // MARK: - Prepare
 
     func prepare(item: MissKonItem) {
-        guard item.id != currentItem?.id else { return }
+        guard item != currentItem else { return }
         cancelAllPageTasks()
         resolvedPages = [:]
         resolvedImageCount = 0
@@ -59,12 +66,14 @@ final class MissKonDetailStore {
         currentItem = item
         knownPageURLs = item.pageURLs
         guard !knownPageURLs.isEmpty else { return }
-        let cachedFirstPage = DetailPageImageCache.shared.page(for: knownPageURLs[0]).map {
-            MissKonResolvedImagePage(
+        let cachedMetadata = MissKonDetailMetadataCache.shared.metadata(for: knownPageURLs[0])
+        let cachedFirstPage: MissKonResolvedImagePage? = DetailPageImageCache.shared.page(for: knownPageURLs[0]).flatMap {
+            guard let cachedMetadata else { return nil }
+            return MissKonResolvedImagePage(
                 pageURL: $0.pageURL,
                 imageURLs: $0.imageURLs,
                 pageURLs: $0.pageURLs,
-                mediaFireURL: $0.mediaFireURL
+                mediaFireURL: cachedMetadata.mediaFireURL
             )
         }
         if let cachedFirstPage {
@@ -195,7 +204,7 @@ final class MissKonDetailStore {
         pageTasks[pageURL] = Task { [weak self] in
             guard let self else { return }
             do {
-                let page = try await MissKonDetailResolver.resolve(pageURL: pageURL)
+                let page = try await self.pageResolver(pageURL)
                 guard !Task.isCancelled,
                       self.currentItem?.id == itemID,
                       self.pageTasks[pageURL] != nil
@@ -283,7 +292,7 @@ final class MissKonDetailStore {
     }
 
     private func pageOrder(_ url: URL) -> Int {
-        url.trailingPageNumber ?? 1
+        url.detailPageNumber ?? 1
     }
 
     private func checkCompletion() {
@@ -406,13 +415,17 @@ final class MissKonDetailStore {
     }
 
     func selectSlot(id: MissKonImageSlot.ID) {
-        guard imageSlots.contains(where: { $0.id == id }) else { return }
+        guard let index = imageSlots.firstIndex(where: { $0.id == id }) else { return }
         selectedSlotID = id
+        ensurePageLoadedForSlot(at: index)
+        ensureNextDetailPageLoadedIfApproachingEnd(from: index)
     }
 
     func selectSlot(at displayIndex: Int) {
         guard imageSlots.indices.contains(displayIndex) else { return }
         selectedSlotID = imageSlots[displayIndex].id
+        ensurePageLoadedForSlot(at: displayIndex)
+        ensureNextDetailPageLoadedIfApproachingEnd(from: displayIndex)
     }
 }
 

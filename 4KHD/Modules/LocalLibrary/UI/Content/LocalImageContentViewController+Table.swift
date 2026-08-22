@@ -150,7 +150,7 @@ final class LocalImageListTableView: WorkspaceTableView {
     var quickLookHandler: (() -> Bool)?
 
     override func accessibilityLabel() -> String? {
-        "Local Image List"
+        "本地图片列表"
     }
 }
 

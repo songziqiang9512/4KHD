@@ -84,9 +84,9 @@ enum WallhavenCategory: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .all: "全部"
-        case .general: "General"
-        case .anime: "Anime"
-        case .people: "People"
+        case .general: "常规"
+        case .anime: "动漫"
+        case .people: "人物"
         }
     }
 
@@ -113,7 +113,7 @@ nonisolated enum WallhavenPurity: String, CaseIterable, Identifiable, Codable {
         case .sfw: "SFW"
         case .sketchy: "Sketchy"
         case .nsfw: "NSFW"
-        case .all: "All"
+        case .all: "全部"
         }
     }
 
@@ -128,6 +128,15 @@ nonisolated enum WallhavenPurity: String, CaseIterable, Identifiable, Codable {
 
     var requiresAPIKey: Bool {
         self == .nsfw || self == .all
+    }
+
+    func allows(_ itemPurity: WallhavenPurity) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .sfw, .sketchy, .nsfw:
+            self == itemPurity
+        }
     }
 
     static func fromAPIValue(_ value: String?) -> WallhavenPurity {
@@ -212,7 +221,6 @@ struct WallhavenSearchParameters: Hashable {
     var ratio: WallhavenRatio
     var page: Int
     var seed: String?
-    var collection: WallhavenCollection?
 }
 
 struct WallhavenPage {
@@ -224,33 +232,6 @@ struct WallhavenPage {
 
     var canLoadMore: Bool {
         currentPage < lastPage
-    }
-}
-
-struct WallhavenSettings: Codable, Hashable {
-    let thumbSize: String?
-    let perPage: String?
-    let purity: [String]
-    let categories: [String]
-    let resolutions: [String]
-    let aspectRatios: [String]
-    let toplistRange: String?
-    let tagBlacklist: [String]
-    let userBlacklist: [String]
-}
-
-struct WallhavenCollection: Codable, Hashable, Identifiable {
-    let id: Int
-    let label: String
-    let views: Int?
-    let isPublic: Bool
-    let count: Int?
-
-    var title: String {
-        if let count {
-            return "\(label) (\(count))"
-        }
-        return label
     }
 }
 

@@ -273,8 +273,10 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
-            self?.updateItemSize()
-            self?.scheduleThumbnailPrefetch()
+            Task { @MainActor [weak self] in
+                self?.updateItemSize()
+                self?.scheduleThumbnailPrefetch()
+            }
         }
 
         gridLayout.columnSpacing = 8
@@ -608,7 +610,7 @@ final class GalleryGridCollectionView: WorkspaceCollectionView {
     var doubleClickHandler: ((IndexPath) -> Void)?
 
     override func accessibilityLabel() -> String? {
-        "4KHD Gallery Grid"
+        "4KHD 图片网格"
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -645,7 +647,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
     static let reuseID = NSUserInterfaceItemIdentifier("GalleryGridItemView")
 
     private let cardView = WorkspaceThumbnailGridCardView()
-    private var imageTask: ImageTask?
+    private var imageTask: RemoteImageLoadTask?
     private var representedID: GalleryItem.ID?
     private var currentCoverURL: URL?
     var thumbnailMaxPixelSize: CGFloat = 512

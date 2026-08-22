@@ -28,12 +28,14 @@
 	<true/>
 	<key>SUFeedURL</key>
 	<string>https://github.com/songziqiang9512/4KHD/releases/download/update-feed/appcast.xml</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
-	<!-- EdDSA signing is not configured yet; keep archive verification opt-in
-	     until the matching public/private key is provisioned in CI. -->
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
 	<key>SUVerifyUpdateBeforeExtraction</key>
-	<false/>
+	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
