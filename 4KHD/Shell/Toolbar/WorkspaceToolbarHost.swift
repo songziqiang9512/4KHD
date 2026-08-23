@@ -5,6 +5,7 @@ import Observation
 final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemValidation, NSSearchFieldDelegate {
     private enum ItemID {
         static let sidebarTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.sidebarTrackingSeparator")
+        static let detailTrackingSeparator = NSToolbarItem.Identifier("WorkspaceToolbar.detailTrackingSeparator")
         static let search = NSToolbarItem.Identifier("WorkspaceToolbar.search")
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let localGridColumns = NSToolbarItem.Identifier("WorkspaceToolbar.localGridColumns")
@@ -92,6 +93,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .flexibleSpace,
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
+            ItemID.detailTrackingSeparator,
             ItemID.localGridColumns,
             ItemID.localSort,
             ItemID.refresh,
@@ -125,6 +127,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
             ItemID.refresh,
+            .flexibleSpace,
+            ItemID.detailTrackingSeparator,
             .flexibleSpace
         ]
         if profile.showsLocalSort {
@@ -197,11 +201,22 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             )
             item.visibilityPriority = .high
             return item
+        case ItemID.detailTrackingSeparator:
+            guard let splitController else { return nil }
+            let item = NSTrackingSeparatorToolbarItem(
+                identifier: itemIdentifier,
+                splitView: splitController.splitView,
+                dividerIndex: 1
+            )
+            item.visibilityPriority = .high
+            return item
         case ItemID.search:
             let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "搜索"
             item.paletteLabel = "搜索"
-            item.visibilityPriority = .high
+            item.visibilityPriority = .user
+            item.preferredWidthForSearchField = 220
+            item.searchField.widthAnchor.constraint(equalToConstant: 220).isActive = true
             item.searchField.delegate = self
             item.searchField.sendsSearchStringImmediately = true
             item.searchField.target = self
