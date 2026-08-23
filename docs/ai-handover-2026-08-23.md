@@ -4,10 +4,10 @@
 
 ## 当前状态
 
-- 当前分支 `main`；源码已更新为 1.8.8 发布候选，上一正式预发布版 1.8.7 由 `build-1.8.7` 从提交 `b79f743` 发布。
+- 当前分支 `main`；1.8.8 已由 `build-1.8.8` 从提交 `4ce8a67` 发布，完整改动和逐项结果见修复清单。
 - 源码版本 1.8.8（build 188），最低系统 macOS 26.4；生产代码纯 AppKit、0 SwiftUI。
 - 最终 Debug/Release 构建通过；全量 XCTest 89/89 通过；生产代码 SwiftUI 禁用扫描与 `git diff --check` 通过。
-- 发布代码门禁已补齐；GitHub `release` environment 已限制为 `main` 并要求仓库所有者审批，4KHD 专属 Sparkle EdDSA 密钥已配置为 GitHub Secret。1.8.7 的签名/公证 DMG、直接 checksum、dSYM 和签名 appcast 均已独立复核；1.8.8 的最终外部产物以本候选提交触发的发布流水线为准。
+- 发布代码门禁已补齐；GitHub `release` environment 已限制为 `main` 并要求仓库所有者审批，4KHD 专属 Sparkle EdDSA 密钥已配置为 GitHub Secret。1.8.8 的签名/公证 DMG、直接 checksum、dSYM 和签名 appcast 均已发布并独立复核；只剩 N-1 应用内真实升级安装尚未执行。
 
 ## 当前架构事实
 
@@ -39,7 +39,7 @@
 
 ## 下一步边界
 
-1. 先阅读修复清单；1.8.8 发布完成前，以 `build-1.8.7` 的最终产物作为签名、公证、Sparkle feed 等外部门禁的最近权威证据。
+1. 先阅读修复清单，并以 `build-1.8.8` 发布流水线和 GitHub release 的最终产物作为签名、公证、Sparkle feed 等外部门禁的权威证据。
 2. 不要重做已关闭问题；新增改动须继续补对应回归测试并保持生产代码 0 SwiftUI。
 3. 后续新增修改仍需明确授权再提交或推送；保留工作树中与任务无关的并行修改。
 
