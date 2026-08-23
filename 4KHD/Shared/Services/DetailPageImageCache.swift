@@ -5,6 +5,8 @@ struct CachedDetailImagePage: Sendable {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]
+    /// `nil` identifies a legacy cache entry that predates recommendation parsing.
+    let recommendations: [OnlineGalleryRecommendation]?
 }
 
 nonisolated final class DetailPageImageCache: @unchecked Sendable {
@@ -15,6 +17,7 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         let pageURL: URL
         let imageURLs: [URL]
         let pageURLs: [URL]
+        let recommendations: [OnlineGalleryRecommendation]?
         var updatedAt: Date
         var isPersistent: Bool
     }
@@ -45,9 +48,14 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
     }
 
     func urls(for pageURL: URL) -> ResolvedImagePage? {
-        page(for: pageURL).map {
-            ResolvedImagePage(pageURL: $0.pageURL, imageURLs: $0.imageURLs, pageURLs: $0.pageURLs)
-        }
+        guard let page = page(for: pageURL),
+              let recommendations = page.recommendations else { return nil }
+        return ResolvedImagePage(
+            pageURL: page.pageURL,
+            imageURLs: page.imageURLs,
+            pageURLs: page.pageURLs,
+            recommendations: recommendations
+        )
     }
 
     func page(for pageURL: URL) -> CachedDetailImagePage? {
@@ -68,15 +76,26 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
         return CachedDetailImagePage(
             pageURL: entry.pageURL,
             imageURLs: entry.imageURLs,
-            pageURLs: entry.pageURLs
+            pageURLs: entry.pageURLs,
+            recommendations: entry.recommendations
         )
     }
 
     func store(_ page: ResolvedImagePage) {
-        store(pageURL: page.pageURL, imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+        store(
+            pageURL: page.pageURL,
+            imageURLs: page.imageURLs,
+            pageURLs: page.pageURLs,
+            recommendations: page.recommendations
+        )
     }
 
-    func store(pageURL: URL, imageURLs: [URL], pageURLs: [URL]) {
+    func store(
+        pageURL: URL,
+        imageURLs: [URL],
+        pageURLs: [URL],
+        recommendations: [OnlineGalleryRecommendation]? = nil
+    ) {
         lock.lock()
         let key = pageURL.absoluteString
         let existing = storage[key]
@@ -85,6 +104,7 @@ nonisolated final class DetailPageImageCache: @unchecked Sendable {
             pageURL: pageURL,
             imageURLs: imageURLs,
             pageURLs: pageURLs,
+            recommendations: recommendations,
             updatedAt: Date(),
             isPersistent: persistentOverrides[detailPath] ?? existing?.isPersistent ?? false
         )

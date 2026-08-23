@@ -12,6 +12,8 @@ final class MissKonDetailStore {
     var isResolving = false
     var isResolutionComplete = false
     var errorMessage: String?
+    private(set) var recommendations: [OnlineGalleryRecommendation] = []
+    private(set) var contentMode: WorkspaceDetailContentMode = .image
     /// 当前图集的 MediaFire 下载链接(详情页 HTML 中提取,短链)。
     var mediaFireDownloadURL: URL?
 
@@ -43,6 +45,17 @@ final class MissKonDetailStore {
     /// 缓存的已解析图片计数,在解析/移除页时增量维护,避免每次访问 O(n) reduce。
     private(set) var resolvedImageCount = 0
 
+    var canStepBackward: Bool {
+        guard contentMode == .image else { return true }
+        return selectedIndex > 0
+    }
+
+    var canStepForward: Bool {
+        guard contentMode == .image else { return false }
+        if selectedIndex < imageSlots.count - 1 { return true }
+        return !isResolutionComplete || !recommendations.isEmpty
+    }
+
     func imageURL(for slot: MissKonImageSlot) -> URL? {
         if let knownURL = slot.knownURL { return knownURL }
         return resolvedPages[slot.pageURL]?.imageURLs.element(at: slot.pageImageIndex)
@@ -59,6 +72,8 @@ final class MissKonDetailStore {
         isResolving = false
         isResolutionComplete = false
         errorMessage = nil
+        recommendations = []
+        contentMode = .image
         imageSlots = []
         selectedSlotID = nil
         mediaFireDownloadURL = nil
@@ -68,12 +83,14 @@ final class MissKonDetailStore {
         guard !knownPageURLs.isEmpty else { return }
         let cachedMetadata = MissKonDetailMetadataCache.shared.metadata(for: knownPageURLs[0])
         let cachedFirstPage: MissKonResolvedImagePage? = DetailPageImageCache.shared.page(for: knownPageURLs[0]).flatMap {
-            guard let cachedMetadata else { return nil }
+            guard let cachedMetadata,
+                  let recommendations = $0.recommendations else { return nil }
             return MissKonResolvedImagePage(
                 pageURL: $0.pageURL,
                 imageURLs: $0.imageURLs,
                 pageURLs: $0.pageURLs,
-                mediaFireURL: cachedMetadata.mediaFireURL
+                mediaFireURL: cachedMetadata.mediaFireURL,
+                recommendations: recommendations
             )
         }
         if let cachedFirstPage {
@@ -83,6 +100,7 @@ final class MissKonDetailStore {
             if let mediaFireURL = cachedFirstPage.mediaFireURL {
                 mediaFireDownloadURL = mediaFireURL
             }
+            mergeRecommendations(cachedFirstPage.recommendations)
         }
 
         // When imageCount==0 we can't trust pageCount, so seed a safe minimum.
@@ -216,6 +234,7 @@ final class MissKonDetailStore {
                 if let mediaFireURL = page.mediaFireURL {
                     self.mediaFireDownloadURL = mediaFireURL
                 }
+                self.mergeRecommendations(page.recommendations)
                 self.mergeResolvedPage(page, pageURL: pageURL)
                 if prefetchNext > 0 {
                     self.schedulePrefetch(count: prefetchNext, after: pageURL)
@@ -403,6 +422,8 @@ final class MissKonDetailStore {
         selectedSlotID = nil
         isResolving = false
         errorMessage = nil
+        recommendations = []
+        contentMode = .image
         resolvedPages = [:]
         resolvedImageCount = 0
         failedPageURLs = []
@@ -416,6 +437,7 @@ final class MissKonDetailStore {
 
     func selectSlot(id: MissKonImageSlot.ID) {
         guard let index = imageSlots.firstIndex(where: { $0.id == id }) else { return }
+        contentMode = .image
         selectedSlotID = id
         ensurePageLoadedForSlot(at: index)
         ensureNextDetailPageLoadedIfApproachingEnd(from: index)
@@ -423,9 +445,41 @@ final class MissKonDetailStore {
 
     func selectSlot(at displayIndex: Int) {
         guard imageSlots.indices.contains(displayIndex) else { return }
+        contentMode = .image
         selectedSlotID = imageSlots[displayIndex].id
         ensurePageLoadedForSlot(at: displayIndex)
         ensureNextDetailPageLoadedIfApproachingEnd(from: displayIndex)
+    }
+
+    func stepSelection(_ delta: Int) {
+        if contentMode == .recommendations {
+            guard delta < 0 else { return }
+            contentMode = .image
+            selectedSlotID = imageSlots.last?.id
+            return
+        }
+
+        guard !imageSlots.isEmpty else { return }
+        let next = selectedIndex + delta
+        if delta > 0, next >= imageSlots.count {
+            if isResolutionComplete, !recommendations.isEmpty {
+                contentMode = .recommendations
+            } else {
+                ensureNextDetailPageLoaded()
+            }
+            return
+        }
+        selectSlot(at: min(max(next, 0), imageSlots.count - 1))
+    }
+
+    private var selectedIndex: Int {
+        selectedSlotID.flatMap { id in imageSlots.firstIndex { $0.id == id } } ?? 0
+    }
+
+    private func mergeRecommendations(_ incoming: [OnlineGalleryRecommendation]) {
+        guard !incoming.isEmpty else { return }
+        var seen = Set(recommendations.map(\.id))
+        recommendations.append(contentsOf: incoming.filter { seen.insert($0.id).inserted })
     }
 }
 

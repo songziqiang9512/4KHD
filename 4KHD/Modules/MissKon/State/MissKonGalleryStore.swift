@@ -70,6 +70,10 @@ final class MissKonGalleryStore {
     var currentItem: MissKonItem? { detail.currentItem }
     var resolvedPageCount: Int { detail.resolvedPageCount }
     var resolvedImageCount: Int { detail.resolvedImageCount }
+    var recommendations: [OnlineGalleryRecommendation] { detail.recommendations }
+    var detailContentMode: WorkspaceDetailContentMode { detail.contentMode }
+    var canStepDetailBackward: Bool { detail.canStepBackward }
+    var canStepDetailForward: Bool { detail.canStepForward }
 
     func select(_ item: MissKonItem) {
         feed.select(item)
@@ -82,6 +86,30 @@ final class MissKonGalleryStore {
     func setSearchText(_ text: String) { feed.setSearchText(text) }
     func submitSearch(_ query: String) { feed.submitSearch(query) }
     func clearSearch() { feed.clearSearch() }
+
+    func openRecommendation(_ recommendation: OnlineGalleryRecommendation) {
+        let imageCount = recommendation.imageCount ?? 0
+        let pageCount = max(Int(ceil(Double(imageCount) / 12.0)), 1)
+        let base = recommendation.detailURL.absoluteString.hasSuffix("/")
+            ? recommendation.detailURL.absoluteString
+            : recommendation.detailURL.absoluteString + "/"
+        let pageURLs = (1...pageCount).compactMap { pageNumber in
+            pageNumber == 1 ? recommendation.detailURL : URL(string: "\(base)\(pageNumber)/")
+        }
+        let item = MissKonItem(
+            id: recommendation.detailURL.absoluteString,
+            section: currentItem?.section ?? section,
+            title: recommendation.title,
+            detailURL: recommendation.detailURL,
+            coverURL: recommendation.coverURL,
+            coverAspectRatio: recommendation.coverAspectRatio,
+            imageCount: imageCount,
+            pageCount: pageCount,
+            pageURLs: pageURLs,
+            tags: []
+        )
+        feed.select(item)
+    }
 
     // MARK: - Favorites
 

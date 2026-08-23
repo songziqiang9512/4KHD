@@ -67,4 +67,33 @@ final class DetailPageImageCacheTests: XCTestCase {
         let metadata = try XCTUnwrap(reader.metadata(for: pageURL))
         XCTAssertNil(metadata.mediaFireURL)
     }
+
+    func testRecommendationMetadataRoundTripsAndLegacyEntryRequestsRefresh() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("4KHDTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = DetailPageImageCache(cacheURL: root.appendingPathComponent("pages.json"))
+        let pageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/content/sample.html"))
+        let legacyPageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/content/legacy.html"))
+        let imageURL = try XCTUnwrap(URL(string: "https://pic.4khd.com/sample.jpg"))
+        let recommendation = OnlineGalleryRecommendation(
+            title: "Related",
+            detailURL: try XCTUnwrap(URL(string: "https://www.4khd.com/content/related.html")),
+            coverURL: imageURL,
+            coverAspectRatio: 0.75,
+            imageCount: 20
+        )
+
+        cache.store(
+            pageURL: pageURL,
+            imageURLs: [imageURL],
+            pageURLs: [pageURL],
+            recommendations: [recommendation]
+        )
+        cache.store(pageURL: legacyPageURL, imageURLs: [imageURL], pageURLs: [legacyPageURL])
+
+        XCTAssertEqual(cache.urls(for: pageURL)?.recommendations, [recommendation])
+        XCTAssertNotNil(cache.page(for: legacyPageURL))
+        XCTAssertNil(cache.urls(for: legacyPageURL))
+    }
 }

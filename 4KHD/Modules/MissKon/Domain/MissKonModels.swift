@@ -96,9 +96,24 @@ struct MissKonImageSlot: Identifiable {
     let knownURL: URL?
 }
 
-struct MissKonResolvedImagePage {
+nonisolated struct MissKonResolvedImagePage: Sendable {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]
     let mediaFireURL: URL?
+    let recommendations: [OnlineGalleryRecommendation]
+
+    init(
+        pageURL: URL,
+        imageURLs: [URL],
+        pageURLs: [URL],
+        mediaFireURL: URL?,
+        recommendations: [OnlineGalleryRecommendation] = []
+    ) {
+        self.pageURL = pageURL
+        self.imageURLs = imageURLs
+        self.pageURLs = pageURLs
+        self.mediaFireURL = mediaFireURL
+        self.recommendations = recommendations
+    }
 }

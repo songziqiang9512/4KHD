@@ -74,6 +74,111 @@ final class OnlineStateMachineTests: XCTestCase {
     }
 
     @MainActor
+    func testGalleryStepsFromLastImageToRecommendationsAndBack() throws {
+        let item = try makeGalleryItem(id: "gallery-recommendations", pageCount: 1)
+        let recommendation = try makeRecommendation(source: .gallery)
+        let store = GalleryDetailStore()
+        store.prepare(for: item)
+        store.registerResolvedPage(
+            ResolvedImagePage(
+                pageURL: item.detailURL,
+                imageURLs: item.sampleImageURLs,
+                pageURLs: item.pageURLs,
+                recommendations: [recommendation]
+            )
+        )
+
+        XCTAssertTrue(store.canStepForward)
+        store.stepImage(1)
+        XCTAssertEqual(store.contentMode, .recommendations)
+        XCTAssertTrue(store.canStepBackward)
+        XCTAssertFalse(store.canStepForward)
+
+        store.stepImage(-1)
+        XCTAssertEqual(store.contentMode, .image)
+        XCTAssertEqual(store.selectedImageIndex, store.loadedImageSlots.count - 1)
+    }
+
+    @MainActor
+    func testMissKonStepsFromLastImageToRecommendationsAndBack() async throws {
+        let base = try XCTUnwrap(URL(string: "https://misskon.com/recommendations/"))
+        let item = makeMissKonItem(id: "misskon-recommendations", base: base, pages: [base], imageCount: 1)
+        let recommendation = try makeRecommendation(source: .missKon)
+        let imageURL = try XCTUnwrap(URL(string: "https://misskon.com/media/current.jpg"))
+        let store = MissKonDetailStore { url in
+            MissKonResolvedImagePage(
+                pageURL: url,
+                imageURLs: [imageURL],
+                pageURLs: [base],
+                mediaFireURL: nil,
+                recommendations: [recommendation]
+            )
+        }
+
+        store.prepare(item: item)
+        store.resolve(item: item)
+        await waitUntil { store.isResolutionComplete }
+
+        XCTAssertTrue(store.canStepForward)
+        store.stepSelection(1)
+        XCTAssertEqual(store.contentMode, .recommendations)
+        XCTAssertTrue(store.canStepBackward)
+        XCTAssertFalse(store.canStepForward)
+
+        store.stepSelection(-1)
+        XCTAssertEqual(store.contentMode, .image)
+        XCTAssertEqual(store.selectedSlotID, store.imageSlots.last?.id)
+    }
+
+    @MainActor
+    func testFavoritesStepsFromLastImageToSourceRecommendationAndBack() async throws {
+        let slug = UUID().uuidString
+        let pageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/content/\(slug).html"))
+        let imageURL = try XCTUnwrap(URL(string: "https://pic.4khd.com/\(slug).jpg"))
+        let recommendation = try makeRecommendation(source: .gallery)
+        FavoriteSourceAdapterRegistry.shared.replaceAdapters([
+            FavoriteSourceAdapter(
+                source: .gallery,
+                detailContent: { _ in .paged(pageURLs: [pageURL], estimatedImageCount: 1) },
+                resolvePage: { _ in
+                    FavoriteResolvedImagePage(
+                        imageURLs: [imageURL],
+                        pageURLs: [pageURL],
+                        recommendations: [recommendation]
+                    )
+                },
+                configureImageRequest: { _ in }
+            )
+        ])
+        let record = FavoriteRecord(
+            id: slug,
+            sourceID: GallerySection.latest.rawValue,
+            title: slug,
+            rawTitle: slug,
+            subtitle: "",
+            detailURL: pageURL.absoluteString,
+            coverURL: imageURL.absoluteString,
+            imageCount: 1,
+            pageCount: 1
+        )
+        let store = FavoritesDetailStore()
+
+        store.prepare(record: record)
+        store.resolve()
+        await waitUntil { !store.isResolving && store.recommendations == [recommendation] }
+
+        XCTAssertTrue(store.canStepForward)
+        store.stepSelection(1)
+        XCTAssertEqual(store.contentMode, .recommendations)
+        XCTAssertTrue(store.canStepBackward)
+        XCTAssertFalse(store.canStepForward)
+
+        store.stepSelection(-1)
+        XCTAssertEqual(store.contentMode, .image)
+        XCTAssertEqual(store.selectedSlotID, store.imageSlots.last?.id)
+    }
+
+    @MainActor
     func testGalleryRepeatedSynthesizedPageTerminatesPagination() async throws {
         let item = try makeGalleryItem(id: "repeat", pageCount: 1)
         let next = try XCTUnwrap(URL(string: "https://www.4khd.com/?query-3-page=2"))
@@ -109,6 +214,23 @@ final class OnlineStateMachineTests: XCTestCase {
         await waitUntil { !store.isRefreshingList && store.allItems.count == 2 }
 
         XCTAssertTrue(store.canLoadMoreList)
+    }
+
+    @MainActor
+    func testGalleryRefreshKeepsOffFeedRecommendationSelected() async throws {
+        let feedItem = try makeGalleryItem(id: "feed", pageCount: 1)
+        let recommendationItem = try makeGalleryItem(id: "recommendation", pageCount: 1)
+        let store = GalleryFeedStore(
+            sectionResolver: { _ in SiteListPage(items: [feedItem], nextPageURL: nil) }
+        )
+
+        store.refreshFromNetwork()
+        await waitUntil { !store.isRefreshingList && store.selectedItem?.id == feedItem.id }
+        store.select(recommendationItem)
+        store.refreshFromNetwork()
+        await waitUntil { !store.isRefreshingList }
+
+        XCTAssertEqual(store.selectedItem?.id, recommendationItem.id)
     }
 
     @MainActor
@@ -231,6 +353,28 @@ final class OnlineStateMachineTests: XCTestCase {
             views: views,
             favorites: nil,
             uploader: uploader
+        )
+    }
+
+    private func makeRecommendation(source: OnlineSourcePolicy.Source) throws -> OnlineGalleryRecommendation {
+        let detailURL: URL
+        let coverURL: URL
+        switch source {
+        case .gallery:
+            detailURL = try XCTUnwrap(URL(string: "https://www.4khd.com/content/related.html"))
+            coverURL = try XCTUnwrap(URL(string: "https://pic.4khd.com/related.jpg"))
+        case .missKon:
+            detailURL = try XCTUnwrap(URL(string: "https://misskon.com/related/"))
+            coverURL = try XCTUnwrap(URL(string: "https://misskon.com/media/related.jpg"))
+        case .wallhaven:
+            throw XCTSkip("Wallhaven is not part of related gallery navigation")
+        }
+        return OnlineGalleryRecommendation(
+            title: "Related",
+            detailURL: detailURL,
+            coverURL: coverURL,
+            coverAspectRatio: nil,
+            imageCount: 1
         )
     }
 }

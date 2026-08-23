@@ -15,10 +15,13 @@ final class FavoritesDetailStore {
     private(set) var resolvedPageCount = 0
     private(set) var resolvedImageCount = 0
     private(set) var errorMessage: String?
+    private(set) var recommendations: [OnlineGalleryRecommendation] = []
+    private(set) var contentMode: WorkspaceDetailContentMode = .image
 
     private struct ResolvedPage {
         let imageURLs: [URL]
         let pageURLs: [URL]
+        let recommendations: [OnlineGalleryRecommendation]
     }
 
     private var resolvedPages: [URL: ResolvedPage] = [:]
@@ -38,6 +41,16 @@ final class FavoritesDetailStore {
         return imageSlots.first { $0.id == selectedSlotID }
     }
 
+    var canStepBackward: Bool {
+        contentMode == .recommendations || selectedIndex > 0
+    }
+
+    var canStepForward: Bool {
+        guard contentMode == .image else { return false }
+        if selectedIndex < imageSlots.count - 1 { return true }
+        return !recommendations.isEmpty
+    }
+
     func imageURL(for slot: FavoritesImageSlot) -> URL? {
         if let knownURL = slot.knownURL { return knownURL }
         guard let pageURL = slot.pageURL else { return nil }
@@ -54,6 +67,8 @@ final class FavoritesDetailStore {
         resolvedImageCount = 0
         isResolving = false
         errorMessage = nil
+        recommendations = []
+        contentMode = .image
         imageSlots = []
         selectedSlotID = nil
         currentRecord = record
@@ -84,11 +99,18 @@ final class FavoritesDetailStore {
         guard !knownPageURLs.isEmpty else { return }
 
         // 首页缓存命中直接建立已解析页。
-        if let cached = DetailPageImageCache.shared.page(for: knownPageURLs[0]) {
-            resolvedPages[cached.pageURL] = ResolvedPage(imageURLs: cached.imageURLs, pageURLs: cached.pageURLs)
+        if let cached = DetailPageImageCache.shared.page(for: knownPageURLs[0]),
+           let cachedRecommendations = cached.recommendations {
+            resolvedPages[cached.pageURL] = ResolvedPage(
+                imageURLs: cached.imageURLs,
+                pageURLs: cached.pageURLs,
+                recommendations: cachedRecommendations
+            )
             reconcileKnownPageURLs(with: cached.pageURLs, requestedPageURL: cached.pageURL)
             // 缓存页不会走 merge,计数在此补上(merge 改为增量累加后)。
+            resolvedPageCount = 1
             resolvedImageCount = cached.imageURLs.count
+            mergeRecommendations(cachedRecommendations)
         }
 
         // 生成占位 slot:已知图片的 slot 直接带 URL,其余等待解析填充。
@@ -158,6 +180,8 @@ final class FavoritesDetailStore {
         resolvedPageCount = 0
         resolvedImageCount = 0
         errorMessage = nil
+        recommendations = []
+        contentMode = .image
         resolve()
     }
 
@@ -167,9 +191,29 @@ final class FavoritesDetailStore {
 
     func selectSlot(at displayIndex: Int) {
         guard imageSlots.indices.contains(displayIndex) else { return }
+        contentMode = .image
         selectedSlotID = imageSlots[displayIndex].id
         ensurePageLoadedForSlot(at: displayIndex)
         ensureNextDetailPageLoadedIfApproachingEnd(from: displayIndex)
+    }
+
+    func stepSelection(_ delta: Int) {
+        if contentMode == .recommendations {
+            guard delta < 0 else { return }
+            contentMode = .image
+            selectedSlotID = imageSlots.last?.id
+            return
+        }
+
+        guard !imageSlots.isEmpty else { return }
+        let next = selectedIndex + delta
+        if delta > 0, next >= imageSlots.count {
+            if !recommendations.isEmpty {
+                contentMode = .recommendations
+            }
+            return
+        }
+        selectSlot(at: min(max(next, 0), imageSlots.count - 1))
     }
 
     // MARK: - 页加载
@@ -190,6 +234,7 @@ final class FavoritesDetailStore {
                 self.reconcileKnownPageURLs(with: page.pageURLs, requestedPageURL: pageURL)
                 self.resolvedPages[pageURL] = page
                 self.pageTasks[pageURL] = nil
+                self.mergeRecommendations(page.recommendations)
                 self.mergeResolvedPage(page, pageURL: pageURL)
                 if prefetchNext > 0 {
                     self.schedulePrefetch(count: prefetchNext, after: pageURL)
@@ -230,7 +275,11 @@ final class FavoritesDetailStore {
             throw URLError(.unsupportedURL)
         }
         let page = try await adapter.resolvePage(pageURL)
-        return ResolvedPage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+        return ResolvedPage(
+            imageURLs: page.imageURLs,
+            pageURLs: page.pageURLs,
+            recommendations: page.recommendations
+        )
     }
 
     private func loadNextUnresolvedPage() {
@@ -359,6 +408,16 @@ final class FavoritesDetailStore {
                 knownURL: slots[i].knownURL
             )
         }
+    }
+
+    private var selectedIndex: Int {
+        selectedSlotID.flatMap { id in imageSlots.firstIndex { $0.id == id } } ?? 0
+    }
+
+    private func mergeRecommendations(_ incoming: [OnlineGalleryRecommendation]) {
+        guard !incoming.isEmpty else { return }
+        var seen = Set(recommendations.map(\.id))
+        recommendations.append(contentsOf: incoming.filter { seen.insert($0.id).inserted })
     }
 
     private func cancelAllPageTasks() {

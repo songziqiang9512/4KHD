@@ -79,6 +79,10 @@ final class FourKHDGalleryStore {
     var detailErrorMessage: String? { detail.errorMessage }
     var selectedSlot: ImageSlot? { detail.selectedSlot }
     var upcomingKnownImageURLs: [URL] { detail.upcomingKnownImageURLs }
+    var recommendations: [OnlineGalleryRecommendation] { detail.recommendations }
+    var detailContentMode: WorkspaceDetailContentMode { detail.contentMode }
+    var canStepDetailBackward: Bool { detail.canStepBackward }
+    var canStepDetailForward: Bool { detail.canStepForward }
 
     var isFullscreenViewerPresented: Bool {
         get { detail.isFullscreenViewerPresented }
@@ -102,6 +106,32 @@ final class FourKHDGalleryStore {
             DetailPageImageCache.shared.setPersistent(true, forDetailURL: item.detailURL)
         }
         detail.registerResolvedPage(page)
+    }
+
+    func openRecommendation(_ recommendation: OnlineGalleryRecommendation) {
+        let imageCount = recommendation.imageCount ?? 0
+        let pageCount = max(Int(ceil(Double(imageCount) / 20.0)), 1)
+        let pageURLs = (1...pageCount).map { pageNumber in
+            pageNumber == 1
+                ? recommendation.detailURL
+                : recommendation.detailURL.appendingPathComponent("\(pageNumber)")
+        }
+        let item = GalleryItem(
+            id: recommendation.detailURL.deletingPathExtension().lastPathComponent,
+            section: selectedItem?.section ?? section,
+            kind: .recommended,
+            title: recommendation.title,
+            rawTitle: recommendation.title,
+            subtitle: "推荐图集",
+            detailURL: recommendation.detailURL,
+            coverURL: recommendation.coverURL,
+            coverAspectRatio: recommendation.coverAspectRatio,
+            imageCount: imageCount,
+            pageCount: pageCount,
+            pageURLs: pageURLs,
+            sampleImageURLs: recommendation.coverURL.map { [$0] } ?? []
+        )
+        feed.select(item, force: true)
     }
 
     // MARK: - Favorites 转发

@@ -10,12 +10,14 @@ enum MissKonDetailResolver {
 
     static func resolve(pageURL: URL) async throws -> MissKonResolvedImagePage {
         if let cached = DetailPageImageCache.shared.page(for: pageURL),
+           let recommendations = cached.recommendations,
            let metadata = MissKonDetailMetadataCache.shared.metadata(for: pageURL) {
             return MissKonResolvedImagePage(
                 pageURL: cached.pageURL,
                 imageURLs: cached.imageURLs,
                 pageURLs: cached.pageURLs,
-                mediaFireURL: metadata.mediaFireURL
+                mediaFireURL: metadata.mediaFireURL,
+                recommendations: recommendations
             )
         }
 
@@ -32,16 +34,19 @@ enum MissKonDetailResolver {
 
         let pageURLs = resolvePageURLs(from: html, baseURL: pageURL)
         let mediaFireURL = extractMediaFireDownloadLink(from: html)
+        let recommendations = extractRecommendations(from: html, pageURL: pageURL)
         let page = MissKonResolvedImagePage(
             pageURL: pageURL,
             imageURLs: imageURLs,
             pageURLs: pageURLs,
-            mediaFireURL: mediaFireURL
+            mediaFireURL: mediaFireURL,
+            recommendations: recommendations
         )
         DetailPageImageCache.shared.store(
             pageURL: page.pageURL,
             imageURLs: page.imageURLs,
-            pageURLs: page.pageURLs
+            pageURLs: page.pageURLs,
+            recommendations: page.recommendations
         )
         MissKonDetailMetadataCache.shared.store(pageURL: page.pageURL, mediaFireURL: page.mediaFireURL)
         return page
@@ -54,6 +59,69 @@ enum MissKonDetailResolver {
               match.numberOfRanges > 1,
               let urlRange = Range(match.range(at: 1), in: html) else { return nil }
         return URL(string: String(html[urlRange]))
+    }
+
+    /// Extracts cards emitted by Yet Another Related Posts Plugin (YARPP).
+    /// The parser keys off the card class rather than surrounding layout so a
+    /// theme wrapper change cannot make unrelated page links look recommended.
+    nonisolated static func extractRecommendations(
+        from html: String,
+        pageURL: URL
+    ) -> [OnlineGalleryRecommendation] {
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        var seen = Set<String>()
+
+        return recommendationAnchorRegex.matches(in: html, range: range).compactMap { result in
+            guard let anchorRange = Range(result.range, in: html) else { return nil }
+            let anchor = String(html[anchorRange])
+            guard let href = firstMatch(recommendationHrefRegex, in: anchor).flatMap(decodeHTML),
+                  let detailURL = OnlineSourcePolicy.resolvedURL(
+                    href,
+                    relativeTo: pageURL,
+                    source: .missKon,
+                    resource: .html
+                  ),
+                  !detailURL.isSameDetailPath(as: pageURL),
+                  seen.insert(detailURL.absoluteString).inserted else {
+                return nil
+            }
+
+            let coverValue = firstMatch(recommendationDataSourceRegex, in: anchor)
+                ?? firstMatch(recommendationSourceRegex, in: anchor)
+            let coverURL = coverValue
+                .flatMap(decodeHTML)
+                .flatMap {
+                    OnlineSourcePolicy.resolvedURL(
+                        $0,
+                        relativeTo: pageURL,
+                        source: .missKon,
+                        resource: .media
+                    )
+                }
+            let rawTitle = (firstMatch(recommendationTitleRegex, in: anchor)
+                ?? firstMatch(recommendationAnchorTitleRegex, in: anchor))
+                .map(stripTags)
+                .flatMap(decodeHTML)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? detailURL.lastPathComponent
+            let imageCount = firstMatch(recommendationImageCountRegex, in: rawTitle).flatMap(Int.init)
+            let title = recommendationDisplayTitle(rawTitle)
+            let width = firstMatch(recommendationWidthRegex, in: anchor).flatMap(Double.init)
+            let height = firstMatch(recommendationHeightRegex, in: anchor).flatMap(Double.init)
+            let aspectRatio = if let width, let height, width > 0, height > 0 {
+                width / height
+            } else {
+                coverURL.flatMap(RemoteImageURLAspectRatio.aspectRatio)
+            }
+
+            return OnlineGalleryRecommendation(
+                title: title,
+                detailURL: detailURL,
+                coverURL: coverURL,
+                coverAspectRatio: aspectRatio,
+                imageCount: imageCount
+            )
+        }
     }
 
     private static func fetchHTML(_ url: URL) async throws -> String {
@@ -193,7 +261,33 @@ enum MissKonDetailResolver {
         return urls.filter { seen.insert($0.absoluteString).inserted }
     }
 
-    private static func regex(_ pattern: String) -> NSRegularExpression {
+    private nonisolated static let recommendationAnchorRegex = regex(
+        #"<a\b(?=[^>]*class=["'][^"']*yarpp-thumbnail[^"']*["'])[^>]*>[\s\S]*?</a>"#
+    )
+    private nonisolated static let recommendationHrefRegex = regex(#"href=["']([^"']+)["']"#)
+    private nonisolated static let recommendationDataSourceRegex = regex(#"<img\b[^>]*data-src=["']([^"']+)["']"#)
+    private nonisolated static let recommendationSourceRegex = regex(#"<img\b[^>]*src=["']([^"']+)["']"#)
+    private nonisolated static let recommendationTitleRegex = regex(
+        #"<span\b[^>]*class=["'][^"']*yarpp-thumbnail-title[^"']*["'][^>]*>([\s\S]*?)</span>"#
+    )
+    private nonisolated static let recommendationAnchorTitleRegex = regex(#"<a\b[^>]*title=["']([^"']+)["']"#)
+    private nonisolated static let recommendationImageCountRegex = regex(#"(\d+)\s*(?:photos|pics|images)"#)
+    private nonisolated static let recommendationWidthRegex = regex(#"<img\b[^>]*width=["']([0-9]+)["']"#)
+    private nonisolated static let recommendationHeightRegex = regex(#"<img\b[^>]*height=["']([0-9]+)["']"#)
+
+    private nonisolated static func recommendationDisplayTitle(_ title: String) -> String {
+        title.replacingOccurrences(
+            of: #"\s*\([^)]*\d+\s*(?:photos|pics|images)[^)]*\)\s*$"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private nonisolated static func stripTags(_ value: String) -> String {
+        value.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+    }
+
+    private nonisolated static func regex(_ pattern: String) -> NSRegularExpression {
         do {
             return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
         } catch {
@@ -201,7 +295,7 @@ enum MissKonDetailResolver {
         }
     }
 
-    private static func firstMatch(_ regex: NSRegularExpression, in text: String) -> String? {
+    private nonisolated static func firstMatch(_ regex: NSRegularExpression, in text: String) -> String? {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = regex.firstMatch(in: text, range: range),
               match.numberOfRanges > 1,
@@ -214,6 +308,12 @@ enum MissKonDetailResolver {
         value
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&#038;", with: "&")
+            .replacingOccurrences(of: "&#8211;", with: "-")
+            .replacingOccurrences(of: "&#8217;", with: "'")
+            .replacingOccurrences(of: "&#8220;", with: "“")
+            .replacingOccurrences(of: "&#8221;", with: "”")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
             .removingPercentEncoding ?? value
     }
 

@@ -76,8 +76,10 @@
 | `RemoteImageView` | `Shared/UI/` | 共享远程图片视图（Nuke 加载、占位符、aspectFill/Fit、同步缓存命中） |
 | `DetailOverlayChromeView` | `Shared/UI/Detail/` | 详情区覆盖层圆角背景 |
 | `DetailNavigationButton` | `Shared/UI/Detail/` | 详情区导航按钮（圆形毛玻璃） |
+| `DetailRecommendationsView` | `Shared/UI/Detail/` | 4KHD/MissKon/收藏共用的图集尾页推荐网格 |
 | `RemoteImagePipeline` | `Shared/Services/` | Nuke 图片加载管线（含 thumbnailPrefetcher + detailPrefetcher 分离） |
 | `DetailPageImageCache` | `Shared/Services/` | 详情页图片 URL 缓存（7 天过期，500/800 容量限制） |
+| `OnlineGalleryRecommendation` | `Shared/Services/` | 跨在线源通用的推荐图集值模型 |
 | `OnlineSourcePolicy` | `Shared/Services/` | 在线源 HTTPS、host allowlist、重定向与媒体 URL 统一门禁 |
 | `RemoteImageURLAspectRatio` | `Shared/Services/` | 从已知图片 URL 参数提取通用宽高比 |
 | `SharingPresenter` | `Shared/Platform/` | 系统分享面板弹出 |
@@ -85,6 +87,7 @@
 | `WorkspaceCoalescingQueue` | `Shared/Platform/` | 合并高频刷新 |
 | `FilmstripVisibilityController` | `Shared/State/` | 胶卷条显示/隐藏动画状态 |
 | `WorkspaceDetailPaneController` | `Shared/State/` | 详情窗格展开/收起 |
+| `WorkspaceDetailContentMode` | `Shared/State/` | 详情图片与尾页推荐之间的共享导航状态 |
 
 ## 5. 变更优先级
 
@@ -107,6 +110,7 @@
 - **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图的防盗链请求配置从对应 `FavoriteSourceAdapter` 获取
 - 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
 - Gallery/MissKon 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
+- Gallery/MissKon 来源的收藏详情在最后一张后继续导航会显示推荐；推荐数据仍经 source adapter 注入，跨模块跳转只由 `WorkspaceAppAssembly` 路由，Favorites 不得直接依赖业务模块
 
 ### MissKon 模块
 
@@ -118,6 +122,7 @@
 - **缓存修复**：`restoreSectionCache` 在 `cachedNextPageURLs[section] == nil` 时自动触发刷新
 - **业务缓存归属**：MediaFire 等 MissKon 专属详情 metadata 只存入 `MissKonDetailMetadataCache`，不得写回 Shared 的 `DetailPageImageCache` schema
 - **详情区封面优先**：打开详情时查 Nuke 内存缓存（4096px → 512px 回退），命中直接显示不闪烁
+- **尾页推荐**：全部详情页加载完成后，最后一张继续向后导航显示原站推荐；当前原站固定 6 项，宽详情区 3×2、窄详情区 2×3，点击进入对应 MissKon 图集
 
 ### Wallhaven 模块
 
@@ -136,6 +141,7 @@
 - **底部重试**：footer 点击重试，错误显示红色 "errorMessage — 点击重试"
 - **搜索高亮**：列表/网格均支持 `activeSearchQuery` 高亮
 - **收藏下一张按钮**：`imageCount == 0` 时回退用 `loadedImageSlots.count` 判断
+- **尾页推荐**：解析详情首页的原站推荐卡片；最后一张继续向后导航显示共享推荐网格，点击直接打开对应 4KHD 图集
 
 ### 设置面板
 

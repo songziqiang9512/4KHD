@@ -10,6 +10,8 @@ final class GalleryDetailStore {
     var selectedImageIndex = 0
     private(set) var loadedImageSlots: [ImageSlot] = []
     private(set) var prefetchPageURL: URL?
+    private(set) var recommendations: [OnlineGalleryRecommendation] = []
+    private(set) var contentMode: WorkspaceDetailContentMode = .image
     var isFullscreenViewerPresented = false
     var errorMessage: String?
 
@@ -42,6 +44,16 @@ final class GalleryDetailStore {
             .compactMap(\.knownURL)
     }
 
+    var canStepBackward: Bool {
+        contentMode == .recommendations || selectedImageIndex > 0
+    }
+
+    var canStepForward: Bool {
+        guard contentMode == .image else { return false }
+        if selectedImageIndex < loadedImageSlots.count - 1 { return true }
+        return hasMorePagesOrLoading || !recommendations.isEmpty
+    }
+
     // MARK: - 生命周期
 
     /// 切换 / 重选当前图集时调用：重建 slot、cursor、清掉 in-flight 任务。
@@ -51,6 +63,8 @@ final class GalleryDetailStore {
         currentItem = item
         pendingSelectionIndex = nil
         prefetchPageURL = nil
+        recommendations = []
+        contentMode = .image
         selectedImageIndex = 0
         loadedImageSlots = []
         itemPageCursors.removeAll()
@@ -67,6 +81,7 @@ final class GalleryDetailStore {
 
     func selectImage(at index: Int) {
         guard index >= 0 else { return }
+        contentMode = .image
         if index >= loadedImageSlots.count {
             // 还没加载到这张：尝试拉下一页,记下用户目标 index,等 slot 到位后跳过去。
             if ensureNextDetailPageLoaded(reason: .selectedBeyondLoadedRange) {
@@ -85,6 +100,12 @@ final class GalleryDetailStore {
     }
 
     func stepImage(_ delta: Int) {
+        if contentMode == .recommendations {
+            guard delta < 0 else { return }
+            contentMode = .image
+            selectedImageIndex = max(loadedImageSlots.count - 1, 0)
+            return
+        }
         let nextIndex = selectedImageIndex + delta
         if delta > 0, nextIndex >= loadedImageSlots.count {
             // 在尾部按"下一张"：拉下一页 + 挂 pendingSelectionIndex；
@@ -92,6 +113,8 @@ final class GalleryDetailStore {
             // 没有更多页可拉时停在末位,不悬挂 pending。
             if ensureNextDetailPageLoaded(reason: .steppedPastLoadedRange) {
                 pendingSelectionIndex = loadedImageSlots.count
+            } else if !recommendations.isEmpty {
+                contentMode = .recommendations
             } else {
                 selectedImageIndex = max(loadedImageSlots.count - 1, 0)
             }
@@ -141,6 +164,7 @@ final class GalleryDetailStore {
             || loadedImageSlots.contains(where: { $0.pageURL == page.pageURL })
             || requestedDetailPageURLs[item.id, default: []].contains(page.pageURL)
         guard isExpectedPage else { return }
+        mergeRecommendations(page.recommendations)
         mergeResolvedPageURLs(page.pageURLs, for: item)
         if prefetchPageURL == page.pageURL {
             prefetchPageURL = nil
@@ -284,6 +308,18 @@ final class GalleryDetailStore {
 
     private func pageURLs(for item: GalleryItem) -> [URL] {
         resolvedPageURLs[item.id] ?? item.pageURLs
+    }
+
+    private var hasMorePagesOrLoading: Bool {
+        guard let item = currentItem else { return false }
+        if !detailPageTasks.isEmpty { return true }
+        return itemPageCursors[item.id, default: 1] < pageURLs(for: item).count
+    }
+
+    private func mergeRecommendations(_ incoming: [OnlineGalleryRecommendation]) {
+        guard !incoming.isEmpty else { return }
+        var seen = Set(recommendations.map(\.id))
+        recommendations.append(contentsOf: incoming.filter { seen.insert($0.id).inserted })
     }
 
     private func mergeResolvedPageURLs(_ pageURLs: [URL], for item: GalleryItem) {

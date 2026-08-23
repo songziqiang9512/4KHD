@@ -108,7 +108,11 @@ enum WorkspaceAppAssembly {
                 },
                 resolvePage: { url in
                     let page = try await DetailPageHTMLResolver.resolve(pageURL: url)
-                    return FavoriteResolvedImagePage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+                    return FavoriteResolvedImagePage(
+                        imageURLs: page.imageURLs,
+                        pageURLs: page.pageURLs,
+                        recommendations: page.recommendations
+                    )
                 },
                 configureImageRequest: GalleryRequestFactory.configureImageRequest
             ),
@@ -120,7 +124,11 @@ enum WorkspaceAppAssembly {
                 },
                 resolvePage: { url in
                     let page = try await MissKonDetailResolver.resolve(pageURL: url)
-                    return FavoriteResolvedImagePage(imageURLs: page.imageURLs, pageURLs: page.pageURLs)
+                    return FavoriteResolvedImagePage(
+                        imageURLs: page.imageURLs,
+                        pageURLs: page.pageURLs,
+                        recommendations: page.recommendations
+                    )
                 },
                 configureImageRequest: MissKonRequestFactory.configureImageRequest
             ),
@@ -364,7 +372,29 @@ enum WorkspaceAppAssembly {
                             immersive: context.immersive,
                             detailPane: context.detailPaneController,
                             detailInteraction: favoritesDetailInteraction,
-                            filmstripVisibility: filmstripVisibility
+                            filmstripVisibility: filmstripVisibility,
+                            onOpenRecommendation: { source, recommendation in
+                                switch source {
+                                case .gallery:
+                                    context.appContext.routeController.select(
+                                        WorkspaceRoute(
+                                            moduleID: .fourKHDGallery,
+                                            itemID: GallerySection.latest.rawValue
+                                        )
+                                    )
+                                    fourKHDGalleryStore.openRecommendation(recommendation)
+                                case .missKon:
+                                    context.appContext.routeController.select(
+                                        WorkspaceRoute(
+                                            moduleID: .missKon,
+                                            itemID: MissKonSection.latest.rawValue
+                                        )
+                                    )
+                                    missKonStore.openRecommendation(recommendation)
+                                case .wallhaven:
+                                    break
+                                }
+                            }
                         )
                     },
                     normalizeRoute: { route in

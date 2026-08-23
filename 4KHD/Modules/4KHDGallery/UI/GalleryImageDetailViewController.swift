@@ -10,6 +10,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
     private let filmstripVisibility: FilmstripVisibilityController
     private let resolver = DetailImageResolver()
     private let imageView = GalleryZoomableImageView()
+    private let recommendationsView = DetailRecommendationsView()
     private let filmstripView = GalleryFilmstripView()
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
     private let previousButton = DetailNavigationButton(symbolName: "chevron.left", accessibilityDescription: "上一张")
@@ -87,6 +88,9 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         filmstripView.onReachedEnd = { [weak self] in
             self?.library.ensureNextDetailPageLoaded(reason: .filmstripReachedEnd)
         }
+        recommendationsView.onOpenRecommendation = { [weak self] recommendation in
+            self?.library.openRecommendation(recommendation)
+        }
         reloadDetail()
         observeState()
     }
@@ -132,7 +136,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
         nextButton.target = self
         nextButton.action = #selector(nextImage)
 
-        for subview in [imageView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
+        for subview in [imageView, recommendationsView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -152,6 +156,11 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             imageTopSafeAreaConstraint,
             imageView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
+
+            recommendationsView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            recommendationsView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            recommendationsView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            recommendationsView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -201,6 +210,8 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = library.loadedImageSlots
             _ = library.prefetchPageURL
             _ = library.detailErrorMessage
+            _ = library.recommendations
+            _ = library.detailContentMode
             _ = library.isFavorite(library.selectedItem ?? placeholderItem)
             _ = immersive.isImmersive
             _ = detailPane.isPresented
@@ -247,6 +258,7 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             imageView.setImageURL(nil)
             RemoteImagePipeline.shared.stopDetailPrefetching()
             imageView.isHidden = true
+            recommendationsView.isHidden = true
             emptyLabel.isHidden = false
             previousButton.isHidden = true
             nextButton.isHidden = true
@@ -263,21 +275,39 @@ final class GalleryImageDetailViewController: NSViewController, WorkspaceFocusab
             resolver.cancel()
             library.cancelOutstandingDetailPageLoads()
             imageView.setImageURL(nil)
+            recommendationsView.isHidden = true
             RemoteImagePipeline.shared.stopDetailPrefetching()
             detailFailed = false
             isDetailReady = false
             return
         }
 
+        recommendationsView.update(
+            recommendations: library.recommendations,
+            requestConfigurator: GalleryRequestFactory.configureImageRequest
+        )
+        if library.detailContentMode == .recommendations {
+            imageView.isHidden = true
+            recommendationsView.isHidden = false
+            emptyLabel.isHidden = true
+            previousButton.isHidden = false
+            previousButton.isEnabled = library.canStepDetailBackward
+            nextButton.isHidden = false
+            nextButton.isEnabled = false
+            counterChrome.isHidden = false
+            counterLabel.stringValue = "推荐图集"
+            statusChrome.isHidden = true
+            updateFilmstripLayout(showsFilmstrip: false)
+            return
+        }
+
         imageView.isHidden = false
+        recommendationsView.isHidden = true
         emptyLabel.isHidden = true
         previousButton.isHidden = false
         nextButton.isHidden = false
-        previousButton.isEnabled = library.selectedImageIndex > 0
-        nextButton.isEnabled = library.selectedImageIndex < max(
-            item.imageCount > 0 ? item.imageCount - 1 : library.loadedImageSlots.count,
-            0
-        )
+        previousButton.isEnabled = library.canStepDetailBackward
+        nextButton.isEnabled = library.canStepDetailForward
         counterChrome.isHidden = false
 
         if currentItemID != item.id {

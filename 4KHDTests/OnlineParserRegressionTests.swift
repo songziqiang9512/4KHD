@@ -125,6 +125,50 @@ final class OnlineParserRegressionTests: XCTestCase {
         )
         XCTAssertNil(withoutButton)
     }
+
+    func testGalleryRecommendationsAreParsedOutsideImageContent() throws {
+        let pageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/content/current.html"))
+        let html = #"""
+        <div id="basicE">
+          <a href="/content/related.html">
+            <img src="https://pic.4khd.com/related.webp" />
+            <p>Related &#8211; Set[195MB-30photos]</p>
+          </a>
+          <a href="https://evil.example/content/rejected.html">
+            <img src="https://evil.example/rejected.jpg" /><p>Rejected[1MB-1photos]</p>
+          </a>
+        </div>
+        """#
+
+        let recommendations = DetailPageHTMLResolver.extractRecommendations(from: html, pageURL: pageURL)
+
+        XCTAssertEqual(recommendations.count, 1)
+        XCTAssertEqual(recommendations[0].title, "Related - Set")
+        XCTAssertEqual(recommendations[0].imageCount, 30)
+        XCTAssertEqual(recommendations[0].detailURL.absoluteString, "https://www.4khd.com/content/related.html")
+        XCTAssertEqual(recommendations[0].coverURL?.absoluteString, "https://pic.4khd.com/related.webp")
+    }
+
+    func testMissKonYARPPRecommendationsAreParsedAndDeduplicated() throws {
+        let pageURL = try XCTUnwrap(URL(string: "https://misskon.com/current-set/"))
+        let card = #"""
+        <a class='yarpp-thumbnail' href='/related-set/' title='Related Set (93 photos)'>
+          <img width="306" height="163" src="data:image/svg+xml,placeholder"
+               data-src="https://misskon.com/media/related.webp" />
+          <span class="yarpp-thumbnail-title">Related &#8211; Set (93 photos)</span>
+        </a>
+        """#
+        let html = card + card + #"<a href="https://misskon.com/not-yarpp/">Ignore</a>"#
+
+        let recommendations = MissKonDetailResolver.extractRecommendations(from: html, pageURL: pageURL)
+
+        XCTAssertEqual(recommendations.count, 1)
+        XCTAssertEqual(recommendations[0].title, "Related - Set")
+        XCTAssertEqual(recommendations[0].imageCount, 93)
+        XCTAssertEqual(recommendations[0].detailURL.absoluteString, "https://misskon.com/related-set/")
+        XCTAssertEqual(recommendations[0].coverURL?.absoluteString, "https://misskon.com/media/related.webp")
+        XCTAssertEqual(recommendations[0].coverAspectRatio ?? 0, 306.0 / 163.0, accuracy: 0.0001)
+    }
 }
 
 final class WallhavenFavoritesBridgeTests: XCTestCase {

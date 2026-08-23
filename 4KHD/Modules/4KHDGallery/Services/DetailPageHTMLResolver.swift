@@ -37,12 +37,74 @@ enum DetailPageHTMLResolver {
         let content = galleryContent(in: html)
         let imageURLs = orderedUnique(urls(in: content).map(GalleryImageURLNormalizer.normalized).filter(isGalleryImageURL))
         let pageURLs = orderedUnique(pageLinks(in: html, baseURL: pageURL))
+        let recommendations = extractRecommendations(from: html, pageURL: pageURL)
 
         guard !imageURLs.isEmpty else {
             throw URLError(.cannotParseResponse)
         }
 
-        return ResolvedImagePage(pageURL: pageURL, imageURLs: imageURLs, pageURLs: pageURLs)
+        return ResolvedImagePage(
+            pageURL: pageURL,
+            imageURLs: imageURLs,
+            pageURLs: pageURLs,
+            recommendations: recommendations
+        )
+    }
+
+    /// Extracts the cards inside 4KHD's `#basicE` "Read More" block.
+    /// This is deliberately separate from `galleryContent(in:)`, whose end marker
+    /// prevents recommendation covers from becoming image slots.
+    nonisolated static func extractRecommendations(
+        from html: String,
+        pageURL: URL
+    ) -> [OnlineGalleryRecommendation] {
+        guard let container = matches(regex: recommendationContainerRegex, in: html).first else { return [] }
+        let range = NSRange(container.startIndex..<container.endIndex, in: container)
+        var seen = Set<String>()
+
+        return recommendationAnchorRegex.matches(in: container, range: range).compactMap { result in
+            guard let anchorRange = Range(result.range, in: container) else { return nil }
+            let anchor = String(container[anchorRange])
+            guard let href = matches(regex: recommendationHrefRegex, in: anchor).first.flatMap(decodeHTML),
+                  let detailURL = OnlineSourcePolicy.resolvedURL(
+                    href,
+                    relativeTo: pageURL,
+                    source: .gallery,
+                    resource: .html
+                  ),
+                  detailURL.path.contains("/content/"),
+                  detailURL.pathExtension.lowercased() == "html",
+                  !detailURL.isSameDetailPath(as: pageURL),
+                  seen.insert(detailURL.absoluteString).inserted else {
+                return nil
+            }
+
+            let coverURL = matches(regex: recommendationImageRegex, in: anchor).first
+                .flatMap(decodeHTML)
+                .flatMap {
+                    OnlineSourcePolicy.resolvedURL(
+                        $0,
+                        relativeTo: pageURL,
+                        source: .gallery,
+                        resource: .media
+                    )
+                }
+                .map(GalleryImageURLNormalizer.normalized)
+            let rawTitle = matches(regex: recommendationTitleRegex, in: anchor).first
+                .map(stripTags)
+                .flatMap(decodeHTML)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? detailURL.deletingPathExtension().lastPathComponent
+            let title = recommendationDisplayTitle(rawTitle)
+
+            return OnlineGalleryRecommendation(
+                title: title,
+                detailURL: detailURL,
+                coverURL: coverURL,
+                coverAspectRatio: nil,
+                imageCount: recommendationImageCount(rawTitle)
+            )
+        }
     }
 
     private nonisolated static func galleryContent(in html: String) -> String {
@@ -166,9 +228,36 @@ enum DetailPageHTMLResolver {
             return DetailPageHTMLResolver.noMatchRegex
         }
     }()
+    private nonisolated static let recommendationContainerRegex = regex(
+        #"<div\b[^>]*\bid=["']basicE["'][^>]*>([\s\S]*?)</div>"#
+    )
+    private nonisolated static let recommendationAnchorRegex = regex(
+        #"<a\b[^>]*href=["'][^"']+["'][^>]*>[\s\S]*?</a>"#
+    )
+    private nonisolated static let recommendationHrefRegex = regex(
+        #"<a\b[^>]*href=["']([^"']+)["']"#
+    )
+    private nonisolated static let recommendationImageRegex = regex(
+        #"<img\b[^>]*(?:data-src|src)=["']([^"']+)["']"#
+    )
+    private nonisolated static let recommendationTitleRegex = regex(
+        #"<p\b[^>]*>([\s\S]*?)</p>"#
+    )
+    private nonisolated static let recommendationImageCountRegex = regex(
+        #"(\d+)\s*photos?"#
+    )
 
     /// A regex that matches nothing — safe fallback for invalid pattern errors.
     private nonisolated static let noMatchRegex = try! NSRegularExpression(pattern: "$^", options: [])
+
+    private nonisolated static func regex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        } catch {
+            assertionFailure("Invalid recommendation regex: \(error)")
+            return noMatchRegex
+        }
+    }
 
     private nonisolated static func matches(regex: NSRegularExpression, in text: String) -> [String] {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
@@ -186,6 +275,22 @@ enum DetailPageHTMLResolver {
         return urls.filter { seen.insert($0.absoluteString).inserted }
     }
 
+    private nonisolated static func recommendationImageCount(_ title: String) -> Int? {
+        matches(regex: recommendationImageCountRegex, in: title).first.flatMap(Int.init)
+    }
+
+    private nonisolated static func recommendationDisplayTitle(_ title: String) -> String {
+        title.replacingOccurrences(
+            of: #"\s*[\[(][^\])]*\d+\s*photos?[^\])]*[\])]\s*$"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private nonisolated static func stripTags(_ value: String) -> String {
+        value.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+    }
+
     private nonisolated static func isGalleryImageURL(_ url: URL) -> Bool {
         let value = url.absoluteString.lowercased()
         guard OnlineSourcePolicy.allows(url, source: .gallery, resource: .media) else { return false }
@@ -196,6 +301,12 @@ enum DetailPageHTMLResolver {
         value
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&#038;", with: "&")
+            .replacingOccurrences(of: "&#8211;", with: "-")
+            .replacingOccurrences(of: "&#8217;", with: "'")
+            .replacingOccurrences(of: "&#8220;", with: "“")
+            .replacingOccurrences(of: "&#8221;", with: "”")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
             .removingPercentEncoding ?? value
     }
 }

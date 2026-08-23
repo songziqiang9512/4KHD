@@ -74,10 +74,23 @@ struct ImageSlot: Identifiable {
     let knownURL: URL?
 }
 
-struct ResolvedImagePage: Sendable {
+nonisolated struct ResolvedImagePage: Sendable {
     let pageURL: URL
     let imageURLs: [URL]
     let pageURLs: [URL]
+    let recommendations: [OnlineGalleryRecommendation]
+
+    init(
+        pageURL: URL,
+        imageURLs: [URL],
+        pageURLs: [URL],
+        recommendations: [OnlineGalleryRecommendation] = []
+    ) {
+        self.pageURL = pageURL
+        self.imageURLs = imageURLs
+        self.pageURLs = pageURLs
+        self.recommendations = recommendations
+    }
 }
 
 enum GalleryImageURLNormalizer {

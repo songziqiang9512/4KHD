@@ -59,6 +59,7 @@ final class MissKonFeedStore {
 
     /// Called when the selected item changes, so the detail store can stay in sync.
     @ObservationIgnored var onSelectionChanged: ((MissKonItem?) -> Void)?
+    @ObservationIgnored private var selectedItemSnapshot: MissKonItem?
 
     private static var cacheDirectory: URL? {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
@@ -242,10 +243,10 @@ final class MissKonFeedStore {
                     // Auto-select first item if nothing is selected (e.g., first launch).
                     // Always publish the selected snapshot: the same stable ID can
                     // carry refreshed URLs, counts or metadata.
-                    if self.selectedItemID == nil || !merged.contains(where: { $0.id == self.selectedItemID }) {
+                    if self.selectionSnapshot(in: merged) == nil {
                         self.selectedItemID = merged.first?.id
                     }
-                    self.onSelectionChanged?(self.selectedItemID.flatMap { id in merged.first { $0.id == id } })
+                    self.publishSelection(in: merged)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -488,9 +489,13 @@ final class MissKonFeedStore {
     var selectedItem: MissKonItem? {
         guard let selectedItemID else { return nil }
         return allItems.first { $0.id == selectedItemID }
+            ?? selectedItemSnapshot.flatMap {
+                $0.id == selectedItemID && $0.section == section ? $0 : nil
+            }
     }
 
     func select(_ item: MissKonItem) {
+        selectedItemSnapshot = item
         guard selectedItemID != item.id else {
             if selectedItem != item {
                 onSelectionChanged?(item)
@@ -555,10 +560,10 @@ final class MissKonFeedStore {
             nextPageURL = cachedNextPageURLs[self.section]
             canLoadMoreList = nextPageURL != nil
             feedErrorMessage = nil
-            if selectedItemID == nil || !cached.contains(where: { $0.id == selectedItemID }) {
+            if selectionSnapshot(in: cached) == nil {
                 selectedItemID = cached.first?.id
             }
-            onSelectionChanged?(selectedItemID.flatMap { id in cached.first { $0.id == id } })
+            publishSelection(in: cached)
             // Auto-refresh if cache is stale or missing nextPageURL (pagination chain broken).
             // 已到末尾的板块（noMorePagesSections）缺失 nextPageURL 属正常终态，不重拉第 1 页。
             let needsRefresh: Bool
@@ -615,6 +620,20 @@ final class MissKonFeedStore {
         let numberIndex = parts.index(after: pageIndex)
         guard parts.indices.contains(numberIndex) else { return nil }
         return Int(parts[numberIndex])
+    }
+
+    private func selectionSnapshot(in items: [MissKonItem]) -> MissKonItem? {
+        guard let selectedItemID else { return nil }
+        return items.first { $0.id == selectedItemID }
+            ?? selectedItemSnapshot.flatMap {
+                $0.id == selectedItemID && $0.section == section ? $0 : nil
+            }
+    }
+
+    private func publishSelection(in items: [MissKonItem]) {
+        let item = selectionSnapshot(in: items)
+        selectedItemSnapshot = item
+        onSelectionChanged?(item)
     }
 }
 

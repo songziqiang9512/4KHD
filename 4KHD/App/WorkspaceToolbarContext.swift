@@ -321,13 +321,14 @@ final class WorkspaceToolbarContext {
                     isFavorite: selectedItem.map { galleryStore.isFavorite($0) } ?? false,
                     canIncreaseGridColumns: canAdjustGridColumns && galleryPreferences.canIncreaseGridColumns,
                     canDecreaseGridColumns: canAdjustGridColumns && galleryPreferences.canDecreaseGridColumns,
-                    canSelectPreviousImage: galleryStore.selectedImageIndex > 0,
-                    canSelectNextImage: selectedItem.map { item in
-                        galleryStore.selectedImageIndex < max(item.imageCount - 1, 0)
-                    } ?? false,
-                    canSaveImage: selectedItem != nil && galleryStore.selectedSlot?.knownURL != nil,
+                    canSelectPreviousImage: galleryStore.canStepDetailBackward,
+                    canSelectNextImage: galleryStore.canStepDetailForward,
+                    canSaveImage: galleryStore.detailContentMode == .image
+                        && selectedItem != nil
+                        && galleryStore.selectedSlot?.knownURL != nil,
                     canSaveAlbum: selectedItem != nil,
-                    canResetZoom: galleryStore.selectedSlot != nil,
+                    canResetZoom: galleryStore.detailContentMode == .image
+                        && galleryStore.selectedSlot != nil,
                     canShare: selectedItem != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
@@ -360,7 +361,6 @@ final class WorkspaceToolbarContext {
             )
         case .missKon:
             let slots = missKonStore.imageSlots
-            let selectedIndex = missKonStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? -1
             let haveImageURL: Bool = {
                 guard let slot = missKonStore.selectedSlotID.flatMap({ id in slots.first { $0.id == id } }) else { return false }
                 return slot.knownURL != nil || missKonStore.detail.imageURL(for: slot) != nil
@@ -379,11 +379,12 @@ final class WorkspaceToolbarContext {
                     canDecreaseGridColumns: missKonPreferences.layout == .grid
                         && !detailPaneController.isPresented
                         && missKonPreferences.canDecreaseGridColumns,
-                    canSelectPreviousImage: selectedIndex > 0,
-                    canSelectNextImage: selectedIndex >= 0 && selectedIndex < slots.count - 1,
-                    canSaveImage: haveImageURL,
+                    canSelectPreviousImage: missKonStore.canStepDetailBackward,
+                    canSelectNextImage: missKonStore.canStepDetailForward,
+                    canSaveImage: missKonStore.detailContentMode == .image && haveImageURL,
                     canSaveAlbum: currentItem != nil,
-                    canResetZoom: missKonStore.selectedSlotID != nil,
+                    canResetZoom: missKonStore.detailContentMode == .image
+                        && missKonStore.selectedSlotID != nil,
                     canShare: currentItem != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
@@ -416,10 +417,6 @@ final class WorkspaceToolbarContext {
             let selectedRecord = favoritesModuleStore.selectedRecord
             let source = selectedRecord.flatMap(FavoriteSource.source(for:))
             let canSaveAlbum = source == .gallery || source == .missKon
-            let slots = favoritesDetailStore.imageSlots
-            let selectedIndex = favoritesDetailStore.selectedSlotID.flatMap { id in
-                slots.firstIndex { $0.id == id }
-            } ?? 0
             let canAdjustGridColumns = favoritesPreferences.layout == .grid
                 && !detailPaneController.isPresented
             return .favorites(
@@ -432,11 +429,13 @@ final class WorkspaceToolbarContext {
                         && favoritesPreferences.canIncreaseGridColumns,
                     canDecreaseGridColumns: canAdjustGridColumns
                         && favoritesPreferences.canDecreaseGridColumns,
-                    canSelectPreviousImage: selectedIndex > 0,
-                    canSelectNextImage: selectedIndex >= 0 && selectedIndex < slots.count - 1,
-                    canSaveImage: favoritesDetailStore.selectedSlot?.knownURL != nil,
+                    canSelectPreviousImage: favoritesDetailStore.canStepBackward,
+                    canSelectNextImage: favoritesDetailStore.canStepForward,
+                    canSaveImage: favoritesDetailStore.contentMode == .image
+                        && favoritesDetailStore.selectedSlot?.knownURL != nil,
                     canSaveAlbum: canSaveAlbum,
-                    canResetZoom: favoritesDetailStore.selectedSlot != nil,
+                    canResetZoom: favoritesDetailStore.contentMode == .image
+                        && favoritesDetailStore.selectedSlot != nil,
                     canShare: selectedRecord != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
@@ -666,13 +665,7 @@ final class WorkspaceToolbarContext {
         case .localLibrary:
             localLibraryStore.stepImage(delta)
         case .missKon:
-            guard delta != 0 else { return }
-            let slots = missKonStore.imageSlots
-            guard !slots.isEmpty else { return }
-            let current = missKonStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-            let next = min(max(current + delta, 0), slots.count - 1)
-            guard next != current else { return }
-            missKonStore.detail.selectSlot(at: next)
+            missKonStore.detail.stepSelection(delta)
         case .wallhaven:
             guard delta != 0 else { return }
             let wallpapers = wallhavenStore.wallpapers
@@ -682,27 +675,23 @@ final class WorkspaceToolbarContext {
             guard next != current else { return }
             wallhavenStore.select(wallpapers[next])
         case .favorites:
-            guard delta != 0 else { return }
-            let slots = favoritesDetailStore.imageSlots
-            guard !slots.isEmpty else { return }
-            let current = favoritesDetailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-            let next = min(max(current + delta, 0), slots.count - 1)
-            guard next != current else { return }
-            favoritesDetailStore.selectSlot(at: next)
+            favoritesDetailStore.stepSelection(delta)
         }
     }
 
     func saveCurrentImage(for moduleID: WorkspaceModuleID) {
         switch moduleID {
         case .fourKHDGallery:
-            guard let item = galleryStore.selectedItem,
+            guard galleryStore.detailContentMode == .image,
+                  let item = galleryStore.selectedItem,
                   let slot = galleryStore.selectedSlot else { return }
             galleryDetailInteraction.save(item: item, slot: slot)
         case .localLibrary:
             guard let image = localLibraryStore.selectedImage else { return }
             localDetailInteraction.save(image: image)
         case .missKon:
-            guard let slot = missKonStore.selectedSlotID.flatMap({ id in missKonStore.imageSlots.first { $0.id == id } }),
+            guard missKonStore.detailContentMode == .image,
+                  let slot = missKonStore.selectedSlotID.flatMap({ id in missKonStore.imageSlots.first { $0.id == id } }),
                   let url = slot.knownURL ?? missKonStore.detail.imageURL(for: slot) else { return }
             let filename = "\(missKonStore.currentItem?.id ?? "misskon")-\(slot.displayIndex + 1).jpg"
             missKonDetailInteraction.save(imageURL: url, filename: filename)
@@ -710,7 +699,8 @@ final class WorkspaceToolbarContext {
             guard let wallpaper = wallhavenStore.effectiveSelectedWallpaper else { return }
             wallhavenDetailInteraction.saveWallpaper(wallpaper)
         case .favorites:
-            guard let slot = favoritesDetailStore.selectedSlot,
+            guard favoritesDetailStore.contentMode == .image,
+                  let slot = favoritesDetailStore.selectedSlot,
                   let url = slot.knownURL else { return }
             let source = favoritesModuleStore.selectedRecord.flatMap(FavoriteSource.source(for:))
             favoritesDetailInteraction.save(imageURL: url, filename: url.lastPathComponent, source: source)

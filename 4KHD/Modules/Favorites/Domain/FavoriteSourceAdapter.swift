@@ -3,6 +3,17 @@ import Foundation
 struct FavoriteResolvedImagePage {
     let imageURLs: [URL]
     let pageURLs: [URL]
+    let recommendations: [OnlineGalleryRecommendation]
+
+    init(
+        imageURLs: [URL],
+        pageURLs: [URL],
+        recommendations: [OnlineGalleryRecommendation] = []
+    ) {
+        self.imageURLs = imageURLs
+        self.pageURLs = pageURLs
+        self.recommendations = recommendations
+    }
 }
 
 enum FavoriteDetailContent {

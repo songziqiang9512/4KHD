@@ -48,6 +48,7 @@ final class GalleryFeedStore {
     @ObservationIgnored private var pendingListLoadMoreSections: Set<GallerySection> = []
     @ObservationIgnored private var autoRefreshAttemptedSections: Set<GallerySection> = []
     @ObservationIgnored private var failedOperation: FailedOperation?
+    @ObservationIgnored private var selectedItemSnapshot: GalleryItem?
     @ObservationIgnored private let sectionResolver: SectionResolver
     @ObservationIgnored private let pageResolver: PageResolver
     @ObservationIgnored private let searchResolver: SearchResolver
@@ -88,14 +89,18 @@ final class GalleryFeedStore {
     var selectedItem: GalleryItem? {
         guard let selectedItemID else { return nil }
         return allItems.first { $0.id == selectedItemID }
+            ?? selectedItemSnapshot.flatMap {
+                $0.id == selectedItemID && $0.section == section ? $0 : nil
+            }
     }
 
     // MARK: - 选择
 
     func select(_ item: GalleryItem, force: Bool = false) {
         if !force, selectedItemID == item.id { return }
+        selectedItemSnapshot = item
         selectedItemID = item.id
-        notifySelectionChanged()
+        onSelectionChanged?(item)
     }
 
     func selectFirstItemIfNeeded(force: Bool) {
@@ -253,9 +258,7 @@ final class GalleryFeedStore {
         let oldSelectedID = selectedItemID
         visibleCount = min(visibleCount, allItems.count)
 
-        let stillHasSelection = oldSelectedID.flatMap { id in
-            allItems.first { $0.id == id }
-        } != nil
+        let stillHasSelection = oldSelectedID != nil && selectedItem != nil
 
         if !stillHasSelection {
             selectedItemID = allItems.first?.id
@@ -357,7 +360,9 @@ final class GalleryFeedStore {
     }
 
     private func notifySelectionChanged() {
-        onSelectionChanged?(selectedItem)
+        let item = selectedItem
+        selectedItemSnapshot = item
+        onSelectionChanged?(item)
     }
 
     func retryLastFailure() {

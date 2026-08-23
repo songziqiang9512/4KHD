@@ -9,6 +9,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     private let detailInteraction: MissKonDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
     private let imageView = MissKonZoomableImageView()
+    private let recommendationsView = DetailRecommendationsView()
     private let filmstripView = MissKonFilmstripView()
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
     private let previousButton = DetailNavigationButton(symbolName: "chevron.left", accessibilityDescription: "上一张")
@@ -65,6 +66,9 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         filmstripView.onSelect = { [weak self] index in
             self?.library.detail.selectSlot(at: index)
         }
+        recommendationsView.onOpenRecommendation = { [weak self] recommendation in
+            self?.library.openRecommendation(recommendation)
+        }
         reloadDetail()
         observeState()
     }
@@ -106,7 +110,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         nextButton.target = self
         nextButton.action = #selector(nextImage)
 
-        for subview in [imageView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
+        for subview in [imageView, recommendationsView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -122,6 +126,11 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             imageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             imageView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
+
+            recommendationsView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            recommendationsView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            recommendationsView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            recommendationsView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -170,6 +179,8 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             _ = library.imageSlots
             _ = library.isResolving
             _ = library.errorMessage
+            _ = library.recommendations
+            _ = library.detailContentMode
             _ = library.favorites.favorites.last?.id
             _ = detailInteraction.resetToken
             _ = immersive.isImmersive
@@ -212,6 +223,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             detailFailed = false
             imageView.setImageURL(nil)
             imageView.isHidden = true
+            recommendationsView.isHidden = true
             emptyLabel.isHidden = false
             previousButton.isHidden = true
             nextButton.isHidden = true
@@ -234,6 +246,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             currentImageURL = nil
             detailFailed = false
             imageView.setImageURL(nil)
+            recommendationsView.isHidden = true
             RemoteImagePipeline.shared.stopDetailPrefetching()
             // 只停后续页加载,保留选中即解析的首页任务(MediaFire 链接提取)。
             library.detail.cancelPrefetching()
@@ -247,6 +260,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             && !library.isResolving
 
         if slots.isEmpty || resolutionFailed {
+            recommendationsView.isHidden = true
             if resolutionFailed {
                 detailFailed = true
                 imageView.isHidden = false
@@ -268,8 +282,28 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
             return
         }
 
+        recommendationsView.update(
+            recommendations: library.recommendations,
+            requestConfigurator: MissKonRequestFactory.configureImageRequest
+        )
+        if library.detailContentMode == .recommendations {
+            imageView.isHidden = true
+            recommendationsView.isHidden = false
+            emptyLabel.isHidden = true
+            previousButton.isHidden = false
+            previousButton.isEnabled = library.canStepDetailBackward
+            nextButton.isHidden = false
+            nextButton.isEnabled = false
+            counterChrome.isHidden = false
+            counterLabel.stringValue = "推荐图集"
+            statusChrome.isHidden = true
+            updateFilmstripLayout(showsFilmstrip: false)
+            return
+        }
+
         detailFailed = false
         imageView.isHidden = false
+        recommendationsView.isHidden = true
         emptyLabel.isHidden = true
         previousButton.isHidden = false
         nextButton.isHidden = false
@@ -279,8 +313,8 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         let selectedIndex = selectedID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
         let selectedSlot = slots[selectedIndex]
 
-        previousButton.isEnabled = selectedIndex > 0
-        nextButton.isEnabled = selectedIndex < slots.count - 1
+        previousButton.isEnabled = library.canStepDetailBackward
+        nextButton.isEnabled = library.canStepDetailForward
 
         if currentItemID != item.id {
             currentItemID = item.id
@@ -389,22 +423,16 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     }
 
     @objc private func previousImage() {
-        library.detail.selectSlot(at: max((library.selectedSlotID.flatMap { id in library.imageSlots.firstIndex { $0.id == id } } ?? 0) - 1, 0))
+        library.detail.stepSelection(-1)
     }
 
     @objc private func nextImage() {
-        let slots = library.imageSlots
-        let current = library.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-        library.detail.selectSlot(at: min(current + 1, slots.count - 1))
+        library.detail.stepSelection(1)
     }
 
     private func selectAdjacent(delta: Int) -> Bool {
-        let slots = library.imageSlots
-        guard !slots.isEmpty else { return false }
-        let current = library.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-        let next = min(max(current + delta, 0), slots.count - 1)
-        guard next != current else { return true }
-        library.detail.selectSlot(at: next)
+        guard !library.imageSlots.isEmpty else { return false }
+        library.detail.stepSelection(delta)
         return true
     }
 }

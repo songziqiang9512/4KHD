@@ -1,7 +1,7 @@
 # 4KHD 全面审查问题修复清单
 
 更新日期：2026-08-23
-状态：代码修复、UI 结构审查和 1.8.7 发布验收完成；N-1 自动更新安装与真实大图库性能基线待执行
+状态：代码修复、UI 结构审查和 1.8.7 发布验收完成；1.8.8 推荐图集发布候选已验证，N-1 自动更新安装与真实大图库性能基线待执行
 范围：发布链、数据安全、沙盒权限、图片与缓存、在线模块状态机、Shell/UI 行为、模块边界、性能、构建质量与最终 UI 结构审查。
 
 本文件是本轮修复的唯一进度账本。源码和可复现验证优先于本文件；每个条目只有在对应测试/构建/产物检查通过并填写“结果”后才能标记完成。
@@ -398,7 +398,7 @@ FourKHDAppDelegate
 
 - [x] Debug build 通过。
 - [x] Release build 通过。
-- [x] 全部 XCTest 通过：82/82，0 failure、0 skipped。
+- [x] 全部 XCTest 通过：89/89，0 failure、0 skipped。
 - [x] 生产代码 0 SwiftUI。
 - [x] `git diff --check` 通过。
 - [x] 最终 DMG entitlement、签名、公证、版本、架构、Sparkle 签名门禁：1.8.7 发布流水线全部通过；公开 DMG 独立下载后再次通过直接 SHA-256、Developer ID、Apple 公证/staple、Gatekeeper、1.8.7/187、arm64、host entitlements、六个 Sparkle 签名目标与 EdDSA appcast 验证。
@@ -420,4 +420,5 @@ FourKHDAppDelegate
 - 2026-08-23：1.8.6 第二次远端发布通过测试、证书导入、签名构建与 App 权限门禁，但 Apple 公证精确拒绝 Sparkle 四个 ad-hoc helper。按 Sparkle 官方顺序新增专用重签脚本，并把 Developer ID authority/secure timestamp 纳入最终 App 门禁；失败运行仍未创建 tag/release。
 - 2026-08-23：1.8.6 第三次流水线全部通过并发布；公开 DMG 独立下载后通过实际哈希、签名、公证、staple、Gatekeeper、版本/权限/Sparkle helper 与 EdDSA appcast 验证。独立复核另发现 `.sha256` 记录 CI 内部 `build/` 路径，以及普通 CI 误要求 Mac Development 证书；两项均修复并递增到 1.8.7 做不可变重发。
 - 2026-08-23：最终 1.8.7（build 187）已发布；受保护发布流水线与普通 CI 均成功，公开 checksum 可直接验证，DMG/App 签名、公证、staple、Gatekeeper、版本/架构/entitlements、Sparkle helper Developer ID/secure timestamp、EdDSA appcast 和 dSYM 全部确认。发布页：`build-1.8.7`，源提交 `b79f743`。
-- 2026-08-23：最终 Debug/Release 构建、82 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩 N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。
+- 2026-08-23：4KHD/MissKon 详情新增原站推荐解析与图集尾页推荐网格；在线收藏复用相同推荐数据，并由 App 组装层路由到对应业务模块。MissKon 6 项按详情宽度稳定排列，缓存、解析、导航和跨模块打开均补回归测试。
+- 2026-08-23：1.8.8 发布候选的最终 Debug/Release 构建、89 项 XCTest、0 SwiftUI、脚本语法与 `git diff --check` 全部通过。外部仅剩发布流水线产物核验、N-1 更新安装和指定 10k/50k 数据集的 Instruments 基线。

@@ -11,7 +11,9 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
     private let detailPane: WorkspaceDetailPaneController
     private let detailInteraction: FavoritesDetailInteractionController
     private let filmstripVisibility: FilmstripVisibilityController
+    private let onOpenRecommendation: (FavoriteSource, OnlineGalleryRecommendation) -> Void
     private let imageView = FavoritesZoomableImageView()
+    private let recommendationsView = DetailRecommendationsView()
     private let filmstripView = FavoritesFilmstripView()
     private let emptyLabel = NSTextField(labelWithString: "没有可显示内容")
     private let previousButton = DetailNavigationButton(symbolName: "chevron.left", accessibilityDescription: "上一张")
@@ -37,7 +39,8 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         immersive: ImmersiveController,
         detailPane: WorkspaceDetailPaneController,
         detailInteraction: FavoritesDetailInteractionController,
-        filmstripVisibility: FilmstripVisibilityController
+        filmstripVisibility: FilmstripVisibilityController,
+        onOpenRecommendation: @escaping (FavoriteSource, OnlineGalleryRecommendation) -> Void
     ) {
         self.moduleStore = moduleStore
         self.detailStore = detailStore
@@ -45,6 +48,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         self.detailPane = detailPane
         self.detailInteraction = detailInteraction
         self.filmstripVisibility = filmstripVisibility
+        self.onOpenRecommendation = onOpenRecommendation
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -72,6 +76,10 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         }
         filmstripView.onSelect = { [weak self] index in
             self?.detailStore.selectSlot(at: index)
+        }
+        recommendationsView.onOpenRecommendation = { [weak self] recommendation in
+            guard let self, let source = self.detailStore.currentSource else { return }
+            self.onOpenRecommendation(source, recommendation)
         }
         reloadDetail()
         observeState()
@@ -113,7 +121,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         nextButton.target = self
         nextButton.action = #selector(nextImage)
 
-        for subview in [imageView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
+        for subview in [imageView, recommendationsView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -129,6 +137,11 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             imageView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             imageView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
+
+            recommendationsView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            recommendationsView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            recommendationsView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            recommendationsView.bottomAnchor.constraint(equalTo: filmstripView.topAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -178,6 +191,8 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             _ = detailStore.imageSlots
             _ = detailStore.isResolving
             _ = detailStore.errorMessage
+            _ = detailStore.recommendations
+            _ = detailStore.contentMode
             _ = detailInteraction.resetToken
             _ = immersive.isImmersive
             _ = detailPane.isPresented
@@ -226,6 +241,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             detailFailed = false
             imageView.setImageURL(nil)
             imageView.isHidden = true
+            recommendationsView.isHidden = true
             emptyLabel.isHidden = false
             previousButton.isHidden = true
             nextButton.isHidden = true
@@ -252,6 +268,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             currentImageURL = nil
             detailFailed = false
             imageView.setImageURL(nil)
+            recommendationsView.isHidden = true
             RemoteImagePipeline.shared.stopDetailPrefetching()
             detailStore.cancelResolution()
             isDetailReady = false
@@ -264,6 +281,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             && !detailStore.isResolving
 
         if slots.isEmpty || resolutionFailed {
+            recommendationsView.isHidden = true
             if resolutionFailed {
                 detailFailed = true
                 imageView.isHidden = false
@@ -285,8 +303,29 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             return
         }
 
+        recommendationsView.update(
+            recommendations: detailStore.recommendations,
+            requestConfigurator: source?.imageRequestConfigurator
+        )
+        if detailStore.contentMode == .recommendations {
+            RemoteImagePipeline.shared.stopDetailPrefetching()
+            imageView.isHidden = true
+            recommendationsView.isHidden = false
+            emptyLabel.isHidden = true
+            previousButton.isHidden = false
+            previousButton.isEnabled = detailStore.canStepBackward
+            nextButton.isHidden = false
+            nextButton.isEnabled = false
+            counterChrome.isHidden = false
+            counterLabel.stringValue = "推荐图集"
+            statusChrome.isHidden = true
+            updateFilmstripLayout(showsFilmstrip: false)
+            return
+        }
+
         detailFailed = false
         imageView.isHidden = false
+        recommendationsView.isHidden = true
         emptyLabel.isHidden = true
         previousButton.isHidden = false
         nextButton.isHidden = false
@@ -296,8 +335,8 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         let selectedIndex = selectedID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
         let selectedSlot = slots[selectedIndex]
 
-        previousButton.isEnabled = selectedIndex > 0
-        nextButton.isEnabled = selectedIndex < slots.count - 1
+        previousButton.isEnabled = detailStore.canStepBackward
+        nextButton.isEnabled = detailStore.canStepForward
 
         let recordIdentity = "\(source?.rawValue ?? "unknown")|\(record.id)|\(record.detailURL)"
         if currentRecordIdentity != recordIdentity {
@@ -409,24 +448,16 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
     }
 
     @objc private func previousImage() {
-        let slots = detailStore.imageSlots
-        let current = detailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-        detailStore.selectSlot(at: max(current - 1, 0))
+        detailStore.stepSelection(-1)
     }
 
     @objc private func nextImage() {
-        let slots = detailStore.imageSlots
-        let current = detailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-        detailStore.selectSlot(at: min(current + 1, slots.count - 1))
+        detailStore.stepSelection(1)
     }
 
     private func selectAdjacent(delta: Int) -> Bool {
-        let slots = detailStore.imageSlots
-        guard !slots.isEmpty else { return false }
-        let current = detailStore.selectedSlotID.flatMap { id in slots.firstIndex { $0.id == id } } ?? 0
-        let next = min(max(current + delta, 0), slots.count - 1)
-        guard next != current else { return true }
-        detailStore.selectSlot(at: next)
+        guard !detailStore.imageSlots.isEmpty else { return false }
+        detailStore.stepSelection(delta)
         return true
     }
 }
