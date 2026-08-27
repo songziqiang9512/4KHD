@@ -80,6 +80,27 @@ final class RequestFactoryTests: XCTestCase {
         XCTAssertNil(OnlineSourcePolicy.source(forMediaURL: lookalike))
     }
 
+    func testWallhavenFavoriteDetailURLExtractsOnlyTrustedWallpaperID() throws {
+        let detail = try XCTUnwrap(URL(string: "https://wallhaven.cc/w/AbC123"))
+        let short = try XCTUnwrap(URL(string: "https://whvn.cc/abc123"))
+        let extraPath = try XCTUnwrap(URL(string: "https://wallhaven.cc/w/abc123/download"))
+        let lookalike = try XCTUnwrap(URL(string: "https://wallhaven.cc.evil.example/w/abc123"))
+
+        XCTAssertEqual(WallhavenFavoritesBridge.wallpaperID(from: detail), "abc123")
+        XCTAssertEqual(WallhavenFavoritesBridge.wallpaperID(from: short), "abc123")
+        XCTAssertNil(WallhavenFavoritesBridge.wallpaperID(from: extraPath))
+        XCTAssertNil(WallhavenFavoritesBridge.wallpaperID(from: lookalike))
+        XCTAssertEqual(
+            WallhavenFavoritesBridge.originalImageCandidates(for: "AbC123").map(\.absoluteString),
+            [
+                "https://w.wallhaven.cc/full/ab/wallhaven-abc123.jpg",
+                "https://w.wallhaven.cc/full/ab/wallhaven-abc123.png",
+                "https://w.wallhaven.cc/full/ab/wallhaven-abc123.webp",
+            ]
+        )
+        XCTAssertTrue(WallhavenFavoritesBridge.originalImageCandidates(for: "../escape").isEmpty)
+    }
+
     func testResponseValidationRejectsCrossSourceRedirectTarget() throws {
         let evil = try XCTUnwrap(URL(string: "https://evil.example/content/item.html"))
         let response = try XCTUnwrap(HTTPURLResponse(url: evil, statusCode: 200, httpVersion: nil, headerFields: nil))

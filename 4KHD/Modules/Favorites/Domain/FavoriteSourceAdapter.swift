@@ -1,18 +1,31 @@
 import Foundation
 
+struct FavoriteDetailMetadata: Equatable {
+    let title: String
+    let detailText: String
+    let sourceTitle: String
+    let sourceURL: URL
+    let secondaryTitle: String?
+    let secondaryURL: URL?
+    let supportsDesktopWallpaper: Bool
+}
+
 struct FavoriteResolvedImagePage {
     let imageURLs: [URL]
     let pageURLs: [URL]
     let recommendations: [OnlineGalleryRecommendation]
+    let metadata: FavoriteDetailMetadata?
 
     init(
         imageURLs: [URL],
         pageURLs: [URL],
-        recommendations: [OnlineGalleryRecommendation] = []
+        recommendations: [OnlineGalleryRecommendation] = [],
+        metadata: FavoriteDetailMetadata? = nil
     ) {
         self.imageURLs = imageURLs
         self.pageURLs = pageURLs
         self.recommendations = recommendations
+        self.metadata = metadata
     }
 }
 
@@ -26,6 +39,21 @@ struct FavoriteSourceAdapter {
     let detailContent: (FavoriteRecord) -> FavoriteDetailContent?
     let resolvePage: (URL) async throws -> FavoriteResolvedImagePage
     let configureImageRequest: (inout URLRequest) -> Void
+    let detailMetadata: (FavoriteRecord) -> FavoriteDetailMetadata?
+
+    init(
+        source: FavoriteSource,
+        detailContent: @escaping (FavoriteRecord) -> FavoriteDetailContent?,
+        resolvePage: @escaping (URL) async throws -> FavoriteResolvedImagePage,
+        configureImageRequest: @escaping (inout URLRequest) -> Void,
+        detailMetadata: @escaping (FavoriteRecord) -> FavoriteDetailMetadata? = { _ in nil }
+    ) {
+        self.source = source
+        self.detailContent = detailContent
+        self.resolvePage = resolvePage
+        self.configureImageRequest = configureImageRequest
+        self.detailMetadata = detailMetadata
+    }
 }
 
 /// Favorites owns only this source-neutral contract. Concrete online modules

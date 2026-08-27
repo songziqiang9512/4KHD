@@ -179,6 +179,77 @@ final class OnlineStateMachineTests: XCTestCase {
     }
 
     @MainActor
+    func testFavoritesSwitchingFromPagedRecordToWallhavenResolvesOriginalImage() async throws {
+        let galleryPageURL = try XCTUnwrap(URL(string: "https://www.4khd.com/content/paged.html"))
+        let galleryCoverURL = try XCTUnwrap(URL(string: "https://pic.4khd.com/paged.jpg"))
+        let wallhavenDetailURL = try XCTUnwrap(URL(string: "https://wallhaven.cc/w/abcd12"))
+        let wallhavenCoverURL = try XCTUnwrap(URL(string: "https://th.wallhaven.cc/lg/ab/wallhaven-abcd12.jpg"))
+        let wallhavenOriginalURL = try XCTUnwrap(URL(string: "https://w.wallhaven.cc/full/ab/wallhaven-abcd12.jpg"))
+        let uploaderURL = try XCTUnwrap(URL(string: "https://wallhaven.cc/user/alice"))
+        let resolvedMetadata = FavoriteDetailMetadata(
+            title: "Wallhaven abcd12",
+            detailText: "3840x2160 · 12.4 MB · PNG · 分类：人物 · portrait, night",
+            sourceTitle: "来源: Wallhaven",
+            sourceURL: wallhavenDetailURL,
+            secondaryTitle: "alice 的作品",
+            secondaryURL: uploaderURL,
+            supportsDesktopWallpaper: true
+        )
+        let wallhavenResolutionRecorder = WallhavenOriginalResolutionRecorder(originalURL: wallhavenOriginalURL)
+        WorkspaceAppAssembly.configureFavoriteSourceAdapters { url in
+            let imageURL = await wallhavenResolutionRecorder.resolve(url)
+            return FavoriteResolvedImagePage(
+                imageURLs: [imageURL],
+                pageURLs: [url],
+                metadata: resolvedMetadata
+            )
+        }
+        defer { FavoriteSourceAdapterRegistry.shared.replaceAdapters([]) }
+
+        let galleryRecord = FavoriteRecord(
+            id: "paged",
+            sourceID: GallerySection.latest.rawValue,
+            title: "Paged",
+            rawTitle: "Paged",
+            subtitle: "",
+            detailURL: galleryPageURL.absoluteString,
+            coverURL: galleryCoverURL.absoluteString,
+            imageCount: 1,
+            pageCount: 1
+        )
+        let wallhavenRecord = FavoriteRecord(
+            id: "abcd12",
+            sourceID: "wallhaven",
+            title: "Wallhaven abcd12",
+            rawTitle: "abcd12",
+            subtitle: "1920x1080 · image/jpeg · SFW",
+            detailURL: wallhavenDetailURL.absoluteString,
+            coverURL: wallhavenCoverURL.absoluteString,
+            imageCount: 1,
+            pageCount: 1
+        )
+        let store = FavoritesDetailStore()
+
+        store.prepare(record: galleryRecord)
+        store.prepare(record: wallhavenRecord)
+        XCTAssertEqual(store.selectedSlot?.knownURL, wallhavenCoverURL)
+        XCTAssertEqual(store.detailMetadata?.title, "Wallhaven abcd12")
+        XCTAssertEqual(store.detailMetadata?.detailText, "1920x1080 · JPEG")
+        XCTAssertTrue(store.detailMetadata?.supportsDesktopWallpaper == true)
+        store.resolve()
+        await waitUntil { store.imageSlots.first?.knownURL == wallhavenOriginalURL }
+
+        XCTAssertEqual(store.currentSource, .wallhaven)
+        XCTAssertEqual(store.imageSlots.count, 1)
+        XCTAssertEqual(store.selectedSlot?.knownURL, wallhavenOriginalURL)
+        XCTAssertEqual(store.detailMetadata, resolvedMetadata)
+        XCTAssertFalse(store.isResolving)
+        XCTAssertNil(store.errorMessage)
+        let resolvedURLs = await wallhavenResolutionRecorder.urls
+        XCTAssertEqual(resolvedURLs, [wallhavenDetailURL])
+    }
+
+    @MainActor
     func testGalleryRepeatedSynthesizedPageTerminatesPagination() async throws {
         let item = try makeGalleryItem(id: "repeat", pageCount: 1)
         let next = try XCTUnwrap(URL(string: "https://www.4khd.com/?query-3-page=2"))
@@ -376,6 +447,20 @@ final class OnlineStateMachineTests: XCTestCase {
             coverAspectRatio: nil,
             imageCount: 1
         )
+    }
+}
+
+private actor WallhavenOriginalResolutionRecorder {
+    private(set) var urls: [URL] = []
+    private let originalURL: URL
+
+    init(originalURL: URL) {
+        self.originalURL = originalURL
+    }
+
+    func resolve(_ pageURL: URL) -> URL {
+        urls.append(pageURL)
+        return originalURL
     }
 }
 

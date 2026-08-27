@@ -3,7 +3,7 @@ import Observation
 
 /// 收藏模块的详情状态:统一 slot 模型,按来源适配器解析,
 /// 行为与 MissKon 详情一致:占位 slot + 渐进分页解析 + 失败页移除。
-/// Wallhaven 收藏记录只有封面一张图,直接单 slot 展示,不解析。
+/// Wallhaven 收藏记录先显示封面,再经来源适配器解析并升级为原图。
 @MainActor
 @Observable
 final class FavoritesDetailStore {
@@ -16,12 +16,14 @@ final class FavoritesDetailStore {
     private(set) var resolvedImageCount = 0
     private(set) var errorMessage: String?
     private(set) var recommendations: [OnlineGalleryRecommendation] = []
+    private(set) var detailMetadata: FavoriteDetailMetadata?
     private(set) var contentMode: WorkspaceDetailContentMode = .image
 
     private struct ResolvedPage {
         let imageURLs: [URL]
         let pageURLs: [URL]
         let recommendations: [OnlineGalleryRecommendation]
+        let metadata: FavoriteDetailMetadata?
     }
 
     private var resolvedPages: [URL: ResolvedPage] = [:]
@@ -63,11 +65,13 @@ final class FavoritesDetailStore {
         cancelAllPageTasks()
         resolvedPages = [:]
         failedPageURLs = []
+        knownPageURLs = []
         resolvedPageCount = 0
         resolvedImageCount = 0
         isResolving = false
         errorMessage = nil
         recommendations = []
+        detailMetadata = nil
         contentMode = .image
         imageSlots = []
         selectedSlotID = nil
@@ -76,7 +80,9 @@ final class FavoritesDetailStore {
 
         guard let record, let source = currentSource else { return }
 
-        guard let content = sourceAdapters.adapter(for: source)?.detailContent(record) else { return }
+        guard let adapter = sourceAdapters.adapter(for: source),
+              let content = adapter.detailContent(record) else { return }
+        detailMetadata = adapter.detailMetadata(record)
         let pageURLs: [URL]
         let estimatedImageCount: Int
         switch content {
@@ -104,7 +110,8 @@ final class FavoritesDetailStore {
             resolvedPages[cached.pageURL] = ResolvedPage(
                 imageURLs: cached.imageURLs,
                 pageURLs: cached.pageURLs,
-                recommendations: cachedRecommendations
+                recommendations: cachedRecommendations,
+                metadata: nil
             )
             reconcileKnownPageURLs(with: cached.pageURLs, requestedPageURL: cached.pageURL)
             // 缓存页不会走 merge,计数在此补上(merge 改为增量累加后)。
@@ -278,7 +285,8 @@ final class FavoritesDetailStore {
         return ResolvedPage(
             imageURLs: page.imageURLs,
             pageURLs: page.pageURLs,
-            recommendations: page.recommendations
+            recommendations: page.recommendations,
+            metadata: page.metadata
         )
     }
 
@@ -333,6 +341,9 @@ final class FavoritesDetailStore {
             )
         }
         replaceSlots(for: pageURL, with: pageSlots)
+        if let metadata = page.metadata {
+            detailMetadata = metadata
+        }
         errorMessage = nil
         if resolvedPages.count > 0 {
             resolvedPageCount = resolvedPages.count

@@ -22,6 +22,41 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
     private let counterLabel = NSTextField(labelWithString: "")
     private let statusChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let statusLabel = NSTextField(labelWithString: "")
+    private let metadataChrome = DetailOverlayChromeView(cornerRadius: 11)
+    private let metadataLabel = NSTextField(labelWithString: "")
+    private let sourceChrome = DetailOverlayChromeView(cornerRadius: 11)
+    private let sourceButton: NSButton = {
+        let button = NSButton(title: "", target: nil, action: nil)
+        button.bezelStyle = .inline
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        button.isBordered = false
+        button.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "打开来源")
+        button.imagePosition = .imageLeading
+        return button
+    }()
+    private let secondaryChrome = DetailOverlayChromeView(cornerRadius: 11)
+    private let secondaryButton: NSButton = {
+        let button = NSButton(title: "", target: nil, action: nil)
+        button.bezelStyle = .inline
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        button.isBordered = false
+        button.image = NSImage(systemSymbolName: "person.circle", accessibilityDescription: "作者")
+        button.imagePosition = .imageLeading
+        return button
+    }()
+    private let desktopButton: NSButton = {
+        let image = NSImage(
+            systemSymbolName: "photo.on.rectangle",
+            accessibilityDescription: "设为桌面壁纸"
+        ) ?? NSImage(size: NSSize(width: 16, height: 16))
+        let button = NSButton(image: image, target: nil, action: nil)
+        button.bezelStyle = .accessoryBarAction
+        button.controlSize = .small
+        button.toolTip = "设为桌面壁纸"
+        return button
+    }()
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var isObserving = false
     private var currentRecordIdentity: String?
@@ -116,17 +151,41 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         statusChrome.addSubview(statusLabel)
 
+        metadataLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        metadataLabel.textColor = .labelColor
+        metadataLabel.alignment = .center
+        metadataLabel.maximumNumberOfLines = 3
+        metadataLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        metadataChrome.addSubview(metadataLabel)
+
+        sourceButton.target = self
+        sourceButton.action = #selector(openMetadataSource)
+        sourceChrome.addSubview(sourceButton)
+
+        secondaryButton.target = self
+        secondaryButton.action = #selector(openMetadataSecondarySource)
+        secondaryChrome.addSubview(secondaryButton)
+
         previousButton.target = self
         previousButton.action = #selector(previousImage)
         nextButton.target = self
         nextButton.action = #selector(nextImage)
+        desktopButton.target = self
+        desktopButton.action = #selector(setAsDesktopWallpaper)
 
-        for subview in [imageView, recommendationsView, emptyLabel, previousButton, nextButton, counterChrome, statusChrome, filmstripView] {
+        for subview in [
+            imageView, recommendationsView, emptyLabel, previousButton, nextButton,
+            counterChrome, statusChrome, metadataChrome, sourceChrome, secondaryChrome,
+            desktopButton, filmstripView,
+        ] {
             view.addSubview(subview)
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
         counterLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        metadataLabel.translatesAutoresizingMaskIntoConstraints = false
+        sourceButton.translatesAutoresizingMaskIntoConstraints = false
+        secondaryButton.translatesAutoresizingMaskIntoConstraints = false
 
         // 初始高度 0:切换模块首帧不占位,reloadDetail 首次调用时再按全局状态(有动画地)展开。
         let filmstripHeightConstraint = filmstripView.heightAnchor.constraint(equalToConstant: 0)
@@ -174,6 +233,34 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             statusLabel.trailingAnchor.constraint(equalTo: statusChrome.trailingAnchor, constant: -8),
             statusLabel.centerYAnchor.constraint(equalTo: statusChrome.centerYAnchor),
 
+            metadataChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            metadataChrome.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -4),
+            metadataChrome.heightAnchor.constraint(greaterThanOrEqualToConstant: 24),
+            metadataChrome.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
+            metadataChrome.widthAnchor.constraint(greaterThanOrEqualTo: metadataLabel.widthAnchor, constant: 20),
+            metadataLabel.leadingAnchor.constraint(equalTo: metadataChrome.leadingAnchor, constant: 10),
+            metadataLabel.trailingAnchor.constraint(equalTo: metadataChrome.trailingAnchor, constant: -10),
+            metadataLabel.centerYAnchor.constraint(equalTo: metadataChrome.centerYAnchor),
+
+            sourceChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            sourceChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+            sourceChrome.heightAnchor.constraint(equalToConstant: 24),
+            sourceButton.leadingAnchor.constraint(equalTo: sourceChrome.leadingAnchor, constant: 8),
+            sourceButton.trailingAnchor.constraint(equalTo: sourceChrome.trailingAnchor, constant: -8),
+            sourceButton.centerYAnchor.constraint(equalTo: sourceChrome.centerYAnchor),
+
+            secondaryChrome.leadingAnchor.constraint(equalTo: sourceChrome.trailingAnchor, constant: 6),
+            secondaryChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+            secondaryChrome.heightAnchor.constraint(equalToConstant: 24),
+            secondaryButton.leadingAnchor.constraint(equalTo: secondaryChrome.leadingAnchor, constant: 8),
+            secondaryButton.trailingAnchor.constraint(equalTo: secondaryChrome.trailingAnchor, constant: -8),
+            secondaryButton.centerYAnchor.constraint(equalTo: secondaryChrome.centerYAnchor),
+
+            desktopButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            desktopButton.bottomAnchor.constraint(equalTo: sourceChrome.topAnchor, constant: -6),
+            desktopButton.widthAnchor.constraint(equalToConstant: 28),
+            desktopButton.heightAnchor.constraint(equalToConstant: 28),
+
             filmstripView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             filmstripView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             filmstripView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -192,6 +279,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             _ = detailStore.isResolving
             _ = detailStore.errorMessage
             _ = detailStore.recommendations
+            _ = detailStore.detailMetadata
             _ = detailStore.contentMode
             _ = detailInteraction.resetToken
             _ = immersive.isImmersive
@@ -228,6 +316,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
 
     private func reloadDetail() {
         let record = moduleStore.selectedRecord
+        hideMetadataPresentation()
 
         // 选中变化时重建 detail 状态。
         if record != detailStore.currentRecord {
@@ -371,10 +460,13 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             }
         }
 
+        let metadata = detailStore.detailMetadata
+        counterChrome.isHidden = metadata != nil
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
+        updateMetadataPresentation(metadata, hasResolvedOriginal: detailStore.resolvedPageCount > 0)
         updateSaveStatus()
 
-        let showsFilmstrip = filmstripVisibility.isPresented && !slots.isEmpty
+        let showsFilmstrip = filmstripVisibility.isPresented && !slots.isEmpty && metadata == nil
         updateFilmstripLayout(showsFilmstrip: showsFilmstrip)
         filmstripView.update(slots: slots, selectedSlotID: selectedSlot.id)
 
@@ -382,6 +474,38 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             resetTokenSeen = detailInteraction.resetToken
             imageView.resetZoom()
         }
+    }
+
+    private func hideMetadataPresentation() {
+        metadataChrome.isHidden = true
+        sourceChrome.isHidden = true
+        secondaryChrome.isHidden = true
+        desktopButton.isHidden = true
+    }
+
+    private func updateMetadataPresentation(
+        _ metadata: FavoriteDetailMetadata?,
+        hasResolvedOriginal: Bool
+    ) {
+        guard let metadata else { return }
+        metadataLabel.stringValue = [metadata.title, metadata.detailText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        metadataChrome.isHidden = metadataLabel.stringValue.isEmpty
+
+        sourceButton.title = metadata.sourceTitle
+        sourceButton.toolTip = metadata.sourceURL.absoluteString
+        sourceChrome.isHidden = false
+
+        if let title = metadata.secondaryTitle, let url = metadata.secondaryURL {
+            secondaryButton.title = title
+            secondaryButton.toolTip = url.absoluteString
+            secondaryChrome.isHidden = false
+        }
+
+        desktopButton.isHidden = !metadata.supportsDesktopWallpaper
+        desktopButton.isEnabled = metadata.supportsDesktopWallpaper && hasResolvedOriginal
+        desktopButton.toolTip = hasResolvedOriginal ? "设为桌面壁纸" : "正在获取原图"
     }
 
     private var shouldLoadDetailContent: Bool {
@@ -413,7 +537,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         if detailFailed { return "解析失败" }
         if let errorMessage = detailStore.errorMessage { return errorMessage }
         switch detailInteraction.saveMessage {
-        case "保存中", "已保存", "保存失败":
+        case "保存中", "已保存", "保存失败", "下载中", "下载失败", "已设为桌面壁纸":
             return detailInteraction.saveMessage
         default:
             break
@@ -426,6 +550,28 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         }
         if !isDetailReady { return "解析中" }
         return ""
+    }
+
+    @objc private func openMetadataSource() {
+        guard let url = detailStore.detailMetadata?.sourceURL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openMetadataSecondarySource() {
+        guard let url = detailStore.detailMetadata?.secondaryURL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func setAsDesktopWallpaper() {
+        guard detailStore.detailMetadata?.supportsDesktopWallpaper == true,
+              detailStore.resolvedPageCount > 0,
+              let imageURL = currentImageURL else { return }
+        let source = detailStore.currentRecord.flatMap(FavoriteSource.source(for:))
+        detailInteraction.setAsDesktopWallpaper(
+            imageURL: imageURL,
+            filename: imageURL.lastPathComponent,
+            source: source
+        )
     }
 
     @objc func saveImage(_: Any?) {

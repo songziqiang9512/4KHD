@@ -790,6 +790,25 @@ final class WallhavenFeedStore {
     var isResolvingDetail = false
     private var resolveTask: Task<Void, Never>?
 
+    func favoriteDetail(forDetailPageURL pageURL: URL) async throws -> (imageURL: URL, wallpaper: Wallpaper?) {
+        guard let wallpaperID = WallhavenFavoritesBridge.wallpaperID(from: pageURL) else {
+            throw URLError(.unsupportedURL)
+        }
+        do {
+            let wallpaper = try await resolvedDetailWallpaper(
+                id: wallpaperID,
+                apiKey: accountStore.apiKey
+            )
+            guard let imageURL = wallpaper.fullImageUrl else {
+                throw WallhavenAPIError.decodingFailed
+            }
+            return (imageURL, wallpaper)
+        } catch {
+            try Task.checkCancellation()
+            return (try await probeOriginalImageURL(wallpaperID: wallpaperID), nil)
+        }
+    }
+
     func resolveDetail(for wallpaper: Wallpaper) {
         // If already resolving this wallpaper, skip duplicate.
         if resolvedWallpaper?.id == wallpaper.id, isResolvingDetail { return }
@@ -816,7 +835,7 @@ final class WallhavenFeedStore {
         resolveTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let full = try await self.apiClient.wallpaper(id: requestID, apiKey: requestApiKey)
+                let full = try await self.resolvedDetailWallpaper(id: requestID, apiKey: requestApiKey)
                 guard !Task.isCancelled,
                       self.resolvedWallpaper?.id == requestID
                 else { return }
@@ -824,8 +843,6 @@ final class WallhavenFeedStore {
                 if let idx = self.wallpapers.firstIndex(where: { $0.id == requestID }) {
                     self.wallpapers[idx] = full
                 }
-                self.detailCache[full.id] = full
-                self.saveDetailCache()
             } catch {
                 logger.error("Failed to resolve wallpaper detail: \(error.localizedDescription)")
                 // Keep the list-item data; resolvedWallpaper stays as the original.
@@ -836,6 +853,47 @@ final class WallhavenFeedStore {
             self.isResolvingDetail = false
             self.resolveTask = nil
         }
+    }
+
+    private func resolvedDetailWallpaper(id: String, apiKey: String?) async throws -> Wallpaper {
+        if let cached = detailCache[id], cached.fullImageUrl != nil {
+            return cached
+        }
+        let full = try await apiClient.wallpaper(id: id, apiKey: apiKey)
+        try Task.checkCancellation()
+        guard full.id == id, full.fullImageUrl != nil else {
+            throw WallhavenAPIError.decodingFailed
+        }
+        detailCache[full.id] = full
+        saveDetailCache()
+        return full
+    }
+
+    private func probeOriginalImageURL(wallpaperID: String) async throws -> URL {
+        var lastError: Error = WallhavenAPIError.decodingFailed
+        for candidate in WallhavenFavoritesBridge.originalImageCandidates(for: wallpaperID) {
+            try Task.checkCancellation()
+            var request = URLRequest(url: candidate)
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = 15
+            WallhavenRequestFactory.configureImageRequest(&request)
+            guard request.url != nil else { continue }
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                try OnlineSourcePolicy.validate(response, source: .wallhaven, resource: .media)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200 ..< 300).contains(httpResponse.statusCode),
+                      httpResponse.mimeType?.lowercased().hasPrefix("image/") == true,
+                      let finalURL = response.url else {
+                    lastError = WallhavenAPIError.decodingFailed
+                    continue
+                }
+                return finalURL
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
     }
 
     func cancelResolveDetail() {

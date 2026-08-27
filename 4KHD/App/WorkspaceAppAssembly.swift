@@ -3,7 +3,6 @@ import AppKit
 enum WorkspaceAppAssembly {
     @MainActor
     static func makeAppContext() -> WorkspaceAppContext {
-        configureFavoriteSourceAdapters()
         let favoritesStore = FavoritesStore()
         let favoritesModuleStore = FavoritesModuleStore(favoritesStore: favoritesStore)
         let favoritesPreferences = FavoritesContentPreferences()
@@ -20,6 +19,14 @@ enum WorkspaceAppAssembly {
         let wallhavenAccountStore = WallhavenAccountStore()
         let wallhavenPreferences = WallhavenContentPreferences()
         let wallhavenFeedStore = WallhavenFeedStore(accountStore: wallhavenAccountStore, preferences: wallhavenPreferences)
+        configureFavoriteSourceAdapters { detailPageURL in
+            let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
+            return FavoriteResolvedImagePage(
+                imageURLs: [detail.imageURL],
+                pageURLs: [detailPageURL],
+                metadata: detail.wallpaper.map(makeWallhavenFavoriteMetadata)
+            )
+        }
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
         let wallhavenDetailInteraction = WallhavenDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
@@ -98,7 +105,9 @@ enum WorkspaceAppAssembly {
     }
 
     @MainActor
-    private static func configureFavoriteSourceAdapters() {
+    static func configureFavoriteSourceAdapters(
+        wallhavenPageResolver: @escaping (URL) async throws -> FavoriteResolvedImagePage
+    ) {
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
             FavoriteSourceAdapter(
                 source: .gallery,
@@ -136,12 +145,29 @@ enum WorkspaceAppAssembly {
                 source: .wallhaven,
                 detailContent: { record in
                     guard let wallpaper = WallhavenFavoritesBridge.wallpapers(from: [record]).first else { return nil }
-                    return .singleImage(wallpaper.cardCoverUrl)
+                    return .paged(pageURLs: [wallpaper.sourcePageUrl], estimatedImageCount: 1)
                 },
-                resolvePage: { _ in throw URLError(.unsupportedURL) },
-                configureImageRequest: WallhavenRequestFactory.configureImageRequest
+                resolvePage: { url in
+                    try await wallhavenPageResolver(url)
+                },
+                configureImageRequest: WallhavenRequestFactory.configureImageRequest,
+                detailMetadata: { record in
+                    WallhavenFavoritesBridge.wallpapers(from: [record]).first.map(makeWallhavenFavoriteMetadata)
+                }
             ),
         ])
+    }
+
+    private static func makeWallhavenFavoriteMetadata(_ wallpaper: Wallpaper) -> FavoriteDetailMetadata {
+        FavoriteDetailMetadata(
+            title: wallpaper.displayName,
+            detailText: wallpaper.detailInfoText,
+            sourceTitle: "来源: Wallhaven",
+            sourceURL: wallpaper.sourcePageUrl,
+            secondaryTitle: wallpaper.uploader.map { "\($0) 的作品" },
+            secondaryURL: wallpaper.uploaderProfileURL,
+            supportsDesktopWallpaper: true
+        )
     }
 
     @MainActor

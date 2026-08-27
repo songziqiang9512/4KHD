@@ -51,4 +51,37 @@ final class FavoritesDetailInteractionController {
             }
         }
     }
+
+    func setAsDesktopWallpaper(imageURL: URL, filename: String, source: FavoriteSource?) {
+        saveMessage = "下载中"
+        saveTask?.cancel()
+        let request = RemoteImagePipeline.shared.request(
+            for: imageURL,
+            priority: .veryHigh,
+            configureURLRequest: source?.imageRequestConfigurator ?? { _ in }
+        )
+        saveTask = RemoteImagePipeline.shared.loadData(with: request) { [weak self] data in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard let data else {
+                    self.saveMessage = "下载失败"
+                    return
+                }
+                let tempDirectory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("4KHD-Wallpaper", isDirectory: true)
+                do {
+                    try FileManager.default.createDirectory(
+                        at: tempDirectory,
+                        withIntermediateDirectories: true
+                    )
+                    let tempFile = tempDirectory.appendingPathComponent(filename)
+                    try data.write(to: tempFile, options: .atomic)
+                    LocalDesktopWallpaperSetter.setDesktopWallpaper(tempFile)
+                    self.saveMessage = "已设为桌面壁纸"
+                } catch {
+                    self.saveMessage = "下载失败"
+                }
+            }
+        }
+    }
 }

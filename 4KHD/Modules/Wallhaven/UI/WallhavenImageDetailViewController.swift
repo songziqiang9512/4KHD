@@ -304,23 +304,9 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         // Use resolved wallpaper if available (has full tags, fullImageUrl from /w/{id}).
         let displayWallpaper = library.resolvedWallpaper?.id == wallpaper.id ? library.resolvedWallpaper! : wallpaper
 
-        // Build info text
-        let infoParts = [
-            displayWallpaper.resolutionText,
-            displayWallpaper.formattedFileSize,
-            displayWallpaper.fileType?.replacingOccurrences(of: "image/", with: "").uppercased(),
-            displayWallpaper.category.map {
-                let title = WallhavenCategory(rawValue: $0)?.title ?? $0
-                return "分类：\(title)"
-            }
-        ].compactMap { $0 }.filter { !$0.isEmpty && $0 != "-" }
-        infoLabel.stringValue = infoParts.joined(separator: " · ")
-
-        // Tags line if available
-        let tags = displayWallpaper.tags.prefix(8).joined(separator: ", ")
-        if !tags.isEmpty {
-            infoLabel.stringValue = infoLabel.stringValue + " · \(tags)"
-        }
+        infoLabel.stringValue = [displayWallpaper.displayName, displayWallpaper.detailInfoText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
 
         sourceButton.title = "来源: Wallhaven"
         sourceButton.toolTip = displayWallpaper.sourcePageUrl.absoluteString
@@ -380,7 +366,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         if loadingOriginalImageURL != nil { return "加载原图中..." }
         if library.isResolvingDetail { return "加载详情中..." }
         switch detailInteraction.saveMessage {
-        case "保存中", "已保存", "保存失败":
+        case "保存中", "已保存", "保存失败", "下载中", "下载失败", "已设为桌面壁纸":
             return detailInteraction.saveMessage
         default:
             return ""

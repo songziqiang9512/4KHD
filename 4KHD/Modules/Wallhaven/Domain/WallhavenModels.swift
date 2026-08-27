@@ -45,6 +45,23 @@ struct Wallpaper: Identifiable, Codable, Hashable {
         return ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
     }
 
+    var detailInfoText: String {
+        var parts = [
+            resolutionText,
+            formattedFileSize,
+            fileType?.replacingOccurrences(of: "image/", with: "").uppercased(),
+            category.map {
+                let title = WallhavenCategory(rawValue: $0)?.title ?? $0
+                return "分类：\(title)"
+            },
+        ].compactMap { $0 }.filter { !$0.isEmpty && $0 != "-" }
+        let tagText = tags.prefix(8).joined(separator: ", ")
+        if !tagText.isEmpty {
+            parts.append(tagText)
+        }
+        return parts.joined(separator: " · ")
+    }
+
     var fileExtensionForSave: String {
         switch fileType?.lowercased() {
         case "image/png": "png"
