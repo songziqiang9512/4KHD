@@ -5,7 +5,7 @@ enum AlbumDownloadEvent {
     /// imageCount 为该页去重后实际要下载的张数(跨页重复不计)。
     case pageResolved(pageIndex: Int, pageCount: Int, imageCount: Int)
     case pageFailed(pageIndex: Int, pageCount: Int)
-    case imageSucceeded(pageIndex: Int, fileURL: URL)
+    case imageSucceeded(pageIndex: Int, fileURL: URL, bytesWritten: Int64)
     case imageFailed(pageIndex: Int, imageURL: URL)
 }
 
@@ -13,6 +13,7 @@ struct AlbumDownloadSummary {
     var completedCount = 0
     var failedCount = 0
     var failedPageCount = 0
+    var downloadedBytes: Int64 = 0
     var cancelled = false
     var folderCreationError: String?
 }
@@ -123,8 +124,16 @@ enum AlbumDownloadOrchestrator {
                         if let data {
                             let fileURL = allocator.allocate(for: imageURL, preferredExtension: extensionName)
                             if writeImageData(data, to: fileURL) {
+                                let bytesWritten = Int64(data.count)
                                 summary.completedCount += 1
-                                emit(.imageSucceeded(pageIndex: pageIndex, fileURL: fileURL))
+                                summary.downloadedBytes += bytesWritten
+                                emit(
+                                    .imageSucceeded(
+                                        pageIndex: pageIndex,
+                                        fileURL: fileURL,
+                                        bytesWritten: bytesWritten
+                                    )
+                                )
                             } else {
                                 summary.failedCount += 1
                                 emit(.imageFailed(pageIndex: pageIndex, imageURL: imageURL))

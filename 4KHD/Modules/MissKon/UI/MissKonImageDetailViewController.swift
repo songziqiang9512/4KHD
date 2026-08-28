@@ -20,6 +20,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
     private let statusLabel = NSTextField(labelWithString: "")
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var isObserving = false
+    private var isObservingSaveMessage = false
     private var currentItemID: MissKonItem.ID?
     private var currentSlotID: MissKonImageSlot.ID?
     private var currentImageURL: URL?
@@ -71,6 +72,7 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
         }
         reloadDetail()
         observeState()
+        observeSaveMessage()
     }
 
     override func viewDidAppear() {
@@ -194,16 +196,18 @@ final class MissKonImageDetailViewController: NSViewController, WorkspaceFocusab
                 self.observeState()
             }
         }
-        observeSaveMessage()
     }
 
     /// 保存状态变化(保存中/成功/失败)只刷新状态标签,不走完整 reload 路径。
     private func observeSaveMessage() {
+        guard !isObservingSaveMessage else { return }
+        isObservingSaveMessage = true
         withObservationTracking {
             _ = detailInteraction.saveMessage
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.isObservingSaveMessage = false
                 self.updateSaveStatus()
                 self.observeSaveMessage()
             }

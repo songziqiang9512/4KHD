@@ -1,10 +1,10 @@
 # 4KHD 全面审查问题修复清单
 
-更新日期：2026-08-23
-状态：代码修复、UI 结构审查和 1.8.8 发布验收完成；N-1 自动更新安装与真实大图库性能基线待执行
+更新日期：2026-08-23（历史归档）
+状态：本文件记录截至 1.8.8 的已完成审查与验收，不再代表当前工作树；当前实现和发布事实以 `docs/ai-handover-2026-08-28.md` 为准。N-1 自动更新安装与真实大图库性能基线仍待执行
 范围：发布链、数据安全、沙盒权限、图片与缓存、在线模块状态机、Shell/UI 行为、模块边界、性能、构建质量与最终 UI 结构审查。
 
-本文件是本轮修复的唯一进度账本。源码和可复现验证优先于本文件；每个条目只有在对应测试/构建/产物检查通过并填写“结果”后才能标记完成。
+本文件是 1.8.8 审查轮次的历史进度账本。源码、当前交接文档和可复现验证优先于本文件；此处的版本号、测试数量和远端状态均只描述当时事实。
 
 ## 状态约定
 
@@ -335,7 +335,7 @@
   验收：关键架构、模块、验证命令、支持版本和已知限制一致。
   结果：README 已同步 macOS 26.4、缓存路径和 adapter/descriptor 架构；AGENTS 已补在线策略、Favorites adapter、MissKon metadata 与 descriptor 约束；过期 8 月 14 日 handover 已替换为当前 8 月 23 日事实。
 
-## G. 全部问题关闭后的 UI 结构全面系统审查
+## G. 1.8.8 当时问题关闭后的 UI 结构全面系统审查
 
 本阶段必须等 A–F 中功能、数据、发布和结构条目全部关闭或有明确外部门禁记录后开始。
 
@@ -344,17 +344,17 @@
 - [x] **UI-AUDIT-002 三栏布局与状态恢复**：侧栏、详情栏、全屏、沉浸、live resize、最小尺寸、多显示器。
   结果：实机折叠/恢复侧栏和详情栏、切换模块、重启恢复宽度均正常；全屏恢复与三栏恢复标志已拆分，离屏窗口会移回当前可见屏幕。沉浸模式退出会恢复进入前的 sidebar/content/detail 状态。
 - [x] **UI-AUDIT-003 五模块行为一致性**：列表/网格、选择、双击、键盘、右键、搜索、分页、footer、详情、胶片条。
-  结果：实机依次检查 Local/Favorites/Wallhaven/4KHD/MissKon 的空态或数据态、选择、详情、工具栏、搜索、列表/网格与胶片条可用性；共享 table/collection/card/waterfall/keyboard 基类覆盖一致行为，状态机差异留在模块内。
+  结果（历史范围）：当时仅检查 Local/Favorites/Wallhaven/4KHD/MissKon；不包含后来加入的 KnitGallery、四来源收藏详情一致性及新版下载/Inspector 窗口。
 - [x] **UI-AUDIT-004 NSToolbar 与菜单命令**：item identity、validation、快捷键、来源筛选、保存/信息、列数和布局状态。
   结果：工具栏 item 集合改由 descriptor profile 决定；实机发现并修复 Wallhaven 同时出现独立保存/信息与重复“操作”菜单、空本地图库仍启用大图模式、校验层覆盖 isEnabled，以及“实际大小/适合窗口”文案不一致。显示菜单与工具栏最终 identity/validation 一致。
 - [x] **UI-AUDIT-005 Inspector/Preferences/Downloads 辅助窗口**：同步、关闭语义、重复创建、焦点和状态持久化。
-  结果：三类窗口均实机打开、关闭、重新打开；Inspector/Downloads utility panel 关闭为隐藏并复用，Preferences 由 AppDelegate 复用。Inspector 异步字段更新、Downloads 空态/禁用按钮、Preferences 滚动布局均正常。
+  结果（历史实现）：三类窗口均实机打开、关闭、重新打开；当时 Inspector/Downloads 仍按 utility panel 记录。当前 Downloads 已改为普通非模态 `NSWindow`，Inspector 与下载界面的当前契约见最新 handover 和 `AGENTS.md`。
 - [x] **UI-AUDIT-006 可访问性与系统语义**：VoiceOver labels、键盘遍历、system controls、菜单角色、对比度和动态外观。
   结果：使用系统 AX 树检查侧边栏、五模块 collection/table、toolbar、splitter、辅助窗口和菜单；列表/网格与 card 增加中文 label，Inspector 全字段中文化，缺图 icon 增加描述。交互控件继续使用 AppKit 原生 role、validation 和焦点链。
 - [!] **UI-AUDIT-007 视觉与性能验证**：滚动复用、错图、闪烁、布局跳动、CPU/内存、缓存命中、10k/50k 本地图库。
   结果：现有在线数据实机滚动与模块切换未见错图/持续布局跳动；复用身份、可取消图片任务、prefetch、diffable data source、有界缓存和 single-flight prune 已有代码与测试证据。实机日志出现的 `Invalid view geometry` 已用 LLDB 在 `_os_log_fault_impl` 捕获调用栈，来源为 AppKit `NSThemeFrame._positionSharingIndicator → NSWindowSharingSessionRecipientIndicator`，由 UI 检查工具的窗口选择性共享触发，栈中无项目视图代码，因此排除为 4KHD 布局问题。仓库没有可合法分发的 10k/50k 本地图库 fixture，本轮未伪造图像性能结论；最终大图库 CPU/内存/帧率仍需指定真实数据集和 Instruments 基线。
 - [x] **UI-AUDIT-008 UI 结构结论与整改记录**：形成结构图、发现清单、修复结果、残余人工验收项。
-  结果：结构与整改记录如下；除大图库性能基线及发布环境 UI/更新验收外，本轮新发现的可复现 UI 问题均已修复。
+  结果（当时结论）：结构与整改记录如下；后续工具栏复测已推翻 UI-FIND-007 的关闭状态，当前边界见 2026-08-28 handover。
 
 ### UI ownership 结构
 
@@ -384,7 +384,7 @@ FourKHDAppDelegate
 | UI-FIND-004 | 列表/网格 AX label 使用英文，card 缺少聚合名称 | 五模块容器和侧边栏改为中文 label；共享 card 按标题+metadata 暴露可访问名称 |
 | UI-FIND-005 | `⌘0` 实际执行 fit，但菜单/快捷键窗口写“实际大小” | 统一为“适合窗口”，命令 action 与 toolbar 语义一致 |
 | UI-FIND-006 | Wallhaven detail metadata 显示 `Category: people` | 分类标签和 category title 中文化 |
-| UI-FIND-007 | 内容/详情列在 `NSScrollView` 与窗口之间又叠了两层强制 `.active` 的 `.contentBackground` 材质，Shell 同时叠加全窗口 `.titlebar` 材质并强制 `.unified`；破坏 AppKit 对滚动视图与浮动工具栏的自动滚动边缘效果，导致激活时背景消失、悬停/失焦时才出现，折叠详情列时还会短暂暴露受图片染色的材质 | 删除 Shell 和 column host 中的人工材质层，恢复纯 `NSView` 宿主与窗口默认 `.automatic` toolbar style；保留 `.fullSizeContentView`、内容顶边对齐及 `automaticallyAdjustsContentInsets = true`。实机复验滚动内容继续穿过工具栏下方，激活/悬停/失焦的系统边缘材质保持连续，详情列开关后无绿色暴露 |
+| UI-FIND-007 | 内容/详情列与窗口工具栏 scroll-edge 背景在三栏切换时异常；当时移除了人工材质层并恢复系统样式 | 后续多轮用户复测确认问题仍会复现：激活时可能无背景，悬停或失焦后恢复，详情栏状态也会影响背景。此项重新打开，当前未关闭；必须保留内容穿过系统工具栏下方，不能以 safe-area 截断、自绘背景、hover 监听或全窗材质层作为完成证据 |
 
 排除项：UI 检查期间的负尺寸 runtime issue 来自 macOS 窗口共享指示器，不进入 4KHD 视图代码；保留调用栈证据，不以猜测修改业务布局。
 
@@ -403,8 +403,8 @@ FourKHDAppDelegate
 - [x] `git diff --check` 通过。
 - [x] 最终 DMG entitlement、签名、公证、版本、架构、Sparkle 签名门禁：1.8.8 发布流水线全部通过；公开 DMG 独立下载后再次通过直接 SHA-256、Developer ID、Apple 公证/staple、Gatekeeper、1.8.8/188、arm64、host entitlements、六个 Sparkle 签名目标与 EdDSA appcast 验证。
 - [!] N-1 自动更新安装：Installer Launcher 与 entitlement 代码已配置；仍需真实签名发布包和受保护发布环境实测。
-- [x] UI 结构审查完成；可复现的新问题均已修复，窗口共享工具产生的 AppKit runtime issue 已用调用栈排除。
-- [x] AGENTS.md、README.md、当前 handover 与本文件同步。
+- [!] 1.8.8 范围 UI 结构审查已完成；工具栏 scroll-edge 背景问题在后续用户复测中重新打开，KnitGallery 与新版辅助窗口不属于当时审查范围。
+- [x] 当时的 AGENTS.md、README.md、handover 与本文件同步；当前事实请以 2026-08-28 handover 为准。
 
 ## 执行记录
 
@@ -414,7 +414,7 @@ FourKHDAppDelegate
 - 2026-08-23：完成图片、缓存与本地扫描批次；新增 5 个回归场景，定向测试全部通过；同时关闭 NotificationCenter 的 MainActor 编译警告。
 - 2026-08-23：完成在线状态机、URL 安全、Shell/UI、模块边界和文档批次；完成五模块、三栏、工具栏、菜单、辅助窗口、可访问性与全屏/沉浸的实机 UI 审查。
 - 2026-08-23：用户报告 4KHD 无法加载新图集。定位为当前媒体链 `img.4khd.com → i0.wp.com/yt4.googleusercontent.com/...` 被重定向守卫误拒；按精确主机和代理路径修复并新增回归测试。实机最新列表缩略图全部加载，`Kiyo - Usada Pekora` 24 张详情图解析完成。
-- 2026-08-23：用户报告工具栏非悬停时系统背景消失、折叠详情列闪绿。确认不应用 safe area 截断内容；删除遮在 `NSScrollView` 外的多层自定义材质和显式 `.unified` 窗口样式，让 AppKit 默认 scroll-edge effect 接管。实机滚动、悬停、失焦及详情列开关复验通过，内容仍可穿过工具栏下方。
+- 2026-08-23：用户报告工具栏非悬停时系统背景消失、折叠详情列闪绿。曾删除自定义材质并恢复 AppKit scroll-edge effect；后续多轮用户复测仍能复现，故该问题当前重新打开。正确目标仍是内容穿过系统半透明工具栏下方，不以 safe-area 截断或自绘背景规避。
 - 2026-08-23：用户报告 4KHD“最新”滚动无法加载下一页。定位为首页全站 SEO `/page/N` 与栏目 Query Block `?query-3-page=N` 并存时选错分页链；改为优先且仅接受数值型 Query Block 分页，冲突 fixture、回退 fixture、定向状态机测试和实机连续多页滚动通过，用户复测确认恢复。
 - 2026-08-23：1.8.6 首次远端发布演练在版本校验阶段发现 `chmod +x script/*.sh` 先于 clean-tree 断言，导致四个既有脚本的 mode-only diff 被误判为源码不干净；将脚本权限调整移到不可变版本/标签/clean-tree 校验之后，失败运行未接触签名或创建 release。
 - 2026-08-23：1.8.6 第二次远端发布通过测试、证书导入、签名构建与 App 权限门禁，但 Apple 公证精确拒绝 Sparkle 四个 ad-hoc helper。按 Sparkle 官方顺序新增专用重签脚本，并把 Developer ID authority/secure timestamp 纳入最终 App 门禁；失败运行仍未创建 tag/release。

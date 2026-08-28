@@ -5,6 +5,7 @@ import Nuke
 @MainActor
 final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     var onSelect: ((Int) -> Void)?
+    var onReachedEnd: (() -> Void)?
     var requestConfigurator: ((inout URLRequest) -> Void)?
 
     private let materialView = NSVisualEffectView()
@@ -13,6 +14,7 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
     private let layout = NSCollectionViewFlowLayout()
     private var slots: [FavoritesImageSlot] = []
     private var selectedSlotID: FavoritesImageSlot.ID?
+    private var showsLoadingTile = false
     private var isApplyingSelection = false
 
     override init(frame frameRect: NSRect) {
@@ -29,19 +31,29 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
         updateAppearance()
     }
 
-    func update(slots: [FavoritesImageSlot], selectedSlotID: FavoritesImageSlot.ID?) {
+    func update(
+        slots: [FavoritesImageSlot],
+        selectedSlotID: FavoritesImageSlot.ID?,
+        showsLoadingTile: Bool = false
+    ) {
         // 先比 count 再逐项比较 id,避免每次全量 map 分配数组。
         let countChanged = slots.count != self.slots.count
         var slotIDsChanged = false
         if !countChanged {
-            slotIDsChanged = !zip(self.slots, slots).allSatisfy { $0.id == $1.id }
+            slotIDsChanged = !zip(self.slots, slots).allSatisfy {
+                $0.id == $1.id && $0.knownURL == $1.knownURL
+            }
         }
         let previousSelectedID = self.selectedSlotID
+        let loadingChanged = self.showsLoadingTile != showsLoadingTile
+        let itemCountChanged = self.slots.count + (self.showsLoadingTile ? 1 : 0)
+            != slots.count + (showsLoadingTile ? 1 : 0)
         self.slots = slots
         self.selectedSlotID = selectedSlotID
-        if countChanged {
+        self.showsLoadingTile = showsLoadingTile
+        if countChanged || itemCountChanged {
             collectionView.reloadData()
-        } else if slotIDsChanged {
+        } else if slotIDsChanged || loadingChanged {
             collectionView.reloadItems(at: collectionView.indexPathsForVisibleItems())
         } else if previousSelectedID != selectedSlotID {
             refreshVisibleSelection()
@@ -58,10 +70,16 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
     }
 
     func collectionView(_: NSCollectionView, numberOfItemsInSection _: Int) -> Int {
-        slots.count
+        slots.count + (showsLoadingTile ? 1 : 0)
     }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        if indexPath.item >= slots.count {
+            return collectionView.makeItem(
+                withIdentifier: FavoritesFilmstripLoadingItem.reuseID,
+                for: indexPath
+            )
+        }
         let item = collectionView.makeItem(withIdentifier: FavoritesFilmstripItemView.reuseID, for: indexPath) as? FavoritesFilmstripItemView ?? FavoritesFilmstripItemView()
         if slots.indices.contains(indexPath.item) {
             item.configure(
@@ -78,6 +96,16 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
         selectedSlotID = slots[indexPath.item].id
         refreshVisibleSelection()
         onSelect?(indexPath.item)
+    }
+
+    func collectionView(
+        _: NSCollectionView,
+        willDisplay _: NSCollectionViewItem,
+        forRepresentedObjectAt indexPath: IndexPath
+    ) {
+        if indexPath.item >= max(slots.count - 4, 0) {
+            onReachedEnd?()
+        }
     }
 
     private func setupView() {
@@ -102,6 +130,10 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.register(FavoritesFilmstripItemView.self, forItemWithIdentifier: FavoritesFilmstripItemView.reuseID)
+        collectionView.register(
+            FavoritesFilmstripLoadingItem.self,
+            forItemWithIdentifier: FavoritesFilmstripLoadingItem.reuseID
+        )
 
         addSubview(materialView)
         addSubview(scrollView)
@@ -156,6 +188,25 @@ final class FavoritesFilmstripView: NSView, NSCollectionViewDataSource, NSCollec
                   slots.indices.contains(indexPath.item) else { continue }
             item.applySelection(slots[indexPath.item].id == selectedSlotID)
         }
+    }
+}
+
+@MainActor
+private final class FavoritesFilmstripLoadingItem: NSCollectionViewItem {
+    static let reuseID = NSUserInterfaceItemIdentifier("FavoritesFilmstripLoadingItem")
+    private let progress = NSProgressIndicator()
+
+    override func loadView() {
+        view = NSView()
+        progress.style = .spinning
+        progress.controlSize = .small
+        progress.startAnimation(nil)
+        view.addSubview(progress)
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            progress.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            progress.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
     }
 }
 

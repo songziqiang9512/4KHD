@@ -116,6 +116,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
             return "\(section.title) - Wallhaven"
         case .favorites:
             return "在线收藏"
+        case .knitGallery:
+            let section = KnitBrowseFilter.filter(forRouteItemID: route.itemID)?.sidebarSection ?? .recentUpdates
+            return "\(section.title) - 爱妹子"
         }
     }
 }

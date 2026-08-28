@@ -69,14 +69,15 @@ private actor FavoritesStorageCoordinator {
     }
 
     func importRecords(_ imported: [FavoriteRecord]) throws -> FavoritesStorageImportResult {
-        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: favorites.map { ($0.detailURL, $0) })
-        var orderedDetailURLs = favorites.map(\.detailURL)
+        let existingIndex = Self.stableIndex(favorites)
+        var mergedByDetailURL = existingIndex.recordsByDetailURL
+        var orderedDetailURLs = existingIndex.orderedDetailURLs
         var addedCount = 0
         var updatedCount = 0
         var skippedCount = 0
 
-        for favorite in imported {
-            guard Self.isValidFavorite(favorite) else {
+        for candidate in imported {
+            guard let favorite = Self.sanitizedImportedFavorite(candidate) else {
                 skippedCount += 1
                 continue
             }
@@ -155,13 +156,35 @@ private actor FavoritesStorageCoordinator {
     }
 
     private static func merge(_ primary: [FavoriteRecord], _ secondary: [FavoriteRecord]) -> [FavoriteRecord] {
-        var mergedByDetailURL = Dictionary(uniqueKeysWithValues: primary.map { ($0.detailURL, $0) })
-        var orderedDetailURLs = primary.map(\.detailURL)
-        for favorite in secondary where mergedByDetailURL[favorite.detailURL] == nil {
+        let primaryIndex = stableIndex(primary)
+        var mergedByDetailURL = primaryIndex.recordsByDetailURL
+        var orderedDetailURLs = primaryIndex.orderedDetailURLs
+        let primaryDetailURLs = Set(primaryIndex.orderedDetailURLs)
+
+        // The file snapshot remains authoritative over legacy UserDefaults.
+        // Within either input, the first occurrence owns the stable position
+        // while a later duplicate supplies the record contents.
+        for favorite in secondary where !primaryDetailURLs.contains(favorite.detailURL) {
+            if mergedByDetailURL[favorite.detailURL] == nil {
+                orderedDetailURLs.append(favorite.detailURL)
+            }
             mergedByDetailURL[favorite.detailURL] = favorite
-            orderedDetailURLs.append(favorite.detailURL)
         }
         return orderedDetailURLs.compactMap { mergedByDetailURL[$0] }
+    }
+
+    private static func stableIndex(
+        _ records: [FavoriteRecord]
+    ) -> (recordsByDetailURL: [String: FavoriteRecord], orderedDetailURLs: [String]) {
+        var recordsByDetailURL: [String: FavoriteRecord] = [:]
+        var orderedDetailURLs: [String] = []
+        for favorite in records {
+            if recordsByDetailURL[favorite.detailURL] == nil {
+                orderedDetailURLs.append(favorite.detailURL)
+            }
+            recordsByDetailURL[favorite.detailURL] = favorite
+        }
+        return (recordsByDetailURL, orderedDetailURLs)
     }
 
     private static func write(_ snapshot: [FavoriteRecord], to fileURL: URL) throws {
@@ -183,7 +206,28 @@ private actor FavoritesStorageCoordinator {
     private static func isValidFavorite(_ favorite: FavoriteRecord) -> Bool {
         !favorite.id.isEmpty
             && !favorite.sourceID.isEmpty
-            && URL(string: favorite.detailURL) != nil
+            && FavoriteSource.source(for: favorite) != nil
+    }
+
+    /// Backup files are external input. Keep a valid record even when its
+    /// optional cover is stale, but never persist a cover owned by another
+    /// source (or an insecure/lookalike host) into the authoritative snapshot.
+    private static func sanitizedImportedFavorite(_ favorite: FavoriteRecord) -> FavoriteRecord? {
+        guard isValidFavorite(favorite),
+              let source = FavoriteSource.source(for: favorite) else { return nil }
+        guard favorite.coverURL != nil,
+              source.validatedCoverURL(for: favorite) == nil else { return favorite }
+        return FavoriteRecord(
+            id: favorite.id,
+            sourceID: favorite.sourceID,
+            title: favorite.title,
+            rawTitle: favorite.rawTitle,
+            subtitle: favorite.subtitle,
+            detailURL: favorite.detailURL,
+            coverURL: nil,
+            imageCount: favorite.imageCount,
+            pageCount: favorite.pageCount
+        )
     }
 }
 

@@ -121,8 +121,7 @@ enum WallhavenUploaderResolver {
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         request.setValue("4KHD macOS/1.0", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try OnlineSourcePolicy.validate(response, source: .wallhaven, resource: .html)
+        let (data, response) = try await OnlineSourceSession.wallhavenHTML.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw WallhavenAPIError.decodingFailed
         }

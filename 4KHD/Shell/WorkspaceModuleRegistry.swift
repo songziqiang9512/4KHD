@@ -29,6 +29,8 @@ struct WorkspaceModulePresentationProfile: Equatable {
     let showsOnlineSave: Bool
     let showsWallhavenControls: Bool
     let showsFavoritesFilter: Bool
+    var showsKnitFilters: Bool = false
+    var showsVideoSave: Bool = false
     let filmstripAvailability: FilmstripAvailability
     let refreshRequiresSelection: Bool
     let detailActions: DetailActions
@@ -41,6 +43,8 @@ struct WorkspaceModulePresentationProfile: Equatable {
         showsOnlineSave: false,
         showsWallhavenControls: false,
         showsFavoritesFilter: false,
+        showsKnitFilters: false,
+        showsVideoSave: false,
         filmstripAvailability: .none,
         refreshRequiresSelection: false,
         detailActions: .none

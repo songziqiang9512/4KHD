@@ -1,6 +1,6 @@
 # 4KHD
 
-4KHD 是一款 macOS 原生图片浏览软件，用于浏览在线图库内容和本地图片目录。
+4KHD 是一款 macOS 原生图片与媒体图库工作区，用于浏览在线图集、站点视频和本地图片目录。
 
 **纯 AppKit 实现**：主窗口、三栏工作区、侧边栏、工具栏、中栏列表/网格、详情区、胶卷条全部由 AppKit 原生控件承载。生产代码 0 SwiftUI。
 
@@ -29,12 +29,22 @@
 - 详情缓存（内存+磁盘），预览→原图升级
 - 设为桌面壁纸、收藏集成
 
+### 在线图库 — 爱妹子
+- 侧边栏分为「最近更新 / 妹子图 / 排行榜 / 影片花絮」；妹子图默认丝袜美女，排行榜默认最受欢迎
+- 妹子图工具栏提供 10 个一级类型及当前类型的相关专题（合计 25 个）；排行榜精确提供 6 个原站排行入口
+- 列表/瀑布流双布局，搜索与各入口支持真实分页；详情只在可见时逐页解析，HTML/JSON 解析不占用 UI 主线程
+- 详情区提供缩放、导航、计数、底部胶片条和沉浸模式；最后一张继续向后翻页显示原站推荐图集
+- 自动识别含视频图集；HLS 视频使用独立原生 `AVPlayerView` 窗口播放，详情播放按钮和播放器画面的右键菜单都可直接保存 MP4 或拷贝影片源 URL
+- 详情解析到真实视频源后，工具栏「保存」菜单可将未加密的 MPEG-TS HLS 无损封装并保存为 MP4；视频进入与整图集共用的非模态下载任务中心，显示已下载/总大小、整体百分比和速度并支持取消，完成前不会覆盖目标文件
+- 普通请求遇到站点验证时才显示 WebKit 验证窗口，并同步站点 Cookie 后重试；验证窗口的主框架跳转始终限制在受信任站点，视频保存流程整次最多恢复一次验证，不会无限重试
+- 收藏、整图集下载、Inspector 与沉浸式图片详情已接入统一工作区
+
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
 - 上/下张键盘/浮层按钮导航，Escape/Tab/Enter 键盘支持
 - 窗内大图模式（自动隐藏工具栏和胶卷条）
-- 底部缩略图胶卷条（MissKon/Gallery）
-- 4KHD/MissKon 图集尾页推荐，可直接进入推荐图集
+- 底部缩略图胶卷条（4KHD/MissKon/爱妹子及其在线收藏详情）
+- 4KHD/MissKon/爱妹子及对应在线收藏的图集尾页推荐，可直接进入来源模块的推荐图集
 - 保存图片、重置缩放
 
 ### 本地图片
@@ -45,31 +55,42 @@
 - 搜索匹配文件名和文件夹名，结果高亮
 
 ### 收藏（在线收藏）
-- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven 三个模块的收藏
-- 工具栏按来源筛选（全部 / 4KHD / MissKon / Wallhaven）与搜索
+- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven / 爱妹子四个模块的收藏
+- 工具栏按来源筛选（全部 / 4KHD / MissKon / Wallhaven / 爱妹子）与搜索
 - 列表 / 瀑布流网格双布局（与 MissKon/4KHD 相同的卡片、hover、双击交互）；详情区为大图查看区（缩放、胶片条、沉浸模式）
 - 持久保存于 FavoritesStore（favorites.json）；旧版本收藏数据按 detailURL host 自动兼容
-- Gallery / MissKon 来源的收藏项可「保存整个图集」与「保存当前图片」
-- Gallery / MissKon 来源的收藏详情在图集末尾显示推荐，点击后路由到对应在线模块
+- Gallery / MissKon / 爱妹子来源的收藏项可「保存整个图集」与「保存当前图片」
+- Gallery / MissKon / 爱妹子来源的收藏详情在图集末尾显示推荐，点击后路由到对应在线模块
+- 4KHD / MissKon / 爱妹子收藏详情复用来源模块的逐页解析、胶片条、相邻预取与页尾推荐；关闭或切换详情会取消旧解析，分页严格沿连续前缀串行推进，失败可点击重试且不会提前进入推荐
+- 收藏筛选为空或删除当前项目时会清空旧详情；历史封面会按所属来源重新校验，分页失败可从原位置重试且不会提前显示推荐
+- 爱妹子含视频收藏在详情中提供播放、空格键播放、影片源 URL 复制及工具栏 MP4 保存，启用状态来自当前已解析视频而不是列表提示
+- MissKon 收藏详情保留 MediaFire 资源入口
+- Wallhaven 收藏详情加载原图和完整元数据，可设为壁纸、浏览同来源收藏的上一张/下一张，并从上传者入口在应用内进入 Wallhaven 对应作品列表
 
 ### 设置
-- 统一布局切换（列表/网格，同时控制所有模块）
+- 统一布局切换（列表/网格，同时控制 4KHD、MissKon、Wallhaven、爱妹子与本地图库）
 - 在线缓存容量选择（512MB-4GB/无限制）
 - 一键清除所有缓存（图片、详情页、模块数据、临时文件）
-- 侧边栏模块显示开关（4KHD/MissKon）
+- 侧边栏模块显示开关（4KHD/MissKon/爱妹子）
+- 收藏 JSON 导出/导入覆盖 4KHD、MissKon、Wallhaven 与爱妹子；导入会拒绝非受信来源，并安全合并重复记录
 - 发布版每天自动检查更新，也可从应用菜单选择“检查更新…”
+
+### 辅助窗口
+- 下载窗口统一显示图集与视频任务，单一标题下提供队列摘要、已下载/总大小、整体百分比、当前/平均速度、取消、完成清理和 Finder 定位；运行中总量可为估算值，完成后以真实落盘大小校正，窗口关闭后任务继续
+- 信息窗口按来源显示图标、标题、概览、资源和来源分组；长标签、描述和链接可滚动查看，缺失字段不会以成排横线占位
 
 ## 架构
 
 ```
 4KHD/
-  App/          — 应用入口、偏好设置、Inspector
+  App/          — 应用入口、偏好设置、Inspector、下载管理器与独立视频播放器
   Shell/        — 三栏工作区、侧边栏、工具栏、模块路由与展示能力描述符
-  Shared/       — 跨模块能力（图片缓存、键盘处理、UI 组件、共享基类）
+  Shared/       — 跨模块能力（图片缓存、统一下载队列、键盘处理、UI 组件、共享基类）
   Modules/
     4KHDGallery/ — 4KHD.com 在线图库
     MissKon/    — misskon.com 在线图库
     Wallhaven/  — wallhaven.cc 在线壁纸
+    KnitGallery/ — xx.knit.bid 图片与视频图库
     LocalLibrary/ — 本地图片
     Favorites/  — 收藏记录
 4KHDTests/      — XCTest 回归测试
@@ -77,7 +98,7 @@
 
 Shell 通过 `WorkspaceModuleDescriptor` 组装每个模块的 content/detail controller 与工具栏能力；Favorites 通过 App 注册的 source adapter 使用各在线源能力，业务模块之间不直接引用具体实现。
 
-详见 `AGENTS.md`。
+维护边界见 `AGENTS.md`；当前实现与验证状态见 `docs/ai-handover-2026-08-28.md`；发布操作见 `docs/release-process.md`；1.8.9 用户可见改动见 `docs/releases/1.8.9.md`。
 
 ## 开发
 
@@ -119,7 +140,7 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 - MissKon 详情 metadata：`~/Library/Application Support/4KHD/MissKon/DetailMetadata/pages.json`
 - Wallhaven 详情缓存：`~/Library/Application Support/4KHD/Wallhaven/detail-cache.json`
 - 本地缩略图：`~/Library/Caches/4KHD/LocalImageThumbnails/`（最多 1GB / 20,000 文件；旧 Application Support 目录会迁移或清理）
-- 在线图片：Nuke 管线管理（384MB 内存缓存 + 单一可配置磁盘缓存）
+- 在线图片：Nuke 管线管理（288MB / 700 项内存缓存 + 单一可配置磁盘缓存）
 - 收藏记录：`~/Library/Application Support/4KHD/favorites.json`；写入前保留 `favorites.json.bak`，主文件损坏时自动恢复
 - Wallhaven API Key：UserDefaults 存储
 
@@ -131,3 +152,4 @@ rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 - 在线列表、搜索和详情解析失败会在列表 footer（可点击重试）或详情状态条中显示错误
 - 图片内容运行时从网站读取，不随仓库分发
 - 请遵守来源网站的访问规则和使用限制
+- 已知 UI 边界：顶部系统工具栏的 scroll-edge 半透明背景在部分三栏/详情栏状态下仍可能异常；内容穿过系统工具栏下方仍是预期行为，当前没有用 safe-area 截断或自绘背景规避

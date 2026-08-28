@@ -9,9 +9,11 @@ final class WorkspaceAppContext {
     let galleryStore: FourKHDGalleryStore
     let missKonStore: MissKonGalleryStore
     let wallhavenStore: WallhavenGalleryStore
+    let knitStore: KnitGalleryStore
     let localLibraryStore: LocalLibraryStore
     let favoritesStore: FavoritesStore
     let favoritesModuleStore: FavoritesModuleStore
+    let favoritesDetailStore: FavoritesDetailStore
     let favoritesPreferences: FavoritesContentPreferences
     let toolbarContext: WorkspaceToolbarContext
     let downloadStore: DownloadStore
@@ -24,9 +26,11 @@ final class WorkspaceAppContext {
         galleryStore: FourKHDGalleryStore,
         missKonStore: MissKonGalleryStore,
         wallhavenStore: WallhavenGalleryStore,
+        knitStore: KnitGalleryStore,
         localLibraryStore: LocalLibraryStore,
         favoritesStore: FavoritesStore,
         favoritesModuleStore: FavoritesModuleStore,
+        favoritesDetailStore: FavoritesDetailStore,
         favoritesPreferences: FavoritesContentPreferences,
         toolbarContext: WorkspaceToolbarContext,
         downloadStore: DownloadStore,
@@ -38,9 +42,11 @@ final class WorkspaceAppContext {
         self.galleryStore = galleryStore
         self.missKonStore = missKonStore
         self.wallhavenStore = wallhavenStore
+        self.knitStore = knitStore
         self.localLibraryStore = localLibraryStore
         self.favoritesStore = favoritesStore
         self.favoritesModuleStore = favoritesModuleStore
+        self.favoritesDetailStore = favoritesDetailStore
         self.favoritesPreferences = favoritesPreferences
         self.toolbarContext = toolbarContext
         self.downloadStore = downloadStore

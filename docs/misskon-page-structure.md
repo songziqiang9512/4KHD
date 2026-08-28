@@ -1,4 +1,6 @@
-# misskon.com 页面结构文档
+# misskon.com 页面结构与实现快照
+
+更新日期：2026-08-28。站点 HTML 会变化；源码、回归测试和实时响应优先于本文快照。
 
 ## 列表页（首页 / Tag 页 / Top 页）
 
@@ -35,12 +37,12 @@
 - 详情链接有尾部斜杠: `https://misskon.com/{id}-{slug}/`
 - 标准归档页 HTML 中有分页导航（`<span class="current">` 等）
 - Top30 等自定义页面模板：HTML 无分页元素，但 WordPress 仍支持 /page/N/ URL。
-  解析器通过检测 `articleCount >= 12` 自动构造下一页 URL
+  解析器通过检测 `articleCount > 12` 自动构造下一页 URL
 
 ### 分页规则
 - 标准归档：从 HTML 提取 `current` 页号和 `next` 链接
-- 自定义模板（top30 等）：无分页 HTML 元素，通过文章数 ≥12 判断是否构造下一页
-- 单页/无内容：文章数 <12，不构造下一页 URL
+- 自定义模板（top30 等）：无分页 HTML 元素，只有文章数严格大于 12 时才构造下一页
+- 单页/无内容：文章数不超过 12 时，不构造下一页 URL
 
 ---
 
@@ -90,7 +92,7 @@
 - 每页约 12 张图片
 - 页码导航中只显示首尾几页（如 1 2 3 4），需通过扫描所有 `<a class="post-page-numbers">` 获取实际页数
 - `resolvePageURLs` 扫描所有锚标签获取最大页码，构造完整 pageURL 列表
-- 渐进式加载：首页立即返回，其余页在 while 循环中逐个解析并 `publishSlots()`
+- 渐进式加载：首页先解析，详情 Store 只预取相邻两页；用户接近当前末尾或显式导航时再沿连续页序推进，失败页移除占位并保留重试入口
 
 ---
 
@@ -103,7 +105,7 @@
 4. 若有 1 个 page-link：提取该 div 之后 → entry 结束标记之前的内容
 5. 若无 page-link：提取整个 entry 内容
 6. 从内容中提取 `data-src` 属性（优先）和 `src` 属性（非 SVG 的回退方案）
-7. 过滤域名包含 `misskon.com` 的 URL
+7. 图片 URL 必须通过 `OnlineSourcePolicy` 的 HTTPS exact/subdomain allowlist（`misskon.com` / `mrcong.com`），不得用字符串 `contains` 判断来源
 8. 按出现顺序去重
 
 ### resolvePageURLs 逻辑
@@ -128,7 +130,13 @@
 | 页码标签 | `<li class="numpages">` | `<div class="page-link">` + `<span class="post-page-numbers current">` |
 | 分页 URL 格式 | `/{slug}.html/{N}` | `/{id}-{slug}/{N}/` |
 | 每页图片数 | ~20 | ~12 |
-| 列表页缓存策略 | 离线 JSON(ApifyLibrary) | 实时 HTTP + 内存缓存 |
+| 列表页缓存策略 | 离线 JSON(ApifyLibrary) | 实时 HTTP + 内存状态 + 按 section 磁盘缓存 |
 | WordPress 主题 | 自定义 Block 主题 | Sahifa 经典主题 |
-| 图片 URL 来源 | JS 渲染(WKWebView) | HTML data-src |
-| 详情页解析方式 | DetailImageResolver(WebView) | MissKonDetailResolver(HTML) |
+| 图片 URL 来源 | HTML 优先，必要时 WKWebView fallback | HTML data-src |
+| 详情页解析方式 | DetailPageHTMLResolver + DetailImageResolver fallback | MissKonDetailResolver(HTML) |
+
+## 当前扩展能力
+
+- 首页解析 Yet Another Related Posts Plugin（YARPP）容器中的 6 个原站推荐；全部图片页完成后，从最后一张继续向后导航才显示推荐网格。
+- MediaFire 短链属于 MissKon 业务 metadata，只写入 `MissKonDetailMetadataCache`，不进入 Shared 的通用详情缓存 schema。
+- 详情分页失败会移除该页占位并把该页计入本轮完成状态，其余未处理页面仍可继续；所有页面均失败时显示解析失败并由重试动作重新解析当前图集。

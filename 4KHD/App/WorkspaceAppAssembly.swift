@@ -19,14 +19,33 @@ enum WorkspaceAppAssembly {
         let wallhavenAccountStore = WallhavenAccountStore()
         let wallhavenPreferences = WallhavenContentPreferences()
         let wallhavenFeedStore = WallhavenFeedStore(accountStore: wallhavenAccountStore, preferences: wallhavenPreferences)
-        configureFavoriteSourceAdapters { detailPageURL in
-            let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
-            return FavoriteResolvedImagePage(
-                imageURLs: [detail.imageURL],
-                pageURLs: [detailPageURL],
-                metadata: detail.wallpaper.map(makeWallhavenFavoriteMetadata)
+        let knitStore = KnitGalleryStore(favorites: favoritesStore)
+        let knitPreferences = KnitContentPreferences()
+        let downloadStore = DownloadStore()
+        let knitDetailInteraction = KnitDetailInteractionController(downloadStore: downloadStore)
+        let knitVideoPlayer = KnitVideoPlayerWindowController()
+        configureFavoriteSourceAdapters(
+            wallhavenPageResolver: { detailPageURL in
+                let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
+                return FavoriteResolvedImagePage(
+                    imageURLs: [detail.imageURL],
+                    pageURLs: [detailPageURL],
+                    metadata: detail.wallpaper.map(makeWallhavenFavoriteMetadata)
+                )
+            },
+            knitVideoActions: FavoriteVideoActions(
+                play: { record, sourceURL in
+                    guard let item = KnitFavoritesBridge.item(from: record) else { return }
+                    knitVideoPlayer.play(url: sourceURL, title: record.title) {
+                        knitDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                    }
+                },
+                saveAsMP4: { record, sourceURL in
+                    guard let item = KnitFavoritesBridge.item(from: record) else { return }
+                    knitDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                }
             )
-        }
+        )
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
         let wallhavenDetailInteraction = WallhavenDetailInteractionController()
         let localLibraryStore = LocalLibraryStore()
@@ -34,7 +53,6 @@ enum WorkspaceAppAssembly {
         let localDetailInteraction = LocalDetailInteractionController()
         let filmstripVisibility = FilmstripVisibilityController()
         let detailPaneController = WorkspaceDetailPaneController()
-        let downloadStore = DownloadStore()
         let importRootFolderAction = {
             guard let folderURL = LocalLibraryImportService.chooseFolder() else { return }
             localLibraryStore.importRootFolder(folderURL)
@@ -49,6 +67,10 @@ enum WorkspaceAppAssembly {
             wallhavenStore: wallhavenStore,
             wallhavenPreferences: wallhavenPreferences,
             wallhavenDetailInteraction: wallhavenDetailInteraction,
+            knitStore: knitStore,
+            knitPreferences: knitPreferences,
+            knitDetailInteraction: knitDetailInteraction,
+            knitVideoPlayer: knitVideoPlayer,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -69,6 +91,9 @@ enum WorkspaceAppAssembly {
             wallhavenStore: wallhavenStore,
             wallhavenPreferences: wallhavenPreferences,
             wallhavenDetailInteraction: wallhavenDetailInteraction,
+            knitStore: knitStore,
+            knitPreferences: knitPreferences,
+            knitDetailInteraction: knitDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -94,9 +119,11 @@ enum WorkspaceAppAssembly {
             galleryStore: fourKHDGalleryStore,
             missKonStore: missKonStore,
             wallhavenStore: wallhavenStore,
+            knitStore: knitStore,
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
             favoritesModuleStore: favoritesModuleStore,
+            favoritesDetailStore: favoritesDetailStore,
             favoritesPreferences: favoritesPreferences,
             toolbarContext: toolbarContext,
             downloadStore: downloadStore,
@@ -106,46 +133,73 @@ enum WorkspaceAppAssembly {
 
     @MainActor
     static func configureFavoriteSourceAdapters(
-        wallhavenPageResolver: @escaping (URL) async throws -> FavoriteResolvedImagePage
+        wallhavenPageResolver: @escaping (URL) async throws -> FavoriteResolvedImagePage,
+        knitVideoActions: FavoriteVideoActions? = nil
     ) {
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
             FavoriteSourceAdapter(
                 source: .gallery,
                 detailContent: { record in
                     guard let item = GalleryFavoritesBridge.galleryItems(from: [record]).first else { return nil }
-                    return .paged(pageURLs: item.pageURLs, estimatedImageCount: item.imageCount)
+                    return .paged(
+                        pageURLs: item.pageURLs,
+                        estimatedImageCount: item.imageCount,
+                        pageImageCapacity: 20
+                    )
                 },
                 resolvePage: { url in
-                    let page = try await DetailPageHTMLResolver.resolve(pageURL: url)
+                    let page = try await DetailImageResolver.resolvePageWithFallback(url)
                     return FavoriteResolvedImagePage(
                         imageURLs: page.imageURLs,
                         pageURLs: page.pageURLs,
                         recommendations: page.recommendations
                     )
                 },
-                configureImageRequest: GalleryRequestFactory.configureImageRequest
+                configureImageRequest: GalleryRequestFactory.configureImageRequest,
+                detailMetadata: { record in
+                    GalleryFavoritesBridge.galleryItems(from: [record]).first.map(makeGalleryFavoriteMetadata)
+                }
             ),
             FavoriteSourceAdapter(
                 source: .missKon,
                 detailContent: { record in
                     guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return nil }
-                    return .paged(pageURLs: item.pageURLs, estimatedImageCount: item.imageCount)
+                    return .paged(
+                        pageURLs: item.pageURLs,
+                        estimatedImageCount: item.imageCount,
+                        pageImageCapacity: 12
+                    )
                 },
                 resolvePage: { url in
                     let page = try await MissKonDetailResolver.resolve(pageURL: url)
                     return FavoriteResolvedImagePage(
                         imageURLs: page.imageURLs,
                         pageURLs: page.pageURLs,
-                        recommendations: page.recommendations
+                        recommendations: page.recommendations,
+                        externalAction: page.mediaFireURL.map {
+                            FavoriteDetailExternalAction(title: "MediaFire 下载", url: $0)
+                        }
                     )
                 },
-                configureImageRequest: MissKonRequestFactory.configureImageRequest
+                configureImageRequest: MissKonRequestFactory.configureImageRequest,
+                detailMetadata: { record in
+                    MissKonFavoritesBridge.missKonItems(from: [record]).first.map(makeMissKonFavoriteMetadata)
+                },
+                cachedExternalAction: { pageURL in
+                    MissKonDetailMetadataCache.shared.metadata(for: pageURL)?.mediaFireURL.map {
+                        FavoriteDetailExternalAction(title: "MediaFire 下载", url: $0)
+                    }
+                }
             ),
             FavoriteSourceAdapter(
                 source: .wallhaven,
                 detailContent: { record in
                     guard let wallpaper = WallhavenFavoritesBridge.wallpapers(from: [record]).first else { return nil }
-                    return .paged(pageURLs: [wallpaper.sourcePageUrl], estimatedImageCount: 1)
+                    return .paged(
+                        pageURLs: [wallpaper.sourcePageUrl],
+                        estimatedImageCount: 1,
+                        pageImageCapacity: 1
+                    )
                 },
                 resolvePage: { url in
                     try await wallhavenPageResolver(url)
@@ -153,20 +207,184 @@ enum WorkspaceAppAssembly {
                 configureImageRequest: WallhavenRequestFactory.configureImageRequest,
                 detailMetadata: { record in
                     WallhavenFavoritesBridge.wallpapers(from: [record]).first.map(makeWallhavenFavoriteMetadata)
-                }
+                },
+                navigationMode: .sourceRecords
+            ),
+            FavoriteSourceAdapter(
+                source: .knit,
+                detailContent: { record in
+                    guard let item = KnitFavoritesBridge.item(from: record) else { return nil }
+                    let count = min(max(record.pageCount, 1), KnitDetailResolver.maximumDetailPageCount)
+                    let pageURLs = (1...count).compactMap { page -> URL? in
+                        if page == 1 { return item.detailURL }
+                        var components = URLComponents(url: item.detailURL, resolvingAgainstBaseURL: false)
+                        components?.path = "/article/\(item.id)/page/\(page)/"
+                        return components?.url
+                    }
+                    return .paged(
+                        pageURLs: pageURLs,
+                        estimatedImageCount: record.imageCount,
+                        pageImageCapacity: 10
+                    )
+                },
+                resolvePage: { url in
+                    let page = try await KnitDetailResolver.resolve(pageURL: url)
+                    return FavoriteResolvedImagePage(
+                        imageURLs: page.imageURLs,
+                        pageURLs: page.pageURLs,
+                        recommendations: page.recommendations,
+                        metadata: page.metadata.map {
+                            makeKnitFavoriteMetadata(
+                                $0,
+                                sourceURL: page.pageURLs.first ?? url
+                            )
+                        },
+                        videoURL: page.videoURL
+                    )
+                },
+                configureImageRequest: KnitRequestFactory.configureImageRequest,
+                detailMetadata: { record in
+                    KnitFavoritesBridge.item(from: record).map {
+                        makeKnitFavoriteMetadata($0, record: record)
+                    }
+                },
+                videoActions: knitVideoActions
             ),
         ])
     }
 
     private static func makeWallhavenFavoriteMetadata(_ wallpaper: Wallpaper) -> FavoriteDetailMetadata {
-        FavoriteDetailMetadata(
+        var facts: [FavoriteDetailFact] = []
+        if wallpaper.resolutionText != "-" {
+            facts.append(.init(label: "分辨率", value: wallpaper.resolutionText))
+        }
+        if wallpaper.formattedFileSize != "-" {
+            facts.append(.init(label: "大小", value: wallpaper.formattedFileSize))
+        }
+        if let fileType = wallpaper.fileType?.replacingOccurrences(of: "image/", with: "").uppercased() {
+            facts.append(.init(label: "格式", value: fileType))
+        }
+        if let category = wallpaper.category {
+            facts.append(.init(label: "分类", value: WallhavenCategory(rawValue: category)?.title ?? category))
+        }
+        facts.append(.init(label: "内容分级", value: wallpaper.purity.title))
+        if let uploader = wallpaper.uploader {
+            facts.append(.init(label: "上传者", value: uploader))
+        }
+        if let createdAt = wallpaper.createdAt {
+            facts.append(.init(label: "上传日期", value: createdAt.formatted(date: .abbreviated, time: .shortened)))
+        }
+        if let views = wallpaper.views {
+            facts.append(.init(label: "浏览数", value: views.formatted()))
+        }
+        if let favorites = wallpaper.favorites {
+            facts.append(.init(label: "站内收藏", value: favorites.formatted()))
+        }
+        if !wallpaper.tags.isEmpty {
+            facts.append(.init(label: "标签", value: wallpaper.tags.joined(separator: ", ")))
+        }
+        return FavoriteDetailMetadata(
             title: wallpaper.displayName,
             detailText: wallpaper.detailInfoText,
             sourceTitle: "来源: Wallhaven",
             sourceURL: wallpaper.sourcePageUrl,
             secondaryTitle: wallpaper.uploader.map { "\($0) 的作品" },
             secondaryURL: wallpaper.uploaderProfileURL,
-            supportsDesktopWallpaper: true
+            supportsDesktopWallpaper: true,
+            facts: facts
+        )
+    }
+
+    private static func makeGalleryFavoriteMetadata(_ item: GalleryItem) -> FavoriteDetailMetadata {
+        let kindTitle: String = switch item.kind {
+        case .gallery: "图集"
+        case .recommended: "推荐"
+        case .advertisement: "广告"
+        }
+        return FavoriteDetailMetadata(
+            title: item.title,
+            detailText: item.subtitle,
+            sourceTitle: "来源: 4KHD",
+            sourceURL: item.detailURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: [
+                .init(label: "类型", value: kindTitle),
+                .init(label: "栏目", value: item.section.title),
+                .init(label: "图片数", value: item.imageCount > 0 ? item.imageCount.formatted() : "未知"),
+                .init(label: "页数", value: item.pageCount.formatted())
+            ]
+        )
+    }
+
+    private static func makeMissKonFavoriteMetadata(_ item: MissKonItem) -> FavoriteDetailMetadata {
+        var facts = [
+            FavoriteDetailFact(label: "栏目", value: item.section.title),
+            FavoriteDetailFact(label: "图片数", value: item.imageCount > 0 ? item.imageCount.formatted() : "未知"),
+            FavoriteDetailFact(label: "页数", value: item.pageCount.formatted())
+        ]
+        if !item.tags.isEmpty {
+            facts.append(.init(label: "标签", value: item.tags.joined(separator: ", ")))
+        }
+        return FavoriteDetailMetadata(
+            title: item.title,
+            detailText: item.tags.joined(separator: " · "),
+            sourceTitle: "来源: MissKon",
+            sourceURL: item.detailURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: facts
+        )
+    }
+
+    private static func makeKnitFavoriteMetadata(
+        _ item: KnitGalleryItem,
+        record: FavoriteRecord
+    ) -> FavoriteDetailMetadata {
+        let category = record.subtitle.components(separatedBy: " · ").first ?? item.category
+        return FavoriteDetailMetadata(
+            title: item.title,
+            detailText: record.subtitle,
+            sourceTitle: "来源: 爱妹子",
+            sourceURL: item.detailURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: [
+                .init(label: "分类", value: category),
+                .init(label: "图片数", value: record.imageCount > 0 ? record.imageCount.formatted() : "未知"),
+                .init(label: "页数", value: record.pageCount.formatted())
+            ]
+        )
+    }
+
+    private static func makeKnitFavoriteMetadata(
+        _ metadata: KnitDetailMetadata,
+        sourceURL: URL
+    ) -> FavoriteDetailMetadata {
+        var facts = [
+            FavoriteDetailFact(label: "实际图片", value: metadata.totalImages.formatted()),
+            FavoriteDetailFact(label: "图集页数", value: metadata.totalPages.formatted())
+        ]
+        if !metadata.tags.isEmpty {
+            facts.append(.init(label: "标签", value: metadata.tags.joined(separator: ", ")))
+        }
+        if !metadata.description.isEmpty {
+            facts.append(.init(label: "描述", value: metadata.description))
+        }
+        return FavoriteDetailMetadata(
+            title: "",
+            detailText: [metadata.description, metadata.tags.joined(separator: " · ")]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · "),
+            sourceTitle: "来源: 爱妹子",
+            sourceURL: sourceURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: facts
         )
     }
 
@@ -181,6 +399,10 @@ enum WorkspaceAppAssembly {
         wallhavenStore: WallhavenGalleryStore,
         wallhavenPreferences: WallhavenContentPreferences,
         wallhavenDetailInteraction: WallhavenDetailInteractionController,
+        knitStore: KnitGalleryStore,
+        knitPreferences: KnitContentPreferences,
+        knitDetailInteraction: KnitDetailInteractionController,
+        knitVideoPlayer: KnitVideoPlayerWindowController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -378,7 +600,8 @@ enum WorkspaceAppAssembly {
                     presentation: WorkspaceModulePresentationProfile(
                         showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
                         showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
-                        showsFavoritesFilter: true, filmstripAvailability: .detail,
+                        showsFavoritesFilter: true, showsVideoSave: true,
+                        filmstripAvailability: .detail,
                         refreshRequiresSelection: false, detailActions: .none
                     ),
                     defaultRoute: {
@@ -399,6 +622,20 @@ enum WorkspaceAppAssembly {
                             detailPane: context.detailPaneController,
                             detailInteraction: favoritesDetailInteraction,
                             filmstripVisibility: filmstripVisibility,
+                            onOpenSecondaryMetadata: { record, metadata in
+                                guard FavoriteSource.source(for: record) == .wallhaven,
+                                      let profileURL = metadata.secondaryURL,
+                                      let username = profileURL.pathComponents.last,
+                                      !username.isEmpty else { return false }
+                                context.appContext.routeController.select(
+                                    WorkspaceRoute(
+                                        moduleID: .wallhaven,
+                                        itemID: WallhavenSection.browse.rawValue
+                                    )
+                                )
+                                wallhavenStore.showUploaderWorks(username: username)
+                                return true
+                            },
                             onOpenRecommendation: { source, recommendation in
                                 switch source {
                                 case .gallery:
@@ -419,6 +656,14 @@ enum WorkspaceAppAssembly {
                                     missKonStore.openRecommendation(recommendation)
                                 case .wallhaven:
                                     break
+                                case .knit:
+                                    context.appContext.routeController.select(
+                                        WorkspaceRoute(
+                                            moduleID: .knitGallery,
+                                            itemID: knitStore.filter.rawValue
+                                        )
+                                    )
+                                    knitStore.openRecommendation(recommendation)
                                 }
                             }
                         )
@@ -430,10 +675,56 @@ enum WorkspaceAppAssembly {
                     applyRoute: { route in
                         guard let filter = FavoriteSourceFilter(rawValue: route.itemID) else { return }
                         if favoritesModuleStore.filter != filter {
-                            favoritesModuleStore.filter = filter
+                            favoritesModuleStore.setFilter(filter)
                         }
                     },
                     bootstrap: {}
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .knitGallery,
+                    displayName: "KnitGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, showsKnitFilters: true, showsVideoSave: true,
+                        filmstripAvailability: .detail,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .knitGallery, itemID: KnitBrowseFilter.all.rawValue)
+                    },
+                    makeContentController: { context in
+                        KnitContentViewController(
+                            store: knitStore,
+                            preferences: knitPreferences,
+                            detailPane: context.detailPaneController
+                        )
+                    },
+                    makeDetailController: { context in
+                        KnitImageDetailViewController(
+                            store: knitStore,
+                            immersive: context.immersive,
+                            detailPane: context.detailPaneController,
+                            interaction: knitDetailInteraction,
+                            filmstripVisibility: filmstripVisibility,
+                            onPlayVideo: { item, url in
+                                knitVideoPlayer.play(url: url, title: item.title) {
+                                    knitDetailInteraction.saveVideo(item: item, sourceURL: url)
+                                }
+                            }
+                        )
+                    },
+                    normalizeRoute: { route in
+                        let filter = KnitBrowseFilter.filter(forRouteItemID: route.itemID) ?? .all
+                        return WorkspaceRoute(moduleID: .knitGallery, itemID: filter.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let filter = KnitBrowseFilter.filter(forRouteItemID: route.itemID) else { return }
+                        if knitStore.filter != filter {
+                            knitStore.setFilter(filter)
+                        }
+                    },
+                    bootstrap: { knitStore.bootstrapIfNeeded() }
                 )
             ]
         )

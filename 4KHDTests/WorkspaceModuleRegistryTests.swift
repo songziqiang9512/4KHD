@@ -34,6 +34,7 @@ final class WorkspaceModuleRegistryTests: XCTestCase {
             showsOnlineSave: true,
             showsWallhavenControls: false,
             showsFavoritesFilter: false,
+            showsVideoSave: true,
             filmstripAvailability: .detail,
             refreshRequiresSelection: false,
             detailActions: .none
@@ -52,5 +53,7 @@ final class WorkspaceModuleRegistryTests: XCTestCase {
         let registry = WorkspaceModuleRegistry(modules: [descriptor])
 
         XCTAssertEqual(registry.descriptor(for: .fourKHDGallery)?.presentation, profile)
+        XCTAssertTrue(profile.showsVideoSave)
+        XCTAssertFalse(WorkspaceModulePresentationProfile.standard.showsVideoSave)
     }
 }

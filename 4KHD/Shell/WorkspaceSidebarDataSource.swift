@@ -35,15 +35,17 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         let online = WorkspaceSidebarNode.group("4KHD")
         let misskon = WorkspaceSidebarNode.group("MissKon")
         let wallhaven = WorkspaceSidebarNode.group("在线壁纸")
+        let knit = WorkspaceSidebarNode.group("爱妹子")
         let local = WorkspaceSidebarNode.group("本地")
 
         let showAdvanced = SidebarModuleVisibility.showAdvancedModules
         nodes = [local, wallhaven]
-        if showAdvanced { nodes.append(online); nodes.append(misskon) }
+        if showAdvanced { nodes.append(online); nodes.append(misskon); nodes.append(knit) }
 
         childrenByNode[online] = GallerySection.allCases.map(WorkspaceSidebarNode.gallery)
         childrenByNode[misskon] = MissKonSection.allCases.map(WorkspaceSidebarNode.missKon)
         childrenByNode[wallhaven] = WallhavenSection.allCases.map(WorkspaceSidebarNode.wallhaven)
+        childrenByNode[knit] = KnitSidebarSection.allCases.map(WorkspaceSidebarNode.knit)
         // 在线收藏作为「本地」分组的子节点,紧跟在「我的图片」下方。
         var localChildren: [WorkspaceSidebarNode] = [
             .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount }),

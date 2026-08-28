@@ -12,6 +12,7 @@ final class AlbumDownloadOrchestratorTests: XCTestCase {
         let folder = makeOrchestratorTempFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
         let recorder = FetchConcurrencyRecorder()
+        let byteRecorder = WrittenByteRecorder()
         let detailURL = try XCTUnwrap(URL(string: "https://www.4khd.com/test.html"))
         let source = makeOrchestratorSource(detailURL: detailURL) { pageURL in
             makeOrchestratorPage(pageURL, imageCount: 6, pageURLs: [pageURL])
@@ -22,17 +23,19 @@ final class AlbumDownloadOrchestratorTests: XCTestCase {
             destinationFolder: folder,
             maxConcurrentImages: 3,
             registry: ImageTaskRegistry(),
-            emit: { _ in },
+            emit: { event in byteRecorder.record(event) },
             fetcher: { _, _ in
                 await recorder.begin()
                 try? await Task.sleep(nanoseconds: 30_000_000)
                 await recorder.end()
-                return Data([0x01])
+                return Data(repeating: 0x01, count: 4)
             }
         )
 
         XCTAssertEqual(summary.completedCount, 6)
         XCTAssertEqual(summary.failedCount, 0)
+        XCTAssertEqual(summary.downloadedBytes, 24)
+        XCTAssertEqual(byteRecorder.writtenBytes.sorted(), Array(repeating: 4, count: 6))
         let maxActive = await recorder.maxActive
         XCTAssertLessThanOrEqual(maxActive, 3)
         XCTAssertGreaterThan(maxActive, 1)
@@ -376,6 +379,24 @@ private actor FetchConcurrencyRecorder {
 
     func end() {
         active -= 1
+    }
+}
+
+private final class WrittenByteRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedBytes: [Int64] = []
+
+    func record(_ event: AlbumDownloadEvent) {
+        guard case .imageSucceeded(_, _, let bytesWritten) = event else { return }
+        lock.lock()
+        storedBytes.append(bytesWritten)
+        lock.unlock()
+    }
+
+    var writtenBytes: [Int64] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedBytes
     }
 }
 

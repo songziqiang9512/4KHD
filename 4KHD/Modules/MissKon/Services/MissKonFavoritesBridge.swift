@@ -44,7 +44,7 @@ enum MissKonFavoritesBridge {
     }
 
     private nonisolated static func pageURLs(detailURL: URL, pageCount: Int) -> [URL] {
-        let count = max(pageCount, 1)
+        let count = min(max(pageCount, 1), 500)
         let base = detailURL.absoluteString
         let baseWithSlash = base.hasSuffix("/") ? base : base + "/"
         return (1...count).map { pageNumber in

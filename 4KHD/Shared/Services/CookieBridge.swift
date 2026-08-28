@@ -2,9 +2,9 @@ import Foundation
 import WebKit
 
 /// 把 `WKWebsiteDataStore.default()` 里的 cookie（含 CloudFlare 的 `cf_clearance` 等）
-/// 同步给 `HTTPCookieStorage.shared`。`URLSession.shared` 默认就是从后者读 cookie，
-/// 同步之后子页面解析走 URLSession 直拉也能带上同一张 CF 票，大部分情况下不再需要
-/// 退到 WKWebView fallback。
+/// 同步给 `HTTPCookieStorage.shared`。在线来源的 URLSession 会话显式复用该 cookie
+/// storage；同步之后子页面解析走 URLSession 直拉也能带上同一张 CF 票，大部分情况
+/// 下不再需要退到 WKWebView fallback。
 ///
 /// 同步双向触发：
 /// 1. 启动时全量拉一次 WebKit cookie 写入 `HTTPCookieStorage.shared`；

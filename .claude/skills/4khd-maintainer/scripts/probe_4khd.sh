@@ -40,7 +40,7 @@ else
 fi
 
 section "Known module switch surfaces"
-for module_case in fourKHDGallery localLibrary missKon wallhaven; do
+for module_case in fourKHDGallery localLibrary missKon wallhaven favorites knitGallery; do
   printf '\n.%s\n' "$module_case"
   if [[ "$have_rg" -eq 1 ]]; then
     count=$(rg -n "case \\.$module_case" 4KHD/App 4KHD/Shell --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')
@@ -53,9 +53,9 @@ done
 
 section "Toolbar snapshot cases"
 if [[ "$have_rg" -eq 1 ]]; then
-  rg -n "case \\.(gallery|local|missKon|wallhaven)\\(" 4KHD/App/WorkspaceToolbarContext.swift 4KHD/Shell/Toolbar/WorkspaceToolbarHost.swift 4KHD/Shell/WorkspaceCommandValidator.swift 2>/dev/null | sed -n '1,120p' || true
+  rg -n "case \\.(gallery|local|missKon|wallhaven|favorites|knit)\\(" 4KHD/App/WorkspaceToolbarContext.swift 4KHD/Shell/Toolbar/WorkspaceToolbarHost.swift 4KHD/Shell/WorkspaceCommandValidator.swift 2>/dev/null | sed -n '1,160p' || true
 else
-  grep -RInE "case \\.(gallery|local|missKon|wallhaven)\\(" 4KHD/App/WorkspaceToolbarContext.swift 4KHD/Shell/Toolbar/WorkspaceToolbarHost.swift 4KHD/Shell/WorkspaceCommandValidator.swift 2>/dev/null | sed -n '1,120p' || true
+  grep -RInE "case \\.(gallery|local|missKon|wallhaven|favorites|knit)\\(" 4KHD/App/WorkspaceToolbarContext.swift 4KHD/Shell/Toolbar/WorkspaceToolbarHost.swift 4KHD/Shell/WorkspaceCommandValidator.swift 2>/dev/null | sed -n '1,160p' || true
 fi
 
 section "Forbidden SwiftUI production APIs"

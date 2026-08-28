@@ -90,8 +90,7 @@ struct WallhavenAPIClient {
                 try await Task.sleep(nanoseconds: Self.retryDelay)
             }
             let urlRequest = try WallhavenRequestFactory.makeAPIRequest(url: url, apiKey: apiKey)
-            let (data, response) = try await URLSession.shared.data(for: urlRequest)
-            try OnlineSourcePolicy.validate(response, source: .wallhaven, resource: .api)
+            let (data, response) = try await OnlineSourceSession.wallhavenAPI.data(for: urlRequest)
             if let httpResponse = response as? HTTPURLResponse {
                 switch httpResponse.statusCode {
                 case 200..<300:

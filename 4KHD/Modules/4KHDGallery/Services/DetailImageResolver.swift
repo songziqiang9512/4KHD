@@ -13,6 +13,7 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
     private var webLoadGeneration: UUID?
     private var htmlResolutionTask: Task<Void, Never>?
     private var extractionTask: Task<Void, Never>?
+    private var asyncContinuation: CheckedContinuation<ResolvedImagePage, Error>?
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -33,7 +34,47 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
         extractionTask?.cancel()
     }
 
+    /// Async entry point for source adapters that need the same HTML-first,
+    /// WKWebView-fallback behavior as the native 4KHD detail controller.
+    static func resolvePageWithFallback(_ pageURL: URL) async throws -> ResolvedImagePage {
+        let resolver = DetailImageResolver()
+        return try await resolver.resolvePageWithFallback(pageURL)
+    }
+
+    private func resolvePageWithFallback(_ pageURL: URL) async throws -> ResolvedImagePage {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                asyncContinuation = continuation
+                onResolvedPage = { [weak self] page in
+                    self?.finishAsyncResolution(with: .success(page))
+                }
+                onFailure = { [weak self] failedURL in
+                    self?.finishAsyncResolution(with: .failure(URLError(
+                        .cannotParseResponse,
+                        userInfo: [NSURLErrorFailingURLErrorKey: failedURL]
+                    )))
+                }
+                if Task.isCancelled {
+                    cancel()
+                } else {
+                    resolve(pageURL: pageURL)
+                }
+            }
+        } onCancel: { [self] in
+            Task { @MainActor in
+                cancel()
+            }
+        }
+    }
+
+    private func finishAsyncResolution(with result: Result<ResolvedImagePage, Error>) {
+        guard let continuation = asyncContinuation else { return }
+        asyncContinuation = nil
+        continuation.resume(with: result)
+    }
+
     func cancel() {
+        finishAsyncResolution(with: .failure(CancellationError()))
         pageURL = nil
         cancelCurrentWork()
     }
@@ -85,6 +126,10 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
     }
 
     private func loadWebFallback(pageURL: URL) {
+        guard Self.allowsWebFallbackMainFrameURL(pageURL) else {
+            onFailure(pageURL)
+            return
+        }
         var request = URLRequest(url: pageURL)
         request.timeoutInterval = 30
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -92,6 +137,59 @@ final class DetailImageResolver: NSObject, WKNavigationDelegate {
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
         webLoadGeneration = generation
         webView.load(request)
+    }
+
+    nonisolated static func allowsWebFallbackMainFrameURL(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return OnlineSourcePolicy.allows(url, source: .gallery, resource: .html)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
+    ) {
+        // The hidden fallback never opens a second window. Cancel target=_blank
+        // requests without failing the already loading main document; only the
+        // actual main frame participates in detail resolution.
+        guard let targetFrame = navigationAction.targetFrame else {
+            decisionHandler(.cancel)
+            return
+        }
+        guard targetFrame.isMainFrame else {
+            decisionHandler(.allow)
+            return
+        }
+        guard Self.allowsWebFallbackMainFrameURL(navigationAction.request.url) else {
+            decisionHandler(.cancel)
+            rejectWebFallbackNavigation()
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse,
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void
+    ) {
+        guard navigationResponse.isForMainFrame else {
+            decisionHandler(.allow)
+            return
+        }
+        guard Self.allowsWebFallbackMainFrameURL(navigationResponse.response.url) else {
+            decisionHandler(.cancel)
+            rejectWebFallbackNavigation()
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    private func rejectWebFallbackNavigation() {
+        guard webLoadGeneration == generation, let pageURL else { return }
+        webLoadGeneration = nil
+        loadedPageURL = nil
+        onFailure(pageURL)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

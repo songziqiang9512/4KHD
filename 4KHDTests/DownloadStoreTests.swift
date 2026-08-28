@@ -45,6 +45,262 @@ final class DownloadStoreTests: XCTestCase {
         // 终态 totalCount 等于真实张数(completed + failed),进度条到达 100%。
         XCTAssertEqual(store.tasks[0].totalCount, store.tasks[0].completedCount + store.tasks[0].failedCount)
         XCTAssertEqual(store.tasks[1].totalCount, store.tasks[1].completedCount + store.tasks[1].failedCount)
+        XCTAssertEqual(store.tasks[0].downloadedBytes, 1)
+        XCTAssertEqual(store.tasks[0].totalBytes, 1)
+        XCTAssertEqual(store.tasks[1].downloadedBytes, 1)
+        XCTAssertEqual(store.tasks[1].totalBytes, 1)
+        XCTAssertEqual(store.tasks[0].bytesPerSecond, 0)
+        XCTAssertGreaterThan(store.tasks[0].averageBytesPerSecond, 0)
+    }
+
+    func testVideoTaskSharesAlbumQueueAndPublishesProgressBeforeCompleting() async throws {
+        let store = DownloadStore()
+        let root = makeStoreTempFolder()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let albumGate = AsyncGate()
+        store.imageFetcher = { _, _ in
+            await albumGate.wait()
+            return Data([0x01])
+        }
+        let albumSource = makeStoreSource(
+            detailURL: try XCTUnwrap(URL(string: "https://www.4khd.com/a.html")),
+            title: "图集 A"
+        )
+
+        let videoGate = AsyncGate()
+        let videoProbe = SingleFileTransferProbe()
+        let videoDetailURL = try XCTUnwrap(URL(string: "https://xx.knit.bid/article/123/"))
+        let videoSourceURL = try XCTUnwrap(URL(string: "https://media.knit.bid/123/master.m3u8"))
+        let videoDestinationURL = root.appendingPathComponent("影片 A.mp4")
+        let videoSource = SingleFileDownloadSource(
+            detailURL: videoDetailURL,
+            sourceURL: videoSourceURL,
+            title: "影片 A",
+            sourceTitle: "爱妹子",
+            perform: { destinationURL, emit in
+                await videoProbe.markStarted()
+                emit(
+                    SingleFileDownloadProgress(
+                        fractionCompleted: 0.4,
+                        statusText: "正在封装 MP4",
+                        downloadedBytes: 400,
+                        totalBytes: 1_000,
+                        bytesPerSecond: 80,
+                        averageBytesPerSecond: 60
+                    )
+                )
+                await videoGate.wait()
+                try Task.checkCancellation()
+                try Data([0x00, 0x01, 0x02]).write(to: destinationURL, options: .atomic)
+            }
+        )
+
+        XCTAssertEqual(store.enqueueAlbum(source: albumSource, destinationRoot: root), .enqueued)
+        XCTAssertEqual(
+            store.enqueueFile(source: videoSource, destinationURL: videoDestinationURL),
+            .enqueued
+        )
+
+        await waitUntil {
+            store.tasks.count == 2
+                && store.tasks[0].status == .running
+                && store.tasks[1].status == .queued
+        }
+        let videoStartedWhileAlbumRunning = await videoProbe.hasStarted()
+        XCTAssertFalse(videoStartedWhileAlbumRunning)
+        XCTAssertEqual(store.tasks.map(\.kind), [.album, .video])
+        XCTAssertEqual(store.tasks[1].destinationURL, videoDestinationURL)
+        XCTAssertEqual(store.tasks[1].sourceTitle, "爱妹子")
+        XCTAssertTrue(store.hasActiveVideoDownload)
+
+        await albumGate.open()
+        await waitUntil {
+            store.tasks[1].status == .running
+                && store.tasks[1].progressFraction == 0.4
+                && store.tasks[1].progressText == "正在封装 MP4"
+        }
+        let videoStarted = await videoProbe.hasStarted()
+        XCTAssertTrue(videoStarted)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: videoDestinationURL.path))
+        XCTAssertEqual(store.tasks[1].downloadedBytes, 400)
+        XCTAssertEqual(store.tasks[1].totalBytes, 1_000)
+        XCTAssertEqual(store.tasks[1].bytesPerSecond, 80)
+        XCTAssertEqual(store.tasks[1].averageBytesPerSecond, 60)
+
+        await videoGate.open()
+        await waitUntil { store.tasks[1].status == .completed }
+
+        let videoTask = store.tasks[1]
+        XCTAssertEqual(videoTask.kind, .video)
+        XCTAssertEqual(videoTask.progressFraction, 1)
+        XCTAssertEqual(videoTask.progressText, "MP4 已保存")
+        XCTAssertEqual(videoTask.downloadedBytes, 3)
+        XCTAssertEqual(videoTask.totalBytes, 3)
+        XCTAssertEqual(videoTask.bytesPerSecond, 0)
+        XCTAssertEqual(videoTask.averageBytesPerSecond, 60)
+        XCTAssertNotNil(videoTask.startedAt)
+        XCTAssertNotNil(videoTask.finishedAt)
+        XCTAssertFalse(store.hasActiveVideoDownload)
+        XCTAssertEqual(try Data(contentsOf: videoDestinationURL), Data([0x00, 0x01, 0x02]))
+    }
+
+    func testCancellingRunningVideoAdvancesSharedQueue() async throws {
+        let store = DownloadStore()
+        let root = makeStoreTempFolder()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let firstProbe = SingleFileTransferProbe()
+        let firstDestinationURL = root.appendingPathComponent("影片 A.mp4")
+        let firstSource = SingleFileDownloadSource(
+            detailURL: try XCTUnwrap(URL(string: "https://xx.knit.bid/article/123/")),
+            sourceURL: try XCTUnwrap(URL(string: "https://media.knit.bid/123/master.m3u8")),
+            title: "影片 A",
+            sourceTitle: "爱妹子",
+            perform: { _, emit in
+                await firstProbe.markStarted()
+                emit(SingleFileDownloadProgress(fractionCompleted: 0.25, statusText: "下载分片 1 / 4"))
+                while true {
+                    try await Task.sleep(nanoseconds: 10_000_000)
+                }
+            }
+        )
+        let secondDestinationURL = root.appendingPathComponent("影片 B.mp4")
+        let secondSource = SingleFileDownloadSource(
+            detailURL: try XCTUnwrap(URL(string: "https://xx.knit.bid/article/456/")),
+            sourceURL: try XCTUnwrap(URL(string: "https://media.knit.bid/456/master.m3u8")),
+            title: "影片 B",
+            sourceTitle: "爱妹子",
+            perform: { destinationURL, _ in
+                try Task.checkCancellation()
+                try Data([0x03, 0x04]).write(to: destinationURL, options: .atomic)
+            }
+        )
+
+        XCTAssertEqual(
+            store.enqueueFile(source: firstSource, destinationURL: firstDestinationURL),
+            .enqueued
+        )
+        XCTAssertEqual(
+            store.enqueueFile(source: secondSource, destinationURL: secondDestinationURL),
+            .enqueued
+        )
+        await waitUntil {
+            store.tasks.count == 2
+                && store.tasks[0].status == .running
+                && store.tasks[0].progressFraction == 0.25
+                && store.tasks[1].status == .queued
+        }
+        let firstVideoStarted = await firstProbe.hasStarted()
+        XCTAssertTrue(firstVideoStarted)
+
+        store.cancelTask(id: store.tasks[0].id)
+        await waitUntil {
+            store.tasks[0].status == .cancelled
+                && store.tasks[1].status == .completed
+        }
+
+        XCTAssertEqual(store.tasks[0].progressText, "已取消")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstDestinationURL.path))
+        XCTAssertEqual(store.tasks[1].progressFraction, 1)
+        XCTAssertEqual(try Data(contentsOf: secondDestinationURL), Data([0x03, 0x04]))
+        XCTAssertFalse(store.hasActiveVideoDownload)
+    }
+
+    func testActiveSingleFileDestinationIsReservedAndReleasedAfterCancellation() async throws {
+        let store = DownloadStore()
+        let root = makeStoreTempFolder()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let destinationURL = root.appendingPathComponent("共享目标.mp4")
+        let equivalentDestinationURL = root
+            .appendingPathComponent("unused", isDirectory: true)
+            .appendingPathComponent("..", isDirectory: true)
+            .appendingPathComponent("共享目标.mp4")
+        let firstSource = SingleFileDownloadSource(
+            detailURL: try XCTUnwrap(URL(string: "https://xx.knit.bid/article/123/")),
+            sourceURL: try XCTUnwrap(URL(string: "https://media.knit.bid/123/master.m3u8")),
+            title: "影片 A",
+            sourceTitle: "爱妹子",
+            perform: { _, _ in
+                while true {
+                    try await Task.sleep(nanoseconds: 10_000_000)
+                }
+            }
+        )
+        let secondSource = SingleFileDownloadSource(
+            detailURL: try XCTUnwrap(URL(string: "https://xx.knit.bid/article/456/")),
+            sourceURL: try XCTUnwrap(URL(string: "https://media.knit.bid/456/master.m3u8")),
+            title: "影片 B",
+            sourceTitle: "爱妹子",
+            perform: { targetURL, _ in
+                try Data([0x05]).write(to: targetURL, options: .atomic)
+            }
+        )
+
+        XCTAssertEqual(store.enqueueFile(source: firstSource, destinationURL: destinationURL), .enqueued)
+        await waitUntil { store.tasks.first?.status == .running }
+        XCTAssertEqual(
+            store.enqueueFile(source: secondSource, destinationURL: equivalentDestinationURL),
+            .destinationInUse
+        )
+        XCTAssertEqual(store.tasks.count, 1)
+
+        store.cancelTask(id: store.tasks[0].id)
+        await waitUntil { store.tasks[0].status == .cancelled }
+        XCTAssertEqual(
+            store.enqueueFile(source: secondSource, destinationURL: destinationURL),
+            .enqueued
+        )
+        await waitUntil { store.tasks[1].status == .completed }
+        XCTAssertEqual(try Data(contentsOf: destinationURL), Data([0x05]))
+    }
+
+    func testCancellingQueuedSingleFileReleasesDestinationReservation() async throws {
+        let store = DownloadStore()
+        let root = makeStoreTempFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let albumGate = AsyncGate()
+        store.imageFetcher = { _, _ in
+            await albumGate.wait()
+            return Data([0x01])
+        }
+        let albumSource = makeStoreSource(
+            detailURL: try XCTUnwrap(URL(string: "https://www.4khd.com/a.html")),
+            title: "图集 A"
+        )
+        let destinationURL = root.appendingPathComponent("排队目标.mp4")
+        let queuedSource = SingleFileDownloadSource(
+            detailURL: try XCTUnwrap(URL(string: "https://xx.knit.bid/article/123/")),
+            sourceURL: try XCTUnwrap(URL(string: "https://media.knit.bid/123/master.m3u8")),
+            title: "影片 A",
+            sourceTitle: "爱妹子",
+            perform: { _, _ in }
+        )
+        let replacementSource = SingleFileDownloadSource(
+            detailURL: try XCTUnwrap(URL(string: "https://xx.knit.bid/article/456/")),
+            sourceURL: try XCTUnwrap(URL(string: "https://media.knit.bid/456/master.m3u8")),
+            title: "影片 B",
+            sourceTitle: "爱妹子",
+            perform: { _, _ in }
+        )
+
+        XCTAssertEqual(store.enqueueAlbum(source: albumSource, destinationRoot: root), .enqueued)
+        XCTAssertEqual(store.enqueueFile(source: queuedSource, destinationURL: destinationURL), .enqueued)
+        await waitUntil { store.tasks.count == 2 && store.tasks[1].status == .queued }
+
+        store.cancelTask(id: store.tasks[1].id)
+        XCTAssertEqual(store.tasks[1].status, .cancelled)
+        XCTAssertEqual(
+            store.enqueueFile(source: replacementSource, destinationURL: destinationURL),
+            .enqueued
+        )
+
+        await albumGate.open()
+        await waitUntil { store.tasks.allSatisfy { $0.status.isTerminal } }
     }
 
     // MARK: - 同 detailURL 去重
@@ -171,6 +427,10 @@ final class DownloadStoreTests: XCTestCase {
 
         await waitUntil { store.tasks.first?.status == .cancelled }
         XCTAssertEqual(store.tasks[0].completedCount, 2)
+        XCTAssertEqual(store.tasks[0].totalCount, 4)
+        XCTAssertEqual(store.tasks[0].progressFraction, 0.5, accuracy: 0.001)
+        XCTAssertEqual(store.tasks[0].downloadedBytes, 2)
+        XCTAssertEqual(store.tasks[0].totalBytes, 4)
         let savedFiles = try FileManager.default.contentsOfDirectory(atPath: destinationFolder.path)
         XCTAssertEqual(savedFiles.count, 2)
     }
@@ -324,5 +584,17 @@ private actor FetchCallCounter {
     func next() -> Int {
         count += 1
         return count
+    }
+}
+
+private actor SingleFileTransferProbe {
+    private var started = false
+
+    func markStarted() {
+        started = true
+    }
+
+    func hasStarted() -> Bool {
+        started
     }
 }

@@ -1,6 +1,6 @@
 # Online Module Risk Checklist
 
-Use this for 4KHDGallery, MissKon, Wallhaven, or any future network-backed gallery module.
+Use this for 4KHDGallery, MissKon, Wallhaven, KnitGallery, or any future network-backed gallery module.
 
 ## Async State Isolation
 
@@ -29,6 +29,14 @@ Use this for 4KHDGallery, MissKon, Wallhaven, or any future network-backed galle
 - Reject `host.contains(...)` for trust decisions.
 - Normalize relative URLs against the page URL.
 - Keep gallery records scoped by source site to avoid Favorites leakage.
+
+## Verification And Streaming Media
+
+- Open a normal WebKit verification session only after a genuine 403/challenge response; register waiters independently and remove cancelled waiters immediately.
+- End the shared verification session when its last waiter cancels; never leave a challenge window or continuation alive until timeout after the owning detail closes.
+- Validate the initial WebView URL, every main-frame navigation request, and every main-frame response before continuing.
+- Treat playback and saving as different trust chains: AVFoundation may fetch HLS children itself, while downloaders must validate every playlist, segment, final response, and redirect.
+- Reject unsupported HLS forms explicitly and clean temporary files on failure or cancellation; never silently emit a partial media file.
 
 ## Cache And Refresh
 

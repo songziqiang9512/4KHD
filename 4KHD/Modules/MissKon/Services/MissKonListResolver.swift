@@ -74,8 +74,7 @@ enum MissKonListResolver {
     private static func fetchHTML(_ url: URL) async throws -> String {
         try await requestCoalescer.value(for: url) {
             let request = try MissKonRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-            let (data, response) = try await URLSession.shared.data(for: request)
-            try OnlineSourcePolicy.validate(response, source: .missKon, resource: .html)
+            let (data, response) = try await OnlineSourceSession.missKonHTML.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
                 throw MissKonListResolverError.httpStatus(httpResponse.statusCode)
             }

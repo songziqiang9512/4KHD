@@ -879,8 +879,7 @@ final class WallhavenFeedStore {
             WallhavenRequestFactory.configureImageRequest(&request)
             guard request.url != nil else { continue }
             do {
-                let (_, response) = try await URLSession.shared.data(for: request)
-                try OnlineSourcePolicy.validate(response, source: .wallhaven, resource: .media)
+                let (_, response) = try await OnlineSourceSession.wallhavenMedia.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200 ..< 300).contains(httpResponse.statusCode),
                       httpResponse.mimeType?.lowercased().hasPrefix("image/") == true,

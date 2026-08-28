@@ -1,6 +1,6 @@
 ---
 name: 4khd-maintainer
-description: Maintain and evolve the 4KHD macOS native AppKit image browser. Use when working in the 4KHD repository on Swift/AppKit code, online modules such as Gallery/MissKon/Wallhaven, Shell routing, Toolbar/Sidebar/Inspector integration, Shared-layer refactors, bug fixes, code review, build verification, documentation cleanup, or git handoff/commit preparation.
+description: Maintain and evolve the 4KHD macOS native AppKit image browser. Use when working in the 4KHD repository on Swift/AppKit code, online modules such as Gallery/MissKon/Wallhaven/KnitGallery, Favorites and Downloads parity, Shell routing, Toolbar/Sidebar/Inspector integration, Shared-layer refactors, bug fixes, code review, build verification, documentation cleanup, or git handoff/commit preparation.
 ---
 
 # 4KHD Maintainer
@@ -56,7 +56,7 @@ xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destinatio
 rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 
 # Switch-surface discovery for module integration
-rg "case \\.missKon|case \\.fourKHDGallery|case \\.wallhaven" 4KHD/Shell 4KHD/App --glob '*.swift'
+rg "case \\.missKon|case \\.fourKHDGallery|case \\.wallhaven|case \\.knitGallery|case \\.localLibrary|case \\.favorites" 4KHD/Shell 4KHD/App --glob '*.swift'
 
 # Patch hygiene
 git diff --check

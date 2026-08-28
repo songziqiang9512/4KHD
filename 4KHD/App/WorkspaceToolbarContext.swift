@@ -7,6 +7,7 @@ enum WorkspaceToolbarSnapshot {
     case missKon(MissKonSnapshot)
     case wallhaven(WallhavenSnapshot)
     case favorites(FavoritesSnapshot)
+    case knit(KnitSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -57,6 +58,26 @@ enum WorkspaceToolbarSnapshot {
         let canShare: Bool
     }
 
+    struct KnitSnapshot {
+        let searchText: String
+        let layout: KnitContentLayout
+        let filter: KnitBrowseFilter
+        let pageStatusText: String
+        let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveImage: Bool
+        let canSaveAlbum: Bool
+        let canSaveVideo: Bool
+        let canResetZoom: Bool
+        let canShare: Bool
+        let isFilmstripPresented: Bool
+    }
+
     struct LocalSnapshot {
         let searchText: String
         let layout: LocalContentLayout
@@ -86,8 +107,10 @@ enum WorkspaceToolbarSnapshot {
         let canSelectNextImage: Bool
         let canSaveImage: Bool
         let canSaveAlbum: Bool
+        let canSaveVideo: Bool
         let canResetZoom: Bool
         let canShare: Bool
+        let canUseFilmstrip: Bool
         let isFilmstripPresented: Bool
     }
 
@@ -105,8 +128,10 @@ enum WorkspaceToolbarSnapshot {
         let canSelectNextImage: Bool
         let canSaveImage: Bool
         let canSaveAlbum: Bool
+        let canSaveVideo: Bool
         let canResetZoom: Bool
         let canShare: Bool
+        let canUseFilmstrip: Bool
         let isFilmstripPresented: Bool
         let hasSelection: Bool
     }
@@ -122,8 +147,10 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canResetZoom: s.canResetZoom,
-                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canSaveVideo: false,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: true,
+                isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
         case .local(let s):
@@ -135,8 +162,10 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canSaveAlbum: false, canResetZoom: s.canResetZoom,
-                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                canSaveImage: s.canSaveImage, canSaveAlbum: false, canSaveVideo: false,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: true,
+                isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.hasSelection
             )
         case .missKon(let s):
@@ -148,8 +177,10 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canResetZoom: s.canResetZoom,
-                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canSaveVideo: false,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: true,
+                isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
         case .wallhaven(let s):
@@ -161,8 +192,9 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canSaveAlbum: false, canResetZoom: s.canResetZoom,
-                canShare: s.canShare, isFilmstripPresented: false,
+                canSaveImage: s.canSaveImage, canSaveAlbum: false, canSaveVideo: false,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: false, isFilmstripPresented: false,
                 hasSelection: s.canShare
             )
         case .favorites(let s):
@@ -174,8 +206,25 @@ enum WorkspaceToolbarSnapshot {
                 canDecreaseGridColumns: s.canDecreaseGridColumns,
                 canSelectPreviousImage: s.canSelectPreviousImage,
                 canSelectNextImage: s.canSelectNextImage,
-                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canResetZoom: s.canResetZoom,
-                canShare: s.canShare, isFilmstripPresented: s.isFilmstripPresented,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canSaveVideo: s.canSaveVideo,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: s.canUseFilmstrip,
+                isFilmstripPresented: s.isFilmstripPresented,
+                hasSelection: s.canShare
+            )
+        case .knit(let s):
+            CommonFields(
+                moduleName: "爱妹子", searchText: s.searchText,
+                isRefreshing: s.isRefreshing,
+                canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canSaveVideo: s.canSaveVideo,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: true,
+                isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
         }
@@ -192,6 +241,8 @@ enum WorkspaceToolbarSnapshot {
         case .wallhaven(let snapshot):
             snapshot.layout == .list
         case .favorites(let snapshot):
+            snapshot.layout == .list
+        case .knit(let snapshot):
             snapshot.layout == .list
         }
     }
@@ -250,6 +301,9 @@ final class WorkspaceToolbarContext {
     private let wallhavenStore: WallhavenGalleryStore
     private let wallhavenPreferences: WallhavenContentPreferences
     private let wallhavenDetailInteraction: WallhavenDetailInteractionController
+    private let knitStore: KnitGalleryStore
+    private let knitPreferences: KnitContentPreferences
+    private let knitDetailInteraction: KnitDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -272,6 +326,9 @@ final class WorkspaceToolbarContext {
         wallhavenStore: WallhavenGalleryStore,
         wallhavenPreferences: WallhavenContentPreferences,
         wallhavenDetailInteraction: WallhavenDetailInteractionController,
+        knitStore: KnitGalleryStore,
+        knitPreferences: KnitContentPreferences,
+        knitDetailInteraction: KnitDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -293,6 +350,9 @@ final class WorkspaceToolbarContext {
         self.wallhavenStore = wallhavenStore
         self.wallhavenPreferences = wallhavenPreferences
         self.wallhavenDetailInteraction = wallhavenDetailInteraction
+        self.knitStore = knitStore
+        self.knitPreferences = knitPreferences
+        self.knitDetailInteraction = knitDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -416,9 +476,22 @@ final class WorkspaceToolbarContext {
         case .favorites:
             let selectedRecord = favoritesModuleStore.selectedRecord
             let source = selectedRecord.flatMap(FavoriteSource.source(for:))
-            let canSaveAlbum = source == .gallery || source == .missKon
+            let canSaveAlbum = source == .gallery || source == .missKon || source == .knit
+            let detailMatchesSelection = selectedRecord != nil
+                && favoritesDetailStore.currentRecord == selectedRecord
             let canAdjustGridColumns = favoritesPreferences.layout == .grid
                 && !detailPaneController.isPresented
+            let canSelectPrevious: Bool
+            let canSelectNext: Bool
+            if detailMatchesSelection,
+               let selectedRecord,
+               favoritesDetailStore.navigationMode == .sourceRecords {
+                canSelectPrevious = favoritesModuleStore.canStepSourceRecord(from: selectedRecord, delta: -1)
+                canSelectNext = favoritesModuleStore.canStepSourceRecord(from: selectedRecord, delta: 1)
+            } else {
+                canSelectPrevious = detailMatchesSelection && favoritesDetailStore.canStepBackward
+                canSelectNext = detailMatchesSelection && favoritesDetailStore.canStepForward
+            }
             return .favorites(
                 .init(
                     searchText: favoritesModuleStore.searchText,
@@ -429,14 +502,47 @@ final class WorkspaceToolbarContext {
                         && favoritesPreferences.canIncreaseGridColumns,
                     canDecreaseGridColumns: canAdjustGridColumns
                         && favoritesPreferences.canDecreaseGridColumns,
-                    canSelectPreviousImage: favoritesDetailStore.canStepBackward,
-                    canSelectNextImage: favoritesDetailStore.canStepForward,
-                    canSaveImage: favoritesDetailStore.contentMode == .image
-                        && favoritesDetailStore.selectedSlot?.knownURL != nil,
+                    canSelectPreviousImage: canSelectPrevious,
+                    canSelectNextImage: canSelectNext,
+                    canSaveImage: detailMatchesSelection
+                        && favoritesDetailStore.contentMode == .image
+                        && favoritesDetailStore.hasResolvedSelectedImage,
                     canSaveAlbum: canSaveAlbum,
-                    canResetZoom: favoritesDetailStore.contentMode == .image
+                    canSaveVideo: detailMatchesSelection && favoritesDetailStore.canSaveVideo,
+                    canResetZoom: detailMatchesSelection
+                        && favoritesDetailStore.contentMode == .image
                         && favoritesDetailStore.selectedSlot != nil,
                     canShare: selectedRecord != nil,
+                    canUseFilmstrip: detailMatchesSelection
+                        && source != .wallhaven
+                        && favoritesDetailStore.navigationMode == .images,
+                    isFilmstripPresented: filmstripVisibility.isPresented
+                )
+            )
+        case .knitGallery:
+            let item = knitStore.selectedItem
+            let canAdjust = knitPreferences.layout == .grid && !detailPaneController.isPresented
+            return .knit(
+                .init(
+                    searchText: knitStore.searchText,
+                    layout: knitPreferences.layout,
+                    filter: knitStore.filter,
+                    pageStatusText: knitStore.pageStatusText,
+                    isRefreshing: knitStore.isRefreshingList,
+                    canFavorite: item != nil,
+                    isFavorite: item.map { knitStore.isFavorite($0) } ?? false,
+                    canIncreaseGridColumns: canAdjust && knitPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: canAdjust && knitPreferences.canDecreaseGridColumns,
+                    canSelectPreviousImage: knitStore.canStepDetailBackward,
+                    canSelectNextImage: knitStore.canStepDetailForward,
+                    canSaveImage: knitStore.detailContentMode == .image
+                        && item != nil
+                        && knitStore.hasResolvedSelectedImage,
+                    canSaveAlbum: item != nil,
+                    canSaveVideo: item != nil && knitStore.videoURL != nil,
+                    canResetZoom: knitStore.detailContentMode == .image
+                        && knitStore.selectedSlot != nil,
+                    canShare: item != nil,
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
@@ -471,6 +577,12 @@ final class WorkspaceToolbarContext {
                favoritesModuleStore.activeSearchQuery != nil {
                 favoritesModuleStore.clearSearch()
             }
+        case .knitGallery:
+            knitStore.searchText = text
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               knitStore.activeSearchQuery != nil {
+                knitStore.clearSearch()
+            }
         }
     }
 
@@ -486,6 +598,8 @@ final class WorkspaceToolbarContext {
             setWallhavenLayout(isList ? .list : .grid)
         case .favorites:
             favoritesPreferences.layout = isList ? .list : .grid
+        case .knitGallery:
+            knitPreferences.layout = isList ? .list : .grid
         }
     }
 
@@ -503,6 +617,9 @@ final class WorkspaceToolbarContext {
             guard favoritesPreferences.layout == .grid,
                   !detailPaneController.isPresented else { return }
             favoritesPreferences.adjustGridColumns(delta: delta)
+        case .knitGallery:
+            guard knitPreferences.layout == .grid, !detailPaneController.isPresented else { return }
+            knitPreferences.adjustGridColumns(delta: delta)
         }
     }
 
@@ -518,6 +635,8 @@ final class WorkspaceToolbarContext {
             wallhavenStore.submitSearch(wallhavenStore.searchText)
         case .favorites:
             favoritesModuleStore.submitSearch()
+        case .knitGallery:
+            knitStore.submitSearch()
         }
     }
 
@@ -576,6 +695,8 @@ final class WorkspaceToolbarContext {
                 guard let self else { return }
                 await favoritesModuleStore.favoritesStore.reloadFromDisk()
             }
+        case .knitGallery:
+            knitStore.refreshFromNetwork()
         }
     }
 
@@ -603,6 +724,8 @@ final class WorkspaceToolbarContext {
             return favoritesModuleStore.selectedRecord
                 .flatMap { URL(string: $0.detailURL) }
                 .map { [$0] } ?? []
+        case .knitGallery:
+            return knitStore.selectedItem.map { [$0.detailURL] } ?? []
         }
     }
 
@@ -620,6 +743,8 @@ final class WorkspaceToolbarContext {
             return favoritesModuleStore.selectedRecord
                 .flatMap { URL(string: $0.detailURL) }
                 .map { .web($0) }
+        case .knitGallery:
+            return knitStore.selectedItem.map { .web($0.detailURL) }
         }
     }
 
@@ -646,6 +771,9 @@ final class WorkspaceToolbarContext {
                     let matched = favoritesModuleStore.favoritesStore.favorites
                         .first { $0.detailURL == recordURL.absoluteString } ?? record
                     try await favoritesModuleStore.favoritesStore.toggle(matched)
+                case .knitGallery:
+                    guard let item = knitStore.selectedItem else { return }
+                    try await knitStore.toggleFavorite(for: item)
                 }
             } catch {
                 let alert = makeAppAlert(
@@ -675,7 +803,16 @@ final class WorkspaceToolbarContext {
             guard next != current else { return }
             wallhavenStore.select(wallpapers[next])
         case .favorites:
-            favoritesDetailStore.stepSelection(delta)
+            guard let record = favoritesModuleStore.selectedRecord,
+                  record == favoritesDetailStore.currentRecord else { return }
+            switch favoritesDetailStore.navigationMode {
+            case .images:
+                favoritesDetailStore.stepSelection(delta)
+            case .sourceRecords:
+                favoritesModuleStore.stepSourceRecord(from: record, delta: delta)
+            }
+        case .knitGallery:
+            knitStore.stepImage(delta)
         }
     }
 
@@ -699,11 +836,19 @@ final class WorkspaceToolbarContext {
             guard let wallpaper = wallhavenStore.effectiveSelectedWallpaper else { return }
             wallhavenDetailInteraction.saveWallpaper(wallpaper)
         case .favorites:
-            guard favoritesDetailStore.contentMode == .image,
+            guard favoritesModuleStore.selectedRecord == favoritesDetailStore.currentRecord,
+                  favoritesDetailStore.contentMode == .image,
+                  favoritesDetailStore.hasResolvedSelectedImage,
                   let slot = favoritesDetailStore.selectedSlot,
-                  let url = slot.knownURL else { return }
+                  let url = favoritesDetailStore.imageURL(for: slot) else { return }
             let source = favoritesModuleStore.selectedRecord.flatMap(FavoriteSource.source(for:))
             favoritesDetailInteraction.save(imageURL: url, filename: url.lastPathComponent, source: source)
+        case .knitGallery:
+            guard knitStore.detailContentMode == .image,
+                  knitStore.hasResolvedSelectedImage,
+                  let item = knitStore.selectedItem,
+                  let slot = knitStore.selectedSlot else { return }
+            knitDetailInteraction.save(item: item, slot: slot)
         }
     }
 
@@ -716,6 +861,9 @@ final class WorkspaceToolbarContext {
         case .missKon:
             guard let item = missKonStore.currentItem else { return }
             result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
+        case .knitGallery:
+            guard let item = knitStore.selectedItem else { return }
+            result = downloadStore.enqueueAlbumChoosingFolder(source: .knit(item))
         case .favorites:
             guard let record = favoritesModuleStore.selectedRecord else { return }
             switch FavoriteSource.source(for: record) {
@@ -727,6 +875,9 @@ final class WorkspaceToolbarContext {
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
             case .wallhaven, nil:
                 return
+            case .knit:
+                guard let item = KnitFavoritesBridge.item(from: record) else { return }
+                result = downloadStore.enqueueAlbumChoosingFolder(source: .knit(item))
             }
         case .localLibrary, .wallhaven:
             return
@@ -747,6 +898,20 @@ final class WorkspaceToolbarContext {
         }
     }
 
+    func saveCurrentVideo(for moduleID: WorkspaceModuleID) {
+        switch moduleID {
+        case .knitGallery:
+            guard let item = knitStore.selectedItem,
+                  let videoURL = knitStore.videoURL else { return }
+            knitDetailInteraction.saveVideo(item: item, sourceURL: videoURL)
+        case .favorites:
+            guard favoritesModuleStore.selectedRecord == favoritesDetailStore.currentRecord else { return }
+            favoritesDetailStore.saveVideoAsMP4()
+        case .fourKHDGallery, .localLibrary, .missKon, .wallhaven:
+            return
+        }
+    }
+
     func resetZoom(for moduleID: WorkspaceModuleID) {
         switch moduleID {
         case .fourKHDGallery:
@@ -759,6 +924,8 @@ final class WorkspaceToolbarContext {
             wallhavenDetailInteraction.resetZoom()
         case .favorites:
             favoritesDetailInteraction.resetZoom()
+        case .knitGallery:
+            knitDetailInteraction.resetZoom()
         }
     }
 

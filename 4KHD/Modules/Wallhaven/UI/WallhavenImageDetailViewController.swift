@@ -49,6 +49,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         return b
     }()
     private var isObserving = false
+    private var isObservingSaveMessage = false
     private var currentWallpaperID: Wallpaper.ID?
     private var currentImageURL: URL?
     private var loadingOriginalImageURL: URL?
@@ -88,6 +89,7 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
         }
         reloadDetail()
         observeState()
+        observeSaveMessage()
     }
 
     override func viewDidAppear() {
@@ -225,16 +227,18 @@ final class WallhavenImageDetailViewController: NSViewController, WorkspaceFocus
                 self.observeState()
             }
         }
-        observeSaveMessage()
     }
 
     /// 保存状态变化只刷新状态标签,不走完整 reload 路径。
     private func observeSaveMessage() {
+        guard !isObservingSaveMessage else { return }
+        isObservingSaveMessage = true
         withObservationTracking {
             _ = detailInteraction.saveMessage
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.isObservingSaveMessage = false
                 self.updateSaveStatus()
                 self.observeSaveMessage()
             }

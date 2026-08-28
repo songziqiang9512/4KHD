@@ -18,14 +18,17 @@ final class RequestFactoryTests: XCTestCase {
         var galleryRequest = URLRequest(url: try XCTUnwrap(URL(string: "https://pic.4khd.com/image.jpg")))
         var missKonRequest = URLRequest(url: try XCTUnwrap(URL(string: "https://cdn.misskon.com/image.jpg")))
         var wallhavenRequest = URLRequest(url: try XCTUnwrap(URL(string: "https://w.wallhaven.cc/full/image.jpg")))
+        var knitRequest = URLRequest(url: try XCTUnwrap(URL(string: "https://r2-media.knit.bid/image.jpg")))
 
         GalleryRequestFactory.configureImageRequest(&galleryRequest)
         MissKonRequestFactory.configureImageRequest(&missKonRequest)
         WallhavenRequestFactory.configureImageRequest(&wallhavenRequest)
+        KnitRequestFactory.configureImageRequest(&knitRequest)
 
         XCTAssertEqual(galleryRequest.value(forHTTPHeaderField: "Referer"), "https://www.4khd.com/")
         XCTAssertEqual(missKonRequest.value(forHTTPHeaderField: "Referer"), "https://misskon.com/")
         XCTAssertEqual(wallhavenRequest.value(forHTTPHeaderField: "Referer"), "https://wallhaven.cc/")
+        XCTAssertEqual(knitRequest.value(forHTTPHeaderField: "Referer"), "https://xx.knit.bid/")
     }
 
     func testOnlineSourcePolicyRejectsHTTPAndLookalikeHosts() throws {
@@ -44,6 +47,11 @@ final class RequestFactoryTests: XCTestCase {
 
         GalleryRequestFactory.configureImageRequest(&request)
 
+        XCTAssertNil(request.url)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
+
+        request = URLRequest(url: evil)
+        KnitRequestFactory.configureImageRequest(&request)
         XCTAssertNil(request.url)
         XCTAssertNil(request.value(forHTTPHeaderField: "Referer"))
     }
@@ -72,11 +80,13 @@ final class RequestFactoryTests: XCTestCase {
         let missKonOrigin = try XCTUnwrap(URL(string: "https://cdn.misskon.com/path/image.webp"))
         let wallhavenOrigin = try XCTUnwrap(URL(string: "https://w.wallhaven.cc/full/image.jpg"))
         let lookalike = try XCTUnwrap(URL(string: "https://pic.4khd.com.evil.example/path/image.webp"))
+        let knitOrigin = try XCTUnwrap(URL(string: "https://media.knit.bid/play/video.m3u8"))
 
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: galleryOrigin), .gallery)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: galleryRedirect), .gallery)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: missKonOrigin), .missKon)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: wallhavenOrigin), .wallhaven)
+        XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: knitOrigin), .knit)
         XCTAssertNil(OnlineSourcePolicy.source(forMediaURL: lookalike))
     }
 
@@ -110,5 +120,94 @@ final class RequestFactoryTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? OnlineSourcePolicy.PolicyError, .rejectedRedirect)
         }
+    }
+
+    func testFixedSourceSessionsRejectRedirectBeforeFollowingAcrossTrustBoundaries() throws {
+        let galleryHTML = URLRequest(url: try XCTUnwrap(URL(string: "https://cdn.4khd.com/content/item.html")))
+        let lookalike = URLRequest(url: try XCTUnwrap(URL(string: "https://4khd.com.evil.example/content/item.html")))
+        let missKonHTML = URLRequest(url: try XCTUnwrap(URL(string: "https://www.misskon.com/example/")))
+        let missKonLookalike = URLRequest(url: try XCTUnwrap(URL(string: "https://misskon.com.evil.example/example/")))
+        let wallhavenAPI = URLRequest(url: try XCTUnwrap(URL(string: "https://wallhaven.cc/api/v1/search")))
+        let wallhavenHTML = URLRequest(url: try XCTUnwrap(URL(string: "https://wallhaven.cc/search")))
+        let wallhavenMedia = URLRequest(url: try XCTUnwrap(URL(string: "https://w.wallhaven.cc/full/ab/image.jpg")))
+
+        XCTAssertTrue(OnlineSourceSession.galleryHTML.allowsRedirect(to: galleryHTML))
+        XCTAssertFalse(OnlineSourceSession.galleryHTML.allowsRedirect(to: lookalike))
+        XCTAssertTrue(OnlineSourceSession.missKonHTML.allowsRedirect(to: missKonHTML))
+        XCTAssertFalse(OnlineSourceSession.missKonHTML.allowsRedirect(to: missKonLookalike))
+
+        XCTAssertTrue(OnlineSourceSession.wallhavenAPI.allowsRedirect(to: wallhavenAPI))
+        XCTAssertFalse(OnlineSourceSession.wallhavenAPI.allowsRedirect(to: wallhavenHTML))
+        XCTAssertTrue(OnlineSourceSession.wallhavenHTML.allowsRedirect(to: wallhavenHTML))
+        XCTAssertTrue(OnlineSourceSession.wallhavenMedia.allowsRedirect(to: wallhavenMedia))
+        XCTAssertFalse(OnlineSourceSession.wallhavenMedia.allowsRedirect(to: lookalike))
+    }
+
+    func testGalleryWebFallbackMainFrameNavigationUsesHTMLAllowlist() throws {
+        let initial = try XCTUnwrap(URL(string: "https://www.4khd.com/content/item.html"))
+        let trustedRedirect = try XCTUnwrap(URL(string: "https://m.4khd.com/content/item.html"))
+        let lookalike = try XCTUnwrap(URL(string: "https://4khd.com.evil.example/content/item.html"))
+
+        XCTAssertTrue(DetailImageResolver.allowsWebFallbackMainFrameURL(initial))
+        XCTAssertTrue(DetailImageResolver.allowsWebFallbackMainFrameURL(trustedRedirect))
+        XCTAssertFalse(DetailImageResolver.allowsWebFallbackMainFrameURL(lookalike))
+        XCTAssertFalse(DetailImageResolver.allowsWebFallbackMainFrameURL(nil))
+    }
+
+    func testKnitChallengeMainFrameNavigationUsesHTMLAllowlist() throws {
+        let initial = try XCTUnwrap(URL(string: "https://xx.knit.bid/"))
+        let trustedRedirect = try XCTUnwrap(URL(string: "https://verify.knit.bid/challenge"))
+        let insecure = try XCTUnwrap(URL(string: "http://xx.knit.bid/"))
+        let lookalike = try XCTUnwrap(URL(string: "https://knit.bid.evil.example/challenge"))
+
+        XCTAssertTrue(KnitWebSessionBootstrapper.allowsChallengeMainFrameURL(initial))
+        XCTAssertTrue(KnitWebSessionBootstrapper.allowsChallengeMainFrameURL(trustedRedirect))
+        XCTAssertFalse(KnitWebSessionBootstrapper.allowsChallengeMainFrameURL(insecure))
+        XCTAssertFalse(KnitWebSessionBootstrapper.allowsChallengeMainFrameURL(lookalike))
+        XCTAssertFalse(KnitWebSessionBootstrapper.allowsChallengeMainFrameURL(nil))
+    }
+
+    func testFavoriteCoverIsRevalidatedAgainstOwningSource() throws {
+        let trusted = FavoriteRecord(
+            id: "gallery-item",
+            sourceID: "latest",
+            title: "Trusted",
+            rawTitle: "Trusted",
+            subtitle: "",
+            detailURL: "https://www.4khd.com/content/example.html",
+            coverURL: "https://pic.4khd.com/path/cover.jpg",
+            imageCount: 1,
+            pageCount: 1
+        )
+        let crossSource = FavoriteRecord(
+            id: "gallery-item-cross-source",
+            sourceID: "latest",
+            title: "Cross source",
+            rawTitle: "Cross source",
+            subtitle: "",
+            detailURL: "https://www.4khd.com/content/example.html",
+            coverURL: "https://cdn.misskon.com/path/cover.jpg",
+            imageCount: 1,
+            pageCount: 1
+        )
+        let untrusted = FavoriteRecord(
+            id: "gallery-item-untrusted",
+            sourceID: "latest",
+            title: "Untrusted",
+            rawTitle: "Untrusted",
+            subtitle: "",
+            detailURL: "https://www.4khd.com/content/example.html",
+            coverURL: "https://evil.example/path/cover.jpg",
+            imageCount: 1,
+            pageCount: 1
+        )
+
+        XCTAssertEqual(
+            FavoriteSource.gallery.validatedCoverURL(for: trusted)?.absoluteString,
+            trusted.coverURL
+        )
+        XCTAssertNil(FavoriteSource.gallery.validatedCoverURL(for: crossSource))
+        XCTAssertNil(FavoriteSource.gallery.validatedCoverURL(for: untrusted))
+        XCTAssertNil(FavoriteSource.missKon.validatedCoverURL(for: trusted))
     }
 }

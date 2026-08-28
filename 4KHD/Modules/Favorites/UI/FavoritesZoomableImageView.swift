@@ -11,7 +11,9 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
     private let placeholderContainer = NSView()
     private let placeholderLabel = NSTextField(labelWithString: "解析中")
     private let retryButton = NSButton(title: "重试", target: nil, action: nil)
+    private let openOriginalButton = NSButton(title: "打开原网页", target: nil, action: nil)
     private var retryAction: (() -> Void)?
+    private var openOriginalAction: (() -> Void)?
     private var imageTask: RemoteImageLoadTask?
     private var loadedURL: URL?
     /// 正在网络加载的 URL:同一 URL 的在途请求被再次调用时直接复用,不取消重启。
@@ -31,6 +33,7 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
         guard loadedURL != url || imageView.image == nil else { return }
         loadedURL = url
         imageView.alphaValue = 1
+        openOriginalButton.isHidden = true
         guard let url else {
             imageView.image = nil
             placeholderContainer.isHidden = false
@@ -98,20 +101,27 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
         }
     }
 
-    func showFailure(retry: @escaping () -> Void) {
+    func showFailure(retry: @escaping () -> Void, openOriginal: (() -> Void)? = nil) {
         retryAction = retry
+        openOriginalAction = openOriginal
         imageTask?.cancel()
         inFlightURL = nil
         imageView.image = nil
         placeholderLabel.stringValue = "解析失败"
         retryButton.isHidden = false
+        openOriginalButton.isHidden = openOriginal == nil
         placeholderContainer.isHidden = false
     }
 
     @objc private func retry() {
         placeholderLabel.stringValue = "重试中"
         retryButton.isHidden = true
+        openOriginalButton.isHidden = true
         retryAction?()
+    }
+
+    @objc private func openOriginal() {
+        openOriginalAction?()
     }
 
     private func setupPlaceholder() {
@@ -126,7 +136,13 @@ final class FavoritesZoomableImageView: WorkspaceZoomableImageView {
         retryButton.action = #selector(retry)
         retryButton.isHidden = true
 
-        let stack = NSStackView(views: [placeholderLabel, retryButton])
+        openOriginalButton.bezelStyle = .inline
+        openOriginalButton.font = .systemFont(ofSize: 13)
+        openOriginalButton.target = self
+        openOriginalButton.action = #selector(openOriginal)
+        openOriginalButton.isHidden = true
+
+        let stack = NSStackView(views: [placeholderLabel, retryButton, openOriginalButton])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12

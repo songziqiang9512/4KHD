@@ -366,10 +366,15 @@ final class RemoteImagePipeline {
         return task
     }
 
-    func prefetchDetailImages(_ urls: [URL]) {
+    func prefetchDetailImages(
+        _ urls: [URL],
+        configureURLRequest: ((inout URLRequest) -> Void)? = nil
+    ) {
         let remoteURLs = urls.filter { !$0.isFileURL }
         guard !remoteURLs.isEmpty else { return }
-        let requests = remoteURLs.map { request(for: $0, priority: .low) }
+        let requests = remoteURLs.map {
+            request(for: $0, priority: .low, configureURLRequest: configureURLRequest)
+        }
         detailPrefetcher.startPrefetching(with: requests)
     }
 

@@ -1,5 +1,10 @@
 import Foundation
 
+struct FavoriteDetailFact: Equatable {
+    let label: String
+    let value: String
+}
+
 struct FavoriteDetailMetadata: Equatable {
     let title: String
     let detailText: String
@@ -8,6 +13,34 @@ struct FavoriteDetailMetadata: Equatable {
     let secondaryTitle: String?
     let secondaryURL: URL?
     let supportsDesktopWallpaper: Bool
+    let facts: [FavoriteDetailFact]
+
+    init(
+        title: String,
+        detailText: String,
+        sourceTitle: String,
+        sourceURL: URL,
+        secondaryTitle: String?,
+        secondaryURL: URL?,
+        supportsDesktopWallpaper: Bool,
+        facts: [FavoriteDetailFact] = []
+    ) {
+        self.title = title
+        self.detailText = detailText
+        self.sourceTitle = sourceTitle
+        self.sourceURL = sourceURL
+        self.secondaryTitle = secondaryTitle
+        self.secondaryURL = secondaryURL
+        self.supportsDesktopWallpaper = supportsDesktopWallpaper
+        self.facts = facts
+    }
+}
+
+/// A source-owned link that is safe only for an explicit user action. It is
+/// presentation metadata, never an image request or redirect input.
+struct FavoriteDetailExternalAction: Equatable {
+    let title: String
+    let url: URL
 }
 
 struct FavoriteResolvedImagePage {
@@ -15,23 +48,41 @@ struct FavoriteResolvedImagePage {
     let pageURLs: [URL]
     let recommendations: [OnlineGalleryRecommendation]
     let metadata: FavoriteDetailMetadata?
+    let videoURL: URL?
+    let externalAction: FavoriteDetailExternalAction?
 
     init(
         imageURLs: [URL],
         pageURLs: [URL],
         recommendations: [OnlineGalleryRecommendation] = [],
-        metadata: FavoriteDetailMetadata? = nil
+        metadata: FavoriteDetailMetadata? = nil,
+        videoURL: URL? = nil,
+        externalAction: FavoriteDetailExternalAction? = nil
     ) {
         self.imageURLs = imageURLs
         self.pageURLs = pageURLs
         self.recommendations = recommendations
         self.metadata = metadata
+        self.videoURL = videoURL
+        self.externalAction = externalAction
     }
 }
 
+/// Favorites only knows that a source can play and save an already resolved
+/// video URL. Concrete player/downloader types remain owned by App assembly.
+struct FavoriteVideoActions {
+    let play: @MainActor (FavoriteRecord, URL) -> Void
+    let saveAsMP4: @MainActor (FavoriteRecord, URL) -> Void
+}
+
 enum FavoriteDetailContent {
-    case paged(pageURLs: [URL], estimatedImageCount: Int)
+    case paged(pageURLs: [URL], estimatedImageCount: Int, pageImageCapacity: Int)
     case singleImage(URL?)
+}
+
+enum FavoriteDetailNavigationMode {
+    case images
+    case sourceRecords
 }
 
 struct FavoriteSourceAdapter {
@@ -40,19 +91,28 @@ struct FavoriteSourceAdapter {
     let resolvePage: (URL) async throws -> FavoriteResolvedImagePage
     let configureImageRequest: (inout URLRequest) -> Void
     let detailMetadata: (FavoriteRecord) -> FavoriteDetailMetadata?
+    let videoActions: FavoriteVideoActions?
+    let navigationMode: FavoriteDetailNavigationMode
+    let cachedExternalAction: (URL) -> FavoriteDetailExternalAction?
 
     init(
         source: FavoriteSource,
         detailContent: @escaping (FavoriteRecord) -> FavoriteDetailContent?,
         resolvePage: @escaping (URL) async throws -> FavoriteResolvedImagePage,
         configureImageRequest: @escaping (inout URLRequest) -> Void,
-        detailMetadata: @escaping (FavoriteRecord) -> FavoriteDetailMetadata? = { _ in nil }
+        detailMetadata: @escaping (FavoriteRecord) -> FavoriteDetailMetadata? = { _ in nil },
+        videoActions: FavoriteVideoActions? = nil,
+        navigationMode: FavoriteDetailNavigationMode = .images,
+        cachedExternalAction: @escaping (URL) -> FavoriteDetailExternalAction? = { _ in nil }
     ) {
         self.source = source
         self.detailContent = detailContent
         self.resolvePage = resolvePage
         self.configureImageRequest = configureImageRequest
         self.detailMetadata = detailMetadata
+        self.videoActions = videoActions
+        self.navigationMode = navigationMode
+        self.cachedExternalAction = cachedExternalAction
     }
 }
 

@@ -21,8 +21,7 @@ enum DetailPageHTMLResolver {
 
     private nonisolated static func fetchHTML(_ url: URL) async throws -> String {
         let request = try GalleryRequestFactory.makeHTMLRequest(url: url)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try OnlineSourcePolicy.validate(response, source: .gallery, resource: .html)
+        let (data, response) = try await OnlineSourceSession.galleryHTML.data(for: request)
         if let httpResponse = response as? HTTPURLResponse,
            !(200..<300).contains(httpResponse.statusCode) {
             throw URLError(.badServerResponse)
@@ -312,21 +311,49 @@ enum DetailPageHTMLResolver {
 }
 
 private actor DetailHTMLRequestCoalescer {
-    private var tasks: [URL: Task<String, Error>] = [:]
+    private struct Entry {
+        let task: Task<String, Error>
+        var waiters: Set<UUID>
+    }
+
+    private var entries: [URL: Entry] = [:]
 
     func value(for url: URL, operation: @escaping @Sendable () async throws -> String) async throws -> String {
-        if let task = tasks[url] {
-            return try await task.value
+        let waiterID = UUID()
+        let task: Task<String, Error>
+        if var entry = entries[url] {
+            entry.waiters.insert(waiterID)
+            entries[url] = entry
+            task = entry.task
+        } else {
+            task = Task { try await operation() }
+            entries[url] = Entry(task: task, waiters: [waiterID])
         }
 
-        let task = Task {
-            try await operation()
+        return try await withTaskCancellationHandler {
+            do {
+                let value = try await task.value
+                try Task.checkCancellation()
+                release(waiterID, for: url, cancelsTaskWhenLast: false)
+                return value
+            } catch {
+                release(waiterID, for: url, cancelsTaskWhenLast: error is CancellationError)
+                throw error
+            }
+        } onCancel: {
+            Task { await self.release(waiterID, for: url, cancelsTaskWhenLast: true) }
         }
-        tasks[url] = task
+    }
 
-        defer {
-            tasks[url] = nil
+    private func release(_ waiterID: UUID, for url: URL, cancelsTaskWhenLast: Bool) {
+        guard var entry = entries[url], entry.waiters.remove(waiterID) != nil else { return }
+        guard entry.waiters.isEmpty else {
+            entries[url] = entry
+            return
         }
-        return try await task.value
+        entries[url] = nil
+        if cancelsTaskWhenLast {
+            entry.task.cancel()
+        }
     }
 }

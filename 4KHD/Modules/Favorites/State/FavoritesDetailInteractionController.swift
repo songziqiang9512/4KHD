@@ -12,6 +12,7 @@ final class FavoritesDetailInteractionController {
     var saveMessage = ""
 
     @ObservationIgnored private var saveTask: ImageTask?
+    @ObservationIgnored private var saveOperationGeneration = 0
 
     deinit {
         saveTask?.cancel()
@@ -21,6 +22,14 @@ final class FavoritesDetailInteractionController {
         resetToken = UUID()
     }
 
+    /// 切换详情记录时取消旧保存并使迟到回调失效，避免旧状态污染新记录。
+    func invalidateSaveOperation() {
+        saveOperationGeneration &+= 1
+        saveTask?.cancel()
+        saveTask = nil
+        saveMessage = ""
+    }
+
     func save(imageURL: URL, filename: String, source: FavoriteSource?) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.image]
@@ -28,8 +37,7 @@ final class FavoritesDetailInteractionController {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let target = panel.url else { return }
 
-        saveMessage = "保存中"
-        saveTask?.cancel()
+        let generation = beginSaveOperation(message: "保存中")
         let request = RemoteImagePipeline.shared.request(
             for: imageURL,
             priority: .veryHigh,
@@ -37,7 +45,8 @@ final class FavoritesDetailInteractionController {
         )
         saveTask = RemoteImagePipeline.shared.loadData(with: request) { [weak self] data in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.saveOperationGeneration == generation else { return }
+                self.saveTask = nil
                 guard let data else {
                     self.saveMessage = "保存失败"
                     return
@@ -53,8 +62,7 @@ final class FavoritesDetailInteractionController {
     }
 
     func setAsDesktopWallpaper(imageURL: URL, filename: String, source: FavoriteSource?) {
-        saveMessage = "下载中"
-        saveTask?.cancel()
+        let generation = beginSaveOperation(message: "下载中")
         let request = RemoteImagePipeline.shared.request(
             for: imageURL,
             priority: .veryHigh,
@@ -62,7 +70,8 @@ final class FavoritesDetailInteractionController {
         )
         saveTask = RemoteImagePipeline.shared.loadData(with: request) { [weak self] data in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.saveOperationGeneration == generation else { return }
+                self.saveTask = nil
                 guard let data else {
                     self.saveMessage = "下载失败"
                     return
@@ -83,5 +92,13 @@ final class FavoritesDetailInteractionController {
                 }
             }
         }
+    }
+
+    private func beginSaveOperation(message: String) -> Int {
+        saveOperationGeneration &+= 1
+        saveTask?.cancel()
+        saveTask = nil
+        saveMessage = message
+        return saveOperationGeneration
     }
 }

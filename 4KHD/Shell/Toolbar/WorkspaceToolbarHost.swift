@@ -26,6 +26,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let wallhavenInfo = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenInfo")
         static let wallhavenBack = NSToolbarItem.Identifier("WorkspaceToolbar.wallhavenBack")
         static let favoritesFilter = NSToolbarItem.Identifier("WorkspaceToolbar.favoritesFilter")
+        static let knitFilters = NSToolbarItem.Identifier("WorkspaceToolbar.knitFilters")
     }
 
     private let appContext: WorkspaceAppContext
@@ -37,6 +38,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var localSortItem: NSMenuToolbarItem?
     private weak var wallhavenFilterItem: NSMenuToolbarItem?
     private weak var favoritesFilterItem: NSMenuToolbarItem?
+    private weak var knitFilterItem: NSMenuToolbarItem?
     private weak var refreshItem: NSToolbarItem?
     private weak var favoriteItem: NSToolbarItem?
     private weak var resetZoomItem: NSToolbarItem?
@@ -112,6 +114,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.wallhavenInfo,
             ItemID.wallhavenBack,
             ItemID.favoritesFilter,
+            ItemID.knitFilters,
             ItemID.search
         ]
     }
@@ -142,6 +145,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
         if profile.showsWallhavenControls {
             identifiers.append(ItemID.wallhavenFilters)
+        }
+        if profile.showsKnitFilters {
+            identifiers.append(ItemID.knitFilters)
         }
         if profile.showsFavorite {
             identifiers.append(ItemID.favorite)
@@ -379,6 +385,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             favoritesFilterItem = item
             updateFavoritesFilterItem()
             return item
+        case ItemID.knitFilters:
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "分类"
+            item.paletteLabel = "分类筛选"
+            item.image = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: "分类筛选")
+            item.visibilityPriority = .standard
+            knitFilterItem = item
+            updateKnitFilterItem()
+            return item
         case ItemID.onlineSave:
             let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
             item.label = "保存"
@@ -461,14 +476,16 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case ItemID.share:
             canShareCurrentModule
         case ItemID.onlineSave:
-            canSaveCurrentImage || canSaveCurrentAlbum
+            canSaveCurrentImage || canSaveCurrentAlbum || canSaveCurrentVideo
         case ItemID.onlineInfo:
-            true
+            appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.wallhavenSave:
             canSaveCurrentImage
         case ItemID.wallhavenInfo:
-            true
+            appContext.toolbarContext.currentReference(for: currentModuleID) != nil
         case ItemID.favoritesFilter:
+            true
+        case ItemID.knitFilters:
             true
         default:
             true
@@ -576,6 +593,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         refresh()
     }
 
+    @objc private func saveCurrentVideo(_ sender: Any?) {
+        appContext.toolbarContext.saveCurrentVideo(for: currentModuleID)
+        refresh()
+    }
+
     @objc private func revealCurrentFileInFinder(_ sender: Any?) {
         guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
@@ -624,6 +646,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .missKon(let s):  _ = s.layout
         case .wallhaven(let s): _ = s.layout
         case .favorites(let s): _ = s.layout; _ = appContext.favoritesModuleStore.filter
+        case .knit(let s): _ = s.layout; _ = s.filter; _ = s.pageStatusText
         }
     }
 
@@ -641,6 +664,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         updateOnlineSaveItem()
         updateWallhavenFilterItem()
         updateFavoritesFilterItem()
+        updateKnitFilterItem()
         updateShareItem()
         configureDetailPaneItem(detailPaneItem)
         validateVisibleItems()
@@ -717,11 +741,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         let isPresented: Bool
         let isEnabled: Bool
         let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
-        if !profile.supportsFilmstrip {
+        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        if !profile.supportsFilmstrip || !f.canUseFilmstrip {
             isPresented = false
             isEnabled = false
         } else {
-            let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
             isPresented = f.isFilmstripPresented
             switch profile.filmstripAvailability {
             case .selection: isEnabled = f.hasSelection
@@ -789,10 +813,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         appContext.toolbarContext.snapshot(for: currentModuleID).fields.canSaveAlbum
     }
 
+    private var canSaveCurrentVideo: Bool {
+        appContext.toolbarContext.snapshot(for: currentModuleID).fields.canSaveVideo
+    }
+
     private var canUseFilmstrip: Bool {
         let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
         guard profile.supportsFilmstrip else { return false }
         let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
+        guard f.canUseFilmstrip else { return false }
         switch profile.filmstripAvailability {
         case .selection: return f.hasSelection
         case .resolvedImage: return f.canSaveImage
@@ -915,6 +944,22 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         saveAlbumItem.image = NSImage(systemSymbolName: "square.stack.3d.down.right", accessibilityDescription: "保存整个图集")
         saveAlbumItem.isEnabled = canSaveCurrentAlbum
         menu.addItem(saveAlbumItem)
+
+        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
+        if profile.showsVideoSave {
+            let saveVideoItem = NSMenuItem(
+                title: "保存视频为 MP4…",
+                action: #selector(saveCurrentVideo(_:)),
+                keyEquivalent: ""
+            )
+            saveVideoItem.target = self
+            saveVideoItem.image = NSImage(
+                systemSymbolName: "video.badge.arrow.down",
+                accessibilityDescription: "保存视频为 MP4"
+            )
+            saveVideoItem.isEnabled = canSaveCurrentVideo
+            menu.addItem(saveVideoItem)
+        }
         return menu
     }
 
@@ -1050,11 +1095,76 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func favoritesSelectFilter(_ sender: NSMenuItem) {
         guard let filter = sender.representedObject as? FavoriteSourceFilter else { return }
-        appContext.favoritesModuleStore.filter = filter
+        appContext.favoritesModuleStore.setFilter(filter)
         // 同步路由(itemID = filter rawValue):切走再切回时筛选不丢失,并随路由持久化。
         appContext.routeController.select(
             WorkspaceRoute(moduleID: .favorites, itemID: filter.rawValue)
         )
+        refresh()
+    }
+
+    // MARK: - 爱妹子分类筛选
+
+    private func makeKnitFilterMenu() -> NSMenu {
+        let menu = NSMenu(title: "爱妹子分类")
+        menu.autoenablesItems = false
+
+        let route = appContext.routeController.route
+        let selectedFilter = route.moduleID == .knitGallery
+            ? (KnitBrowseFilter.filter(forRouteItemID: route.itemID) ?? appContext.knitStore.filter)
+            : appContext.knitStore.filter
+        switch selectedFilter.sidebarSection {
+        case .recentUpdates:
+            menu.addItem(makeKnitFilterMenuItem(.all, selectedFilter: selectedFilter))
+        case .girls:
+            KnitBrowseFilter.girlTypes.forEach {
+                menu.addItem(makeKnitFilterMenuItem($0, selectedFilter: selectedFilter))
+            }
+
+            let parentType = selectedFilter.parentGirlType ?? KnitSidebarSection.girls.defaultFilter
+            let topics = KnitBrowseFilter.relatedTopics(for: parentType)
+            if !topics.isEmpty {
+                menu.addItem(.separator())
+                let topicGroup = NSMenuItem(title: "\(parentType.title) · 相关专题", action: nil, keyEquivalent: "")
+                let topicMenu = NSMenu(title: topicGroup.title)
+                topicMenu.autoenablesItems = false
+                topics.forEach {
+                    topicMenu.addItem(makeKnitFilterMenuItem($0, selectedFilter: selectedFilter))
+                }
+                topicGroup.submenu = topicMenu
+                menu.addItem(topicGroup)
+            }
+        case .rankings:
+            KnitBrowseFilter.rankingFilters.forEach {
+                menu.addItem(makeKnitFilterMenuItem($0, selectedFilter: selectedFilter))
+            }
+        case .video:
+            menu.addItem(makeKnitFilterMenuItem(.behindTheScenes, selectedFilter: selectedFilter))
+        }
+        return menu
+    }
+
+    private func makeKnitFilterMenuItem(
+        _ filter: KnitBrowseFilter,
+        selectedFilter: KnitBrowseFilter
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: filter.title, action: #selector(knitSelectFilter(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = filter
+        item.state = selectedFilter == filter ? .on : .off
+        return item
+    }
+
+    private func updateKnitFilterItem() {
+        guard currentModuleID == .knitGallery, let knitFilterItem else { return }
+        knitFilterItem.menu = makeKnitFilterMenu()
+        knitFilterItem.toolTip = appContext.knitStore.pageStatusText
+    }
+
+    @objc private func knitSelectFilter(_ sender: NSMenuItem) {
+        guard let filter = sender.representedObject as? KnitBrowseFilter else { return }
+        appContext.knitStore.setFilter(filter)
+        appContext.routeController.select(WorkspaceRoute(moduleID: .knitGallery, itemID: filter.rawValue))
         refresh()
     }
 

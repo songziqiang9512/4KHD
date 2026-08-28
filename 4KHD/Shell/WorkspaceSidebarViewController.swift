@@ -333,6 +333,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             systemName = section.sidebarSystemImage
         case .wallhaven(let section):
             systemName = section.sidebarSystemImage
+        case .knit(let section):
+            systemName = section.sidebarSystemImage
         case .favoritesModule:
             systemName = "heart"
         }
@@ -364,6 +366,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .missKon, itemID: section.rawValue)
         case .wallhaven(let section):
             selectedRoute = WorkspaceRoute(moduleID: .wallhaven, itemID: section.rawValue)
+        case .knit(let section):
+            selectedRoute = WorkspaceRoute(moduleID: .knitGallery, itemID: section.defaultFilter.rawValue)
         case .favoritesModule:
             selectedRoute = WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
         case .group:
@@ -503,6 +507,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             route.itemID == section.rawValue
         case (.wallhaven, .wallhaven(let section)):
             route.itemID == section.rawValue
+        case (.knitGallery, .knit(let section)):
+            KnitBrowseFilter.filter(forRouteItemID: route.itemID)?.sidebarSection == section
         case (.localLibrary, .localFolder(let folder)):
             route.itemID == folder.id
         case (.localLibrary, .localAllImages):

@@ -17,14 +17,14 @@
 
 ```text
 4KHD/
-  App/          — 应用入口、场景组装、偏好设置窗口、Inspector 窗口
+  App/          — 应用入口、场景组装、偏好设置、Inspector、下载管理与独立视频播放窗口
   Shell/        — 工作区底壳、模块路由、三栏布局、侧边栏、工具栏
     Toolbar/      — NSToolbar 实现（WorkspaceToolbarHost）
     Immersive/    — 窗内大图模式控制器
     WorkspaceLayout/ — 侧边栏展开状态
   Shared/       — 跨模块可复用能力
     Platform/     — 系统桥接（键盘、QuickLook、壁纸设置、Inspector、CoalescingQueue、NSView/AppKit 扩展）
-    Services/     — 图片缓存、远程图片加载、Cookie 桥接
+    Services/     — 图片缓存、远程图片加载、Cookie 桥接、统一图集/单文件下载队列
     State/        — 详情区状态、胶卷条可见性
     UI/           — 瀑布流布局、缩略图卡片、缩放图片视图、RemoteImageView、缩略图预取控制器
       Detail/       — 详情区覆盖层组件
@@ -34,6 +34,7 @@
     Favorites/   — 收藏记录模块
     MissKon/     — misskon.com 在线图库模块
     Wallhaven/   — wallhaven.cc 在线壁纸模块
+    KnitGallery/ — xx.knit.bid 图片与视频图库模块
 ```
 
 ### 模块内部结构
@@ -60,8 +61,9 @@
 | 在线图库 | `4KHDGallery` | 4KHD 网站栏目浏览、详情页解析、图片提取 |
 | 在线图库 | `MissKon` | misskon.com 标签/热门浏览、详情 HTML 解析、渐进式图片加载 |
 | 在线图库 | `Wallhaven` | wallhaven.cc API v1 搜索浏览、分类/排序/比例/分辨率筛选、纯度门控、上传者浏览、本地收藏、详情缓存 |
+| 在线图库 | `KnitGallery` | xx.knit.bid 四分区浏览、分类相关专题/排行筛选、AJAX 分页、渐进式详情、尾页推荐与独立 HLS 视频播放 |
 | 本地图片 | `LocalLibrary` | 本地目录导入、扫描、metadata 读取 |
-| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
+| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
 
 ## 4. 共享能力清单
 
@@ -76,12 +78,15 @@
 | `RemoteImageView` | `Shared/UI/` | 共享远程图片视图（Nuke 加载、占位符、aspectFill/Fit、同步缓存命中） |
 | `DetailOverlayChromeView` | `Shared/UI/Detail/` | 详情区覆盖层圆角背景 |
 | `DetailNavigationButton` | `Shared/UI/Detail/` | 详情区导航按钮（圆形毛玻璃） |
-| `DetailRecommendationsView` | `Shared/UI/Detail/` | 4KHD/MissKon/收藏共用的图集尾页推荐网格 |
+| `DetailRecommendationsView` | `Shared/UI/Detail/` | 4KHD/MissKon/KnitGallery/收藏共用的图集尾页推荐网格 |
 | `RemoteImagePipeline` | `Shared/Services/` | Nuke 图片加载管线（含 thumbnailPrefetcher + detailPrefetcher 分离） |
 | `DetailPageImageCache` | `Shared/Services/` | 详情页图片 URL 缓存（7 天过期，500/800 容量限制） |
 | `OnlineGalleryRecommendation` | `Shared/Services/` | 跨在线源通用的推荐图集值模型 |
 | `OnlineSourcePolicy` | `Shared/Services/` | 在线源 HTTPS、host allowlist、重定向与媒体 URL 统一门禁 |
 | `RemoteImageURLAspectRatio` | `Shared/Services/` | 从已知图片 URL 参数提取通用宽高比 |
+| `DownloadStore` | `Shared/Services/Download/` | 图集与单文件任务共用的串行下载队列、取消、进度和完成状态 |
+| `AlbumDownloadOrchestrator` | `Shared/Services/Download/` | 来源无关的图集分页解析、图片落盘和逐项结果汇总 |
+| `SingleFileDownloadSource` | `Shared/Services/Download/` | 由业务模块注入实际传输实现的来源无关单文件下载契约 |
 | `SharingPresenter` | `Shared/Platform/` | 系统分享面板弹出 |
 | `WorkspaceKeyboardHandler` | `Shared/Platform/` | 键盘事件分发 |
 | `WorkspaceCoalescingQueue` | `Shared/Platform/` | 合并高频刷新 |
@@ -104,13 +109,20 @@
 
 ### 统一收藏模块（在线收藏）
 
-- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven，rawValue 作路由 itemID）
+- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子，rawValue 作路由 itemID）
 - 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整
-- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven 的具体类型
+- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery 的具体类型
+- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery 收藏继续使用原站逐页解析、胶片条和页尾推荐；Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
+- **选择身份与空状态**：列表/网格选择以标准化 `detailURL` 为主键，不得只比较可能跨来源冲突的站点 raw ID；切换到空筛选、删除当前或最后一条收藏时必须同步修正选择并清空旧详情、推荐、视频和工具栏状态
+- **KnitGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放，播放按钮及独立播放器的右键菜单均同时提供保存 MP4 与复制影片源 URL，工具栏「保存」菜单也可保存 MP4；播放和保存均经 App 组装层复用 KnitGallery 原生实现，Favorites 不直接依赖播放器或下载器类型。未解析到受信任视频源时必须禁用菜单；不同视频可进入共享下载队列，同一图集的活动任务由 `DownloadStore` 去重
+- **Wallhaven 一致性**：收藏详情按同来源收藏记录导航，加载原图与完整 metadata，支持等待原图解析完成后设为壁纸；上传者入口必须在应用内路由到 Wallhaven 上传者作品，不得跳到外部网页或退化为封面图
+- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
 - **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图的防盗链请求配置从对应 `FavoriteSourceAdapter` 获取
+- **历史封面仍需重新门禁**：从磁盘恢复或旧版本迁移的 `coverURL` 在列表、网格、预取和详情首图使用前，都必须重新通过所属来源的媒体 allowlist；不能因记录已经持久化就直接信任 URL
 - 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
-- Gallery/MissKon 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
-- Gallery/MissKon 来源的收藏详情在最后一张后继续导航会显示推荐；推荐数据仍经 source adapter 注入，跨模块跳转只由 `WorkspaceAppAssembly` 路由，Favorites 不得直接依赖业务模块
+- Gallery/MissKon/KnitGallery 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
+- Gallery/MissKon/KnitGallery 来源的收藏详情在最后一张后继续导航会显示推荐；推荐数据仍经 source adapter 注入，跨模块跳转只由 `WorkspaceAppAssembly` 路由，Favorites 不得直接依赖业务模块
+- MissKon 收藏详情通过来源无关的外部动作模型显示 MediaFire 入口；该业务 metadata 仍只由 MissKon 缓存拥有，不得把 URL 字段塞进 Favorites 或 Shared 的通用缓存 schema
 
 ### MissKon 模块
 
@@ -143,13 +155,40 @@
 - **收藏下一张按钮**：`imageCount == 0` 时回退用 `loadedImageSlots.count` 判断
 - **尾页推荐**：解析详情首页的原站推荐卡片；最后一张继续向后导航显示共享推荐网格，点击直接打开对应 4KHD 图集
 
+### KnitGallery 模块
+
+- **侧边栏四分区**：固定为「最近更新 / 妹子图 / 排行榜 / 影片花絮」；进入「妹子图」默认「丝袜美女」，进入「排行榜」默认「最受欢迎」，影片入口必须是 `/bits-of-news/`，不能用 `/tag/4111/` 代替
+- **工具栏筛选**：「妹子图」提供原站 10 个一级类型，并只为当前一级类型显示其「相关专题」；10 类合计 25 个专题。「排行榜」精确提供「最新发布 / 最受欢迎 / 今日热门 / 3 天热门 / 本周热门 / 本月热门」6 项。所有筛选都是互斥路径，不得伪装成可组合标签
+- **列表分页**：列表统一请求 `?ajax=1` 并携带 `X-Requested-With: XMLHttpRequest`，以响应 `pagination.next_page` 生成下一页；搜索后续页使用 `/search/page/{n}/?s=...`
+- **详情体验**：与 4KHD/MissKon 一致，提供缩放大图、上/下张、计数、底部胶片条和沉浸模式；第一页普通 HTML，后续 `/article/{id}/page/{n}/?ajax=1`，按原页序逐页合并并按需加载。只有详情栏或沉浸模式真正可见时才启动解析；相邻两页属于预取预算，但必须沿连续完成前缀逐页串行请求，不得跨过在途或失败的前序页
+- **线程边界**：网络和 Cloudflare 验证 UI 留在 MainActor；验证 waiter 必须响应请求取消，最后一个 waiter 取消时结束验证会话；JSON 解码、HTML 正则与推荐容器扫描必须经 `@concurrent nonisolated` 解析函数执行，纯 Knit 值模型保持显式 `nonisolated + Sendable`
+- **尾页推荐**：详情首页解析 `#recommend-container` 的原站推荐；全部图片页完成后，从最后一张继续向后导航才显示推荐网格，向前返回最后一张。推荐点击进入精确 KnitGallery 图集；在线收藏通过 `FavoriteSourceAdapter` 接收同一推荐数据，再由 `WorkspaceAppAssembly` 路由
+- **视频**：解析 `media.knit.bid` HLS 清单；使用 App 层长期持有的独立 `KnitVideoPlayerWindowController` + `AVPlayerView`，不得把播放器嵌进图片详情或引入 SwiftUI；详情「播放视频」按钮、独立播放器画面及收藏详情的右键菜单必须同时提供「保存视频为 MP4…」和「拷贝影片源 URL」，复制实际 HLS 地址。播放器必须观察当前 `AVPlayerItem.status`，失败时只显示一次原生错误提示，切换视频或关闭窗口时撤销观察、保存动作并释放旧播放器
+- **视频保存**：工具栏「保存」菜单仅在当前详情已解析出受信任的 HLS URL 时启用「保存视频为 MP4…」，不得用列表标题里的 `nV`/播放图标代替真实视频源。用户选定目标后，视频必须作为 `.video` 任务进入与整图集共用的 `DownloadStore` 串行队列和非模态「下载」窗口；进度、失败、取消和完成结果只在任务中心呈现，详情图片上方不得常驻分类或保存状态。下载只接受未加密、带 `ENDLIST`、无 discontinuity 的 MPEG-TS VOD；所有清单/分片与重定向继续经过 Knit media allowlist，逐段下载后由 AVFoundation 无损封装 MP4，安装前验证可播放性、正时长和视频轨；失败或取消必须清理临时文件且不得破坏既有目标文件。主/子清单先下载到临时文件并在映射到内存前执行 5 MB 上限检查。整次保存遇到 403/`cf-mitigated: challenge` 时最多共享一次 WebKit 验证并只重试触发请求一次，验证后的清单与每个分片仍重新经过 Cookie、host 和重定向门禁
+- **访问验证**：URLSession 普通请求优先；仅收到 403/`cf-mitigated: challenge` 时显示模块专用 WKWebView 验证窗，同步 Cookie 后重试，不做 challenge 绕过。验证 WebView 的初始地址、每次主框架导航请求和主框架响应都必须通过 Knit HTML exact/subdomain allowlist，外域跳转在继续导航前取消
+- **安全门禁**：HTML 与媒体仅允许 HTTPS exact/subdomain `knit.bid`；图片与 HLS 请求必须保留 Safari User-Agent，图片继续携带 `https://xx.knit.bid/` Referer
+- **原图门禁**：列表封面只作详情解析前的过渡图；详情未解析时不得启用或执行「保存当前图片」，在线收藏同样必须确认当前 slot 已由来源页解析
+- **缩略图失败恢复**：列表/网格封面首次失败后冷却 3 秒自动重试一次；后续只允许自然重配且冷却到期后重试，复用/换源/成功/缓存命中必须重置状态，旧 generation 回调不得覆盖新请求
+- **当前播放边界**：应用能门禁传给 `AVURLAsset` 的入口 HLS URL，但 AVFoundation 自己发起的变体清单和分片子请求不经过 `OnlineSourcePolicy`；若要对播放链每个子请求做与下载链同等级的 host/重定向审计，需要改为自定义资源加载器或本地代理，不得把当前实现宣称为全链门禁
+- 站点分页和入口实测快照见 `docs/knit-site-protocol-2026-08-28.md`
+
 ### 设置面板
 
-- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/本地图库四个模块的列表/网格
+- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/本地图库五个模块的列表/网格
 - **缓存上限**：在线缓存容量选择（512MB-4GB/无限制）
 - **清除缓存**：一键清除 Nuke 图片缓存、详情页缓存、MissKon/Wallhaven 模块缓存、本地缩略图缓存、临时文件
-- **侧边栏**：开关控制 4KHD/MissKon 模块显示
+- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery 模块显示
+- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
 - 全部中文化
+
+### 辅助窗口
+
+- **下载窗口**：使用普通、非模态 `NSWindow` 作为图集与视频的统一任务中心；关闭窗口只隐藏界面，不中断队列。窗口标题是唯一标题，内容区顶部只显示任务摘要与批量操作；每个任务在系统进度条下方等宽显示已下载/总大小、整体百分比和当前速度，完成后显示精确落盘大小与平均速度。图集按单图落盘、视频按 HLS 分片完成采样并平滑速度；运行中的图集/视频总大小允许标记为估算值，视频封装完成后必须用最终 MP4 大小校正。活动单文件任务必须预留标准化目标路径，拒绝第二个任务无确认写入同一文件，并在完成、失败或取消时释放预留。空状态、任务类型、目标位置、取消与清理操作均使用系统控件和语义色
+- **信息窗口**：六个模块共用一个 App 层 Inspector；固定来源标题区，下方使用可滚动的动态分组 `NSGridView`，缺失字段整行省略。关闭或最小化后必须停止观察与本地 metadata 读取；未选择项目时信息按钮禁用
+
+### 已知 UI 边界
+
+- 顶部系统工具栏在部分三栏/详情栏状态下仍可能丢失 scroll-edge 半透明背景，悬停或窗口失焦后恢复。正确目标是让内容继续穿过系统工具栏下方并由 AppKit 提供背景；不得用 safe-area 截断、自绘工具栏背景、hover 监听或全窗材质层宣称解决。后续若继续处理，必须先用最小可复现窗口确认 `NSSplitViewController`、详情预览和 scroll-edge ownership
 
 ### 全局约束
 
@@ -157,6 +196,8 @@
 - 工具栏展示能力统一声明在 `WorkspaceModuleDescriptor.presentation`；新增模块先补 descriptor profile，不要在 `WorkspaceToolbarHost` 追加 moduleID 条件链
 - 修改任何在线模块时，以 `4KHDGallery` 的状态流和 UI 行为为参考
 - 在线模块异步结果必须按请求时的 section/query 回写，不能在 `await` 后直接读当前 section 写状态
+- Gallery/MissKon 详情请求合并器必须按 waiter 计数处理取消；最后一个等待者取消时要取消底层网络任务，避免切换详情后继续解析、写缓存或创建 WebKit fallback
+- 详情控制器对保存进度/消息只保留一条观察链；不得在每次状态变化时重复注册一次性观察，旧记录的异步保存回调也不得覆盖新详情
 - 收藏桥和详情图片解析必须使用 exact/subdomain allowlist，不要用 `host.contains(...)`
 - 详情 HTML 截取不要用 `lowercased()` 产生的 `String.Index` 切原字符串；用 `NSString`/`NSRange` 或原字符串 case-insensitive range
 - 当前 Xcode 工程包含 `4KHD` App target 和 `4KHDTests` XCTest target；纯逻辑与共享命令行为优先补回归测试

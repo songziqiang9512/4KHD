@@ -5,6 +5,7 @@ enum WorkspaceSidebarNode: Hashable {
     case gallery(GallerySection)
     case missKon(MissKonSection)
     case wallhaven(WallhavenSection)
+    case knit(KnitSidebarSection)
     case localAllImages(count: Int)
     case localFolder(LocalFolderNode)
     case favoritesModule
@@ -18,6 +19,8 @@ enum WorkspaceSidebarNode: Hashable {
         case .missKon(let section):
             section.title
         case .wallhaven(let section):
+            section.title
+        case .knit(let section):
             section.title
         case .localAllImages:
             "我的图片"
@@ -38,6 +41,8 @@ enum WorkspaceSidebarNode: Hashable {
             "missKon:\(section.rawValue)"
         case .wallhaven(let section):
             "wallhaven:\(section.rawValue)"
+        case .knit(let section):
+            "knit:\(section.rawValue)"
         case .localAllImages:
             "local:allImages"
         case .localFolder(let folder):

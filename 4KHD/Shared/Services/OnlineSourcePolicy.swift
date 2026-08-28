@@ -6,6 +6,7 @@ enum OnlineSourcePolicy {
         case gallery
         case missKon
         case wallhaven
+        case knit
     }
 
     enum Resource: Sendable {
@@ -79,6 +80,13 @@ enum OnlineSourcePolicy {
             return host == "wallhaven.cc" || host == "www.wallhaven.cc" || host == "whvn.cc"
         case (.wallhaven, .media):
             return isExactOrSubdomain(host, of: "wallhaven.cc")
+
+        case (.knit, .html):
+            return isExactOrSubdomain(host, of: "knit.bid")
+        case (.knit, .media):
+            return isExactOrSubdomain(host, of: "knit.bid")
+        case (.knit, .api):
+            return false
         }
     }
 
@@ -87,7 +95,7 @@ enum OnlineSourcePolicy {
     /// delegates because some image loaders do not retain custom Referer
     /// headers on `task.originalRequest`.
     nonisolated static func source(forMediaURL url: URL) -> Source? {
-        let matches = [Source.gallery, .missKon, .wallhaven].filter {
+        let matches = [Source.gallery, .missKon, .wallhaven, .knit].filter {
             allows(url, source: $0, resource: .media)
         }
         return matches.count == 1 ? matches[0] : nil
@@ -166,6 +174,62 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         if host == "4khd.com" || host.hasSuffix(".4khd.com") { return .gallery }
         if host == "misskon.com" || host.hasSuffix(".misskon.com") { return .missKon }
         if host == "wallhaven.cc" || host.hasSuffix(".wallhaven.cc") { return .wallhaven }
+        if host == "knit.bid" || host.hasSuffix(".knit.bid") { return .knit }
         return nil
+    }
+}
+
+/// URLSession client whose redirect policy is fixed at construction time.
+///
+/// HTML/API probes must reject an untrusted redirect before URLSession follows
+/// it. The configuration deliberately shares the app cookie jar (including
+/// cookies bridged from WebKit) while disabling URLCache as a disk layer.
+final class OnlineSourceSession: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    static let galleryHTML = OnlineSourceSession(source: .gallery, resource: .html)
+    static let missKonHTML = OnlineSourceSession(source: .missKon, resource: .html)
+    static let wallhavenAPI = OnlineSourceSession(source: .wallhaven, resource: .api)
+    static let wallhavenHTML = OnlineSourceSession(source: .wallhaven, resource: .html)
+    static let wallhavenMedia = OnlineSourceSession(source: .wallhaven, resource: .media)
+
+    private let source: OnlineSourcePolicy.Source
+    private let resource: OnlineSourcePolicy.Resource
+    private var session: URLSession!
+
+    private init(source: OnlineSourcePolicy.Source, resource: OnlineSourcePolicy.Resource) {
+        self.source = source
+        self.resource = resource
+        super.init()
+
+        let configuration = URLSessionConfiguration.default
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = .shared
+        configuration.httpShouldSetCookies = true
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        guard let url = request.url else {
+            throw OnlineSourcePolicy.PolicyError.rejectedURL
+        }
+        try OnlineSourcePolicy.validate(url, source: source, resource: resource)
+        let result = try await session.data(for: request)
+        try OnlineSourcePolicy.validate(result.1, source: source, resource: resource)
+        return result
+    }
+
+    nonisolated func allowsRedirect(to request: URLRequest) -> Bool {
+        guard let url = request.url else { return false }
+        return OnlineSourcePolicy.allows(url, source: source, resource: resource)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @Sendable @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(allowsRedirect(to: request) ? request : nil)
     }
 }

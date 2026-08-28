@@ -6,6 +6,7 @@ enum WorkspaceModuleID: String, Hashable, Codable, Identifiable {
     case missKon
     case wallhaven
     case favorites
+    case knitGallery
 
     var id: String { rawValue }
 }

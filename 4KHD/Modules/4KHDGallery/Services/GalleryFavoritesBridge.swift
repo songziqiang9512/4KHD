@@ -49,7 +49,7 @@ enum GalleryFavoritesBridge {
     }
 
     private nonisolated static func pageURLs(detailURL: URL, pageCount: Int) -> [URL] {
-        let count = max(pageCount, 1)
+        let count = min(max(pageCount, 1), 500)
         return (1...count).map { pageNumber in
             pageNumber == 1 ? detailURL : detailURL.appendingPathComponent("\(pageNumber)")
         }

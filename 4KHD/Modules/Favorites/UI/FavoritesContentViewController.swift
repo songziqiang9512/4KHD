@@ -14,9 +14,9 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     private var activeView: NSView?
     private var isObserving = false
     private var isApplyingSelection = false
-    private var lastAppliedRecordIDs: [FavoriteRecord.ID] = []
+    private var lastAppliedRecordIdentities: [FavoritesModuleStore.SelectionIdentity] = []
     private var lastGridColumnCount = 4
-    private var pendingScrollRecordID: FavoriteRecord.ID?
+    private var pendingScrollRecordIdentity: FavoritesModuleStore.SelectionIdentity?
     private var lastSearchQuery: String?
     /// 行渲染用的记录快照,避免每行经 visibleRecords 计算属性全量重算(O(n²))。
     private var recordsSnapshot: [FavoriteRecord] = []
@@ -86,7 +86,10 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         tableView.dataSource = self
         tableView.delegate = self
         tableView.contextMenuProvider = { [weak self] row in
-            self?.makeContextMenu(forRow: row)
+            guard let self, let record = self.record(at: row) else { return nil }
+            self.moduleStore.select(record: record)
+            self.tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            return self.makeContextMenu(for: record)
         }
         tableView.keyboardContext = WorkspaceKeyboardContext(
             stepSelection: { [weak self] delta in
@@ -110,7 +113,9 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             self?.detailPane.setPresented(true)
         }
         gridView.contextMenuProvider = { [weak self] record in
-            self?.makeContextMenu(for: record)
+            guard let self else { return nil }
+            self.moduleStore.select(record: record)
+            return self.makeContextMenu(for: record)
         }
     }
 
@@ -121,7 +126,8 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         isObserving = true
         withObservationTracking {
             _ = moduleStore.visibleRecords
-            _ = moduleStore.selectedRecordID
+            _ = moduleStore.selectedRecordIdentity
+            _ = moduleStore.selectedRecord
             _ = moduleStore.activeSearchQuery
             _ = preferences.layout
             _ = preferences.gridColumnCount
@@ -141,18 +147,14 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     // MARK: - 内容刷新
 
     private func reloadContent() {
+        moduleStore.reconcileSelection()
         let records = moduleStore.visibleRecords
         recordsSnapshot = records
-        let recordIDs = records.map(\.id)
-        let recordsChanged = recordIDs != lastAppliedRecordIDs
-        lastAppliedRecordIDs = recordIDs
+        let recordIdentities = records.map { moduleStore.selectionIdentity(for: $0) }
+        let recordsChanged = recordIdentities != lastAppliedRecordIdentities
+        lastAppliedRecordIdentities = recordIdentities
         let searchQueryChanged = lastSearchQuery != moduleStore.activeSearchQuery
         lastSearchQuery = moduleStore.activeSearchQuery
-
-        // 无选中时自动选中第一项(取消收藏/筛选切换后选中项消失时回退)。
-        if !records.isEmpty, moduleStore.selectedRecord == nil {
-            moduleStore.select(record: records[0])
-        }
 
         // 布局切换时保持滚动位置(与其它模块一致)。
         capturePendingScrollRecordIfSwitchingLayout()
@@ -165,8 +167,10 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
                 tableView.reloadData()
             }
             syncTableSelection()
-            if let pendingScrollRecordID,
-               let row = records.firstIndex(where: { $0.id == pendingScrollRecordID }) {
+            if let pendingScrollRecordIdentity,
+               let row = records.firstIndex(where: {
+                   moduleStore.selectionIdentity(for: $0) == pendingScrollRecordIdentity
+               }) {
                 tableView.scrollRowToVisible(row)
             }
         case .grid:
@@ -176,7 +180,7 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             if recordsChanged || columnCountChanged {
                 gridView.update(
                     records: records,
-                    selectedRecordID: moduleStore.selectedRecordID,
+                    selectedRecordIdentity: moduleStore.selectedRecordIdentity,
                     searchQuery: moduleStore.activeSearchQuery,
                     minimumColumnCount: FavoritesContentPreferences.minimumGridColumnCount,
                     maximumColumnCount: preferences.gridColumnCount,
@@ -184,36 +188,36 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
                 )
             } else {
                 gridView.refreshMetadata(
-                    selectedRecordID: moduleStore.selectedRecordID,
+                    selectedRecordIdentity: moduleStore.selectedRecordIdentity,
                     searchQuery: moduleStore.activeSearchQuery
                 )
             }
             syncGridSelection()
-            if let pendingScrollRecordID {
+            if let pendingScrollRecordIdentity {
                 DispatchQueue.main.async { [weak self] in
-                    self?.gridView.scrollRecordIntoViewIfNeeded(withID: pendingScrollRecordID)
+                    self?.gridView.scrollRecordIntoViewIfNeeded(withIdentity: pendingScrollRecordIdentity)
                 }
             }
         }
-        pendingScrollRecordID = nil
+        pendingScrollRecordIdentity = nil
     }
 
     private func capturePendingScrollRecordIfSwitchingLayout() {
         if activeView === gridView, preferences.layout == .list {
-            pendingScrollRecordID = gridView.firstVisibleRecordID()
+            pendingScrollRecordIdentity = gridView.firstVisibleRecordIdentity()
         } else if activeView === tableScrollView, preferences.layout == .grid {
-            pendingScrollRecordID = firstVisibleTableRecordID()
+            pendingScrollRecordIdentity = firstVisibleTableRecordIdentity()
         }
     }
 
-    private func firstVisibleTableRecordID() -> FavoriteRecord.ID? {
+    private func firstVisibleTableRecordIdentity() -> FavoritesModuleStore.SelectionIdentity? {
         let visibleRows = tableView.rows(in: tableView.visibleRect)
         guard visibleRows.length > 0 else { return nil }
         let upperBound = min(visibleRows.location + visibleRows.length, recordsSnapshot.count)
         guard visibleRows.location < upperBound else { return nil }
         for row in visibleRows.location..<upperBound {
             if let record = record(at: row) {
-                return record.id
+                return moduleStore.selectionIdentity(for: record)
             }
         }
         return nil
@@ -225,8 +229,10 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
 
     private func syncTableSelection() {
         guard preferences.layout == .list else { return }
-        guard let selectedRecordID = moduleStore.selectedRecordID,
-              let row = recordsSnapshot.firstIndex(where: { $0.id == selectedRecordID })
+        guard let selectedRecordIdentity = moduleStore.selectedRecordIdentity,
+              let row = recordsSnapshot.firstIndex(where: {
+                  moduleStore.selectionIdentity(for: $0) == selectedRecordIdentity
+              })
         else {
             if tableView.selectedRow >= 0 {
                 isApplyingSelection = true
@@ -245,7 +251,7 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     private func syncGridSelection() {
         guard preferences.layout == .grid else { return }
         gridView.refreshMetadata(
-            selectedRecordID: moduleStore.selectedRecordID,
+            selectedRecordIdentity: moduleStore.selectedRecordIdentity,
             searchQuery: moduleStore.activeSearchQuery
         )
     }
@@ -258,8 +264,8 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     private func selectAdjacentFromTable(delta: Int) -> Bool {
         guard preferences.layout == .list, !recordsSnapshot.isEmpty else { return false }
         let records = recordsSnapshot
-        let current = moduleStore.selectedRecordID.flatMap { id in
-            records.firstIndex { $0.id == id }
+        let current = moduleStore.selectedRecordIdentity.flatMap { identity in
+            records.firstIndex { moduleStore.selectionIdentity(for: $0) == identity }
         } ?? (delta < 0 ? records.count : -1)
         let next = min(max(current + delta, 0), records.count - 1)
         guard next != current, records.indices.contains(next) else { return false }
@@ -305,16 +311,19 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
 
         let openItem = NSMenuItem(title: "在浏览器中打开", action: #selector(openInBrowser(_:)), keyEquivalent: "")
         openItem.target = self
+        openItem.representedObject = record
         openItem.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "在浏览器中打开")
         menu.addItem(openItem)
 
         let copyItem = NSMenuItem(title: "复制链接", action: #selector(copyDetailLink(_:)), keyEquivalent: "")
         copyItem.target = self
+        copyItem.representedObject = record
         copyItem.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "复制链接")
         menu.addItem(copyItem)
 
         let shareItem = NSMenuItem(title: "分享...", action: #selector(shareRecord(_:)), keyEquivalent: "")
         shareItem.target = self
+        shareItem.representedObject = record
         shareItem.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "分享")
         menu.addItem(shareItem)
 

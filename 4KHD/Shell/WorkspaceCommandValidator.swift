@@ -112,7 +112,7 @@ final class WorkspaceCommandValidator {
     }
 
     private func canInspectCurrentItem(_ moduleID: WorkspaceModuleID) -> Bool {
-        appContext.toolbarContext.snapshot(for: moduleID).fields.hasSelection
+        appContext.toolbarContext.currentReference(for: moduleID) != nil
     }
 
     private func canFavoriteCurrentItem(_ moduleID: WorkspaceModuleID) -> Bool {

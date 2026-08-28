@@ -12,6 +12,9 @@ final class FavoritesModuleStoreTests: XCTestCase {
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "m2", detailURL: "https://www.misskon.com/tag/y/")), .missKon)
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "w1", detailURL: "https://wallhaven.cc/w/123")), .wallhaven)
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "w2", detailURL: "https://whvn.cc/w/456")), .wallhaven)
+        XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "k1", detailURL: "https://xx.knit.bid/article/123/")), .knit)
+        XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "k2", detailURL: "https://media.knit.bid/article/456/")), .knit)
+        XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "k3", detailURL: "https://knit.bid.evil.example/article/789/")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "u1", detailURL: "https://example.com/foo")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "u2", detailURL: "not a url")))
     }
@@ -24,22 +27,26 @@ final class FavoritesModuleStoreTests: XCTestCase {
             Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html"),
             Self.makeRecord(id: "m1", detailURL: "https://misskon.com/xxx/"),
             Self.makeRecord(id: "w1", detailURL: "https://wallhaven.cc/w/123"),
+            Self.makeRecord(id: "k1", detailURL: "https://xx.knit.bid/article/123/"),
             Self.makeRecord(id: "u1", detailURL: "https://example.com/foo"),
             Self.makeRecord(id: "g2", detailURL: "https://www.4khd.com/content/b.html"),
         ])
 
         // 全部:保持原始顺序,剔除未知来源。
-        moduleStore.filter = .all
-        XCTAssertEqual(moduleStore.visibleRecords.map(\.id), ["g1", "m1", "w1", "g2"])
+        moduleStore.setFilter(.all)
+        XCTAssertEqual(moduleStore.visibleRecords.map(\.id), ["g1", "m1", "w1", "k1", "g2"])
 
-        moduleStore.filter = .gallery
+        moduleStore.setFilter(.gallery)
         XCTAssertEqual(moduleStore.visibleRecords.map(\.id), ["g1", "g2"])
 
-        moduleStore.filter = .missKon
+        moduleStore.setFilter(.missKon)
         XCTAssertEqual(moduleStore.visibleRecords.map(\.id), ["m1"])
 
-        moduleStore.filter = .wallhaven
+        moduleStore.setFilter(.wallhaven)
         XCTAssertEqual(moduleStore.visibleRecords.map(\.id), ["w1"])
+
+        moduleStore.setFilter(.knit)
+        XCTAssertEqual(moduleStore.visibleRecords.map(\.id), ["k1"])
     }
 
     // MARK: - 搜索过滤
@@ -87,7 +94,42 @@ final class FavoritesModuleStoreTests: XCTestCase {
 
         // 选中过滤后不可见的记录时,selectedRecord 为空。
         moduleStore.select(record: moduleStore.visibleRecords.first)
-        moduleStore.filter = .gallery
+        moduleStore.setFilter(.gallery)
+        XCTAssertNil(moduleStore.selectedRecord)
+    }
+
+    @MainActor
+    func testSwitchingToEmptySourceFilterClearsSelectionIdentity() async throws {
+        let (_, moduleStore) = try await makeLoadedStores(records: [
+            Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html")
+        ])
+        moduleStore.select(record: moduleStore.visibleRecords.first)
+        XCTAssertNotNil(moduleStore.selectedRecordIdentity)
+
+        moduleStore.setFilter(.missKon)
+
+        XCTAssertTrue(moduleStore.visibleRecords.isEmpty)
+        XCTAssertNil(moduleStore.selectedRecordIdentity)
+        XCTAssertNil(moduleStore.selectedRecordID)
+        XCTAssertNil(moduleStore.selectedRecord)
+    }
+
+    @MainActor
+    func testRemovingLastFavoriteClearsSelectionIdentity() async throws {
+        let (favoritesStore, moduleStore) = try await makeLoadedStores(records: [
+            Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html")
+        ])
+        let record = try XCTUnwrap(moduleStore.visibleRecords.first)
+        moduleStore.select(record: record)
+
+        try await favoritesStore.toggle(record)
+        for _ in 0..<10 where moduleStore.selectedRecordIdentity != nil {
+            await Task.yield()
+        }
+
+        XCTAssertTrue(moduleStore.visibleRecords.isEmpty)
+        XCTAssertNil(moduleStore.selectedRecordIdentity)
+        XCTAssertNil(moduleStore.selectedRecordID)
         XCTAssertNil(moduleStore.selectedRecord)
     }
 

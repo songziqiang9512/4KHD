@@ -73,8 +73,7 @@ enum SiteListResolver {
 
     private static func fetchHTMLFromNetwork(_ url: URL) async throws -> String {
         let request = try GalleryRequestFactory.makeHTMLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try OnlineSourcePolicy.validate(response, source: .gallery, resource: .html)
+        let (data, response) = try await OnlineSourceSession.galleryHTML.data(for: request)
         if let httpResponse = response as? HTTPURLResponse,
            !(200..<300).contains(httpResponse.statusCode) {
             throw URLError(.badServerResponse)

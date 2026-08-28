@@ -7,12 +7,14 @@ enum FavoriteSource: String, CaseIterable {
     case gallery
     case missKon
     case wallhaven
+    case knit
 
     var title: String {
         switch self {
         case .gallery: "4KHD"
         case .missKon: "MissKon"
         case .wallhaven: "Wallhaven"
+        case .knit: "爱妹子"
         }
     }
 
@@ -21,6 +23,7 @@ enum FavoriteSource: String, CaseIterable {
         case .gallery: "photo.on.rectangle"
         case .missKon: "person.crop.square"
         case .wallhaven: "photo.stack"
+        case .knit: "photo.on.rectangle.angled"
         }
     }
 
@@ -30,11 +33,33 @@ enum FavoriteSource: String, CaseIterable {
         FavoriteSourceAdapterRegistry.shared.adapter(for: self)?.configureImageRequest
     }
 
-    static func source(for record: FavoriteRecord) -> FavoriteSource? {
+    /// Old/imported favorite records are not trusted to carry a source-owned
+    /// cover. Validate both the detail owner and the media URL before attaching
+    /// source-specific request headers or starting an image request.
+    nonisolated func validatedCoverURL(for record: FavoriteRecord) -> URL? {
+        guard Self.source(for: record) == self,
+              let url = record.coverURL.flatMap(URL.init(string:)),
+              OnlineSourcePolicy.allows(url, source: policySource, resource: .media) else {
+            return nil
+        }
+        return url
+    }
+
+    private nonisolated var policySource: OnlineSourcePolicy.Source {
+        switch self {
+        case .gallery: .gallery
+        case .missKon: .missKon
+        case .wallhaven: .wallhaven
+        case .knit: .knit
+        }
+    }
+
+    nonisolated static func source(for record: FavoriteRecord) -> FavoriteSource? {
         guard let url = URL(string: record.detailURL) else { return nil }
         if OnlineSourcePolicy.allows(url, source: .gallery, resource: .html) { return .gallery }
         if OnlineSourcePolicy.allows(url, source: .missKon, resource: .html) { return .missKon }
         if OnlineSourcePolicy.allows(url, source: .wallhaven, resource: .html) { return .wallhaven }
+        if OnlineSourcePolicy.allows(url, source: .knit, resource: .html) { return .knit }
         return nil
     }
 }
@@ -45,6 +70,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
     case gallery
     case missKon
     case wallhaven
+    case knit
 
     var title: String {
         switch self {
@@ -52,6 +78,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .gallery: "4KHD"
         case .missKon: "MissKon"
         case .wallhaven: "Wallhaven"
+        case .knit: "爱妹子"
         }
     }
 
@@ -61,6 +88,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .gallery: .gallery
         case .missKon: .missKon
         case .wallhaven: .wallhaven
+        case .knit: .knit
         }
     }
 }

@@ -14,7 +14,7 @@ final class WorkspacePreferencesViewController: NSViewController {
     private let localSortFieldPopup = NSPopUpButton()
     private let localSortDirectionPopup = NSPopUpButton()
     private let showAdvancedModulesCheckbox = NSButton(
-        checkboxWithTitle: "显示 4KHD 和 MissKon 模块",
+        checkboxWithTitle: "显示 4KHD、MissKon 和爱妹子模块",
         target: nil,
         action: nil
     )
@@ -249,6 +249,7 @@ final class WorkspacePreferencesViewController: NSViewController {
         toolbarContext.setMissKonLayout(mkLayout)
         toolbarContext.setWallhavenLayout(whLayout)
         toolbarContext.setLocalLayout(locLayout)
+        toolbarContext.setLayout(isList: layout == .list, for: .knitGallery)
     }
 
     @objc private func localSortFieldChanged(_ sender: NSPopUpButton) {

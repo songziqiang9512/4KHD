@@ -8,10 +8,12 @@ import Observation
 @MainActor
 @Observable
 final class FavoritesModuleStore {
+    typealias SelectionIdentity = String
+
     let favoritesStore: FavoritesStore
 
-    var filter: FavoriteSourceFilter = .all
-    var selectedRecordID: FavoriteRecord.ID?
+    private(set) var filter: FavoriteSourceFilter = .all
+    private(set) var selectedRecordIdentity: SelectionIdentity?
     var searchText = ""
     private(set) var activeSearchQuery: String?
 
@@ -52,16 +54,82 @@ final class FavoritesModuleStore {
     }
 
     var selectedRecord: FavoriteRecord? {
-        guard let selectedRecordID else { return nil }
-        return visibleRecords.first { $0.id == selectedRecordID }
+        guard let selectedRecordIdentity else { return nil }
+        return visibleRecords.first {
+            selectionIdentity(for: $0) == selectedRecordIdentity
+        }
+    }
+
+    /// 兼容工具栏与 Inspector 的只读 raw id；选择真值使用包含来源的详情 URL 身份。
+    var selectedRecordID: FavoriteRecord.ID? {
+        selectedRecord?.id
     }
 
     init(favoritesStore: FavoritesStore) {
         self.favoritesStore = favoritesStore
+        observeFavoritesRevision()
     }
 
     func select(record: FavoriteRecord?) {
-        selectedRecordID = record?.id
+        selectedRecordIdentity = record.map { selectionIdentity(for: $0) }
+    }
+
+    nonisolated static func selectionIdentity(for record: FavoriteRecord) -> SelectionIdentity {
+        let detailURL = record.detailURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !detailURL.isEmpty { return detailURL }
+        return "\(record.sourceID)\u{1F}\(record.id)"
+    }
+
+    nonisolated func selectionIdentity(for record: FavoriteRecord) -> SelectionIdentity {
+        Self.selectionIdentity(for: record)
+    }
+
+    func setFilter(_ filter: FavoriteSourceFilter) {
+        self.filter = filter
+        reconcileSelection()
+    }
+
+    /// 收藏删除、筛选或搜索变化后同步选择；空结果必须清掉旧选择。
+    func reconcileSelection() {
+        if let selectedRecordIdentity,
+           visibleRecords.contains(where: {
+               selectionIdentity(for: $0) == selectedRecordIdentity
+           }) {
+            return
+        }
+        selectedRecordIdentity = visibleRecords.first.map { selectionIdentity(for: $0) }
+    }
+
+    private func observeFavoritesRevision() {
+        withObservationTracking {
+            _ = favoritesStore.favoritesRevision
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.reconcileSelection()
+                self.observeFavoritesRevision()
+            }
+        }
+    }
+
+    func canStepSourceRecord(from record: FavoriteRecord, delta: Int) -> Bool {
+        adjacentSourceRecord(from: record, delta: delta) != nil
+    }
+
+    @discardableResult
+    func stepSourceRecord(from record: FavoriteRecord, delta: Int) -> Bool {
+        guard let next = adjacentSourceRecord(from: record, delta: delta) else { return false }
+        select(record: next)
+        return true
+    }
+
+    private func adjacentSourceRecord(from record: FavoriteRecord, delta: Int) -> FavoriteRecord? {
+        guard delta != 0, let source = FavoriteSource.source(for: record) else { return nil }
+        let sourceRecords = visibleRecords.filter { FavoriteSource.source(for: $0) == source }
+        guard let current = sourceRecords.firstIndex(of: record) else { return nil }
+        let next = current + delta
+        guard sourceRecords.indices.contains(next) else { return nil }
+        return sourceRecords[next]
     }
 
     func submitSearch() {
@@ -71,20 +139,13 @@ final class FavoritesModuleStore {
             return
         }
         activeSearchQuery = query
-        reselectFirstVisibleRecordIfNeeded()
+        reconcileSelection()
     }
 
     func clearSearch() {
         searchText = ""
         activeSearchQuery = nil
-        reselectFirstVisibleRecordIfNeeded()
-    }
-
-    private func reselectFirstVisibleRecordIfNeeded() {
-        if let selectedRecordID, visibleRecords.contains(where: { $0.id == selectedRecordID }) {
-            return
-        }
-        selectedRecordID = visibleRecords.first?.id
+        reconcileSelection()
     }
 
 }

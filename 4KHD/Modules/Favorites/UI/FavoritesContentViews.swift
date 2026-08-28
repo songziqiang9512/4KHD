@@ -23,7 +23,7 @@ final class FavoritesListRowView: NSTableCellView {
 
     func configure(record: FavoriteRecord, source: FavoriteSource?, searchQuery: String? = nil) {
         coverView.configureRequest = source?.imageRequestConfigurator
-        coverView.setImage(url: record.coverURL.flatMap(URL.init(string:)), maxPixelSize: 180)
+        coverView.setImage(url: source?.validatedCoverURL(for: record), maxPixelSize: 180)
         if let query = searchQuery, !query.isEmpty {
             titleLabel.attributedStringValue = highlightedAttributedString(record.title, query: query)
         } else {
@@ -77,7 +77,7 @@ final class FavoritesGridItemView: NSCollectionViewItem {
 
     private let cardView = WorkspaceThumbnailGridCardView()
     private var imageTask: RemoteImageLoadTask?
-    private var representedID: FavoriteRecord.ID?
+    private var representedIdentity: FavoritesModuleStore.SelectionIdentity?
     private var currentCoverURL: URL?
     var thumbnailMaxPixelSize: CGFloat = 512
 
@@ -99,7 +99,7 @@ final class FavoritesGridItemView: NSCollectionViewItem {
         super.prepareForReuse()
         imageTask?.cancel()
         imageTask = nil
-        representedID = nil
+        representedIdentity = nil
         currentCoverURL = nil
         cardView.resetForReuse()
     }
@@ -111,17 +111,18 @@ final class FavoritesGridItemView: NSCollectionViewItem {
         searchQuery: String? = nil,
         onAspectRatio: @escaping (CGFloat) -> Void
     ) {
-        let coverURL = record.coverURL.flatMap(URL.init(string:))
-        let idChanged = representedID != record.id
+        let coverURL = source?.validatedCoverURL(for: record)
+        let identity = FavoritesModuleStore.selectionIdentity(for: record)
+        let identityChanged = representedIdentity != identity
         let urlChanged = currentCoverURL != coverURL
-        representedID = record.id
+        representedIdentity = identity
         cardView.setText(
             title: record.title,
             metadata: record.imageCount > 0 ? "\(record.imageCount) 张图片" : "多张图片",
             highlightQuery: searchQuery
         )
         cardView.applySelectionState(isSelected)
-        if idChanged || urlChanged {
+        if identityChanged || urlChanged {
             loadCover(record: record, source: source, onAspectRatio: onAspectRatio)
         } else if let coverURL {
             let ratio = RemoteImageURLAspectRatio.aspectRatio(from: coverURL)
@@ -150,7 +151,7 @@ final class FavoritesGridItemView: NSCollectionViewItem {
     ) {
         imageTask?.cancel()
         cardView.setImage(nil)
-        let coverURL = record.coverURL.flatMap(URL.init(string:))
+        let coverURL = source?.validatedCoverURL(for: record)
         currentCoverURL = coverURL
         guard let coverURL else {
             cardView.setPlaceholder("暂无缩略图", isVisible: true)
@@ -172,7 +173,9 @@ final class FavoritesGridItemView: NSCollectionViewItem {
 
         cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
-            guard let self, self.currentCoverURL == coverURL else { return }
+            guard let self,
+                  self.representedIdentity == FavoritesModuleStore.selectionIdentity(for: record),
+                  self.currentCoverURL == coverURL else { return }
             guard let image else {
                 self.cardView.setPlaceholder("加载失败", isVisible: true)
                 return
@@ -238,16 +241,16 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private let collectionView = FavoritesGridCollectionView()
     private let gridLayout = WorkspaceThumbnailWaterfallLayout()
     private var records: [FavoriteRecord] = []
-    private var selectedRecordID: FavoriteRecord.ID?
+    private var selectedRecordIdentity: FavoritesModuleStore.SelectionIdentity?
     private var searchQuery: String?
     private var isApplyingSelection = false
-    private var lastAppliedIDs: [FavoriteRecord.ID] = []
+    private var lastAppliedIdentities: [FavoritesModuleStore.SelectionIdentity] = []
     private var lastLayoutWidth: CGFloat = 0
-    private var aspectRatiosByRecordID: [FavoriteRecord.ID: CGFloat] = [:]
+    private var aspectRatiosByRecordIdentity: [FavoritesModuleStore.SelectionIdentity: CGFloat] = [:]
     private var minimumColumnCount: Int?
     private var maximumColumnCount: Int?
     private var preferredCardMinimumWidth: CGFloat = 136
-    private let thumbnailPrefetchController = WorkspaceThumbnailPrefetchController<FavoriteRecord.ID>()
+    private let thumbnailPrefetchController = WorkspaceThumbnailPrefetchController<FavoritesModuleStore.SelectionIdentity>()
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "FavoritesGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
@@ -276,15 +279,17 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView)
     }
 
-    func firstVisibleRecordID() -> FavoriteRecord.ID? {
+    func firstVisibleRecordIdentity() -> FavoritesModuleStore.SelectionIdentity? {
         collectionView.indexPathsForVisibleItems()
             .filter { records.indices.contains($0.item) }
             .min { $0.item < $1.item }
-            .map { records[$0.item].id }
+            .map { FavoritesModuleStore.selectionIdentity(for: records[$0.item]) }
     }
 
-    func scrollRecordIntoViewIfNeeded(withID recordID: FavoriteRecord.ID) {
-        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+    func scrollRecordIntoViewIfNeeded(withIdentity identity: FavoritesModuleStore.SelectionIdentity) {
+        guard let index = records.firstIndex(where: {
+            FavoritesModuleStore.selectionIdentity(for: $0) == identity
+        }) else { return }
         let indexPath = IndexPath(item: index, section: 0)
         guard let attributes = gridLayout.layoutAttributesForItem(at: indexPath),
               !gridScrollView.contentView.bounds.contains(attributes.frame) else { return }
@@ -293,29 +298,31 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
 
     func update(
         records: [FavoriteRecord],
-        selectedRecordID: FavoriteRecord.ID?,
+        selectedRecordIdentity: FavoritesModuleStore.SelectionIdentity?,
         searchQuery: String?,
         minimumColumnCount: Int? = nil,
         maximumColumnCount: Int? = nil,
         preferredCardMinimumWidth: CGFloat = 136
     ) {
-        let previousItemIDs = lastAppliedIDs
-        let previousSelectedRecordID = self.selectedRecordID
+        let previousItemIdentities = lastAppliedIdentities
+        let previousSelectedRecordIdentity = self.selectedRecordIdentity
         let previousSearchQuery = self.searchQuery
-        let nextItemIDs = records.map(\.id)
-        let nextItemIDSet = Set(nextItemIDs)
-        let contentChanged = nextItemIDs != previousItemIDs
+        let nextItemIdentities = records.map { FavoritesModuleStore.selectionIdentity(for: $0) }
+        let nextItemIdentitySet = Set(nextItemIdentities)
+        let contentChanged = nextItemIdentities != previousItemIdentities
         self.records = records
-        self.selectedRecordID = selectedRecordID
+        self.selectedRecordIdentity = selectedRecordIdentity
         self.searchQuery = searchQuery
         self.minimumColumnCount = minimumColumnCount
         self.maximumColumnCount = maximumColumnCount
         self.preferredCardMinimumWidth = preferredCardMinimumWidth
-        aspectRatiosByRecordID = aspectRatiosByRecordID.filter { nextItemIDSet.contains($0.key) }
+        aspectRatiosByRecordIdentity = aspectRatiosByRecordIdentity.filter {
+            nextItemIdentitySet.contains($0.key)
+        }
 
         let sizeChanged = updateItemSize()
         if sizeChanged || contentChanged {
-            lastAppliedIDs = nextItemIDs
+            lastAppliedIdentities = nextItemIdentities
             if contentChanged {
                 thumbnailPrefetchController.reset()
                 // 内容替换：强制布局全量重建，避免 append 增量路径把新内容套进旧卡片 frame。
@@ -327,21 +334,24 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
             }
         } else if previousSearchQuery != searchQuery {
             refreshVisibleItems()
-        } else if previousSelectedRecordID != selectedRecordID {
+        } else if previousSelectedRecordIdentity != selectedRecordIdentity {
             refreshVisibleSelection()
         }
         syncSelection()
         scheduleThumbnailPrefetch()
     }
 
-    func refreshMetadata(selectedRecordID: FavoriteRecord.ID?, searchQuery: String?) {
-        let previousSelectedRecordID = self.selectedRecordID
+    func refreshMetadata(
+        selectedRecordIdentity: FavoritesModuleStore.SelectionIdentity?,
+        searchQuery: String?
+    ) {
+        let previousSelectedRecordIdentity = self.selectedRecordIdentity
         let previousSearchQuery = self.searchQuery
-        self.selectedRecordID = selectedRecordID
+        self.selectedRecordIdentity = selectedRecordIdentity
         self.searchQuery = searchQuery
         if previousSearchQuery != searchQuery {
             refreshVisibleItems()
-        } else if previousSelectedRecordID != selectedRecordID {
+        } else if previousSelectedRecordIdentity != selectedRecordIdentity {
             refreshVisibleSelection()
         }
     }
@@ -354,10 +364,13 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
             cell.configure(
                 record: record,
                 source: FavoriteSource.source(for: record),
-                isSelected: record.id == selectedRecordID,
+                isSelected: FavoritesModuleStore.selectionIdentity(for: record) == selectedRecordIdentity,
                 searchQuery: searchQuery
             ) { [weak self] ratio in
-                self?.updateAspectRatio(ratio, for: record.id)
+                self?.updateAspectRatio(
+                    ratio,
+                    for: FavoritesModuleStore.selectionIdentity(for: record)
+                )
             }
         }
     }
@@ -377,10 +390,13 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         item.configure(
             record: record,
             source: FavoriteSource.source(for: record),
-            isSelected: record.id == selectedRecordID,
+            isSelected: FavoritesModuleStore.selectionIdentity(for: record) == selectedRecordIdentity,
             searchQuery: searchQuery
         ) { [weak self] ratio in
-            self?.updateAspectRatio(ratio, for: record.id)
+            self?.updateAspectRatio(
+                ratio,
+                for: FavoritesModuleStore.selectionIdentity(for: record)
+            )
         }
         return item
     }
@@ -388,7 +404,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     func collectionView(_: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection, let indexPath = indexPaths.first, records.indices.contains(indexPath.item) else { return }
         let record = records[indexPath.item]
-        selectedRecordID = record.id
+        selectedRecordIdentity = FavoritesModuleStore.selectionIdentity(for: record)
         refreshVisibleSelection()
         onSelect?(record)
     }
@@ -424,8 +440,10 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         gridLayout.aspectRatioProvider = { [weak self] indexPath in
             guard let self, self.records.indices.contains(indexPath.item) else { return 16.0 / 9.0 }
             let record = self.records[indexPath.item]
-            if let ratio = self.aspectRatiosByRecordID[record.id], ratio.isFinite, ratio > 0 { return ratio }
-            if let coverURL = record.coverURL.flatMap(URL.init(string:)),
+            let identity = FavoritesModuleStore.selectionIdentity(for: record)
+            if let ratio = self.aspectRatiosByRecordIdentity[identity], ratio.isFinite, ratio > 0 { return ratio }
+            if let source = FavoriteSource.source(for: record),
+               let coverURL = source.validatedCoverURL(for: record),
                let ratio = RemoteImageURLAspectRatio.aspectRatio(from: coverURL),
                ratio.isFinite, ratio > 0
             {
@@ -446,8 +464,10 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         collectionView.keyboardContext = WorkspaceKeyboardContext(
             stepSelection: { [weak self] delta in self?.selectAdjacent(delta: delta) ?? false },
             onEnter: { [weak self] in
-                guard let self, let id = self.selectedRecordID,
-                      let indexPath = self.records.firstIndex(where: { $0.id == id }) else { return false }
+                guard let self, let identity = self.selectedRecordIdentity,
+                      let indexPath = self.records.firstIndex(where: {
+                          FavoritesModuleStore.selectionIdentity(for: $0) == identity
+                      }) else { return false }
                 self.openDetail(for: IndexPath(item: indexPath, section: 0))
                 return true
             }
@@ -482,13 +502,16 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         return true
     }
 
-    private func updateAspectRatio(_ ratio: CGFloat, for recordID: FavoriteRecord.ID) {
+    private func updateAspectRatio(
+        _ ratio: CGFloat,
+        for identity: FavoritesModuleStore.SelectionIdentity
+    ) {
         guard ratio.isFinite, ratio > 0 else { return }
         let clamped = max(gridLayout.minAspectRatio, min(gridLayout.maxAspectRatio, ratio))
-        let current = aspectRatiosByRecordID[recordID] ?? 0.74
+        let current = aspectRatiosByRecordIdentity[identity] ?? 0.74
         let threshold: CGFloat = current < 0.5 ? 0.01 : 0.1
         guard abs(current - clamped) > threshold else { return }
-        aspectRatiosByRecordID[recordID] = clamped
+        aspectRatiosByRecordIdentity[identity] = clamped
         aspectRatioLayoutQueue.add(id: "invalidate") { [weak self] in
             self?.performWithoutAnimation { self?.gridLayout.invalidateCachedFrames() }
         }
@@ -497,7 +520,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private func prefetchInitialThumbnails() {
         thumbnailPrefetchController.prefetchInitial(
             itemCount: records.count,
-            itemID: { [weak self] index in self?.recordID(at: index) },
+            itemID: { [weak self] index in self?.recordIdentity(at: index) },
             request: { [weak self] index in self?.thumbnailRequest(at: index) }
         )
     }
@@ -507,14 +530,14 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
             scrollView: gridScrollView,
             layout: gridLayout,
             itemCount: records.count,
-            itemID: { [weak self] index in self?.recordID(at: index) },
+            itemID: { [weak self] index in self?.recordIdentity(at: index) },
             request: { [weak self] index in self?.thumbnailRequest(at: index) }
         )
     }
 
-    private func recordID(at index: Int) -> FavoriteRecord.ID? {
+    private func recordIdentity(at index: Int) -> FavoritesModuleStore.SelectionIdentity? {
         guard records.indices.contains(index) else { return nil }
-        return records[index].id
+        return FavoritesModuleStore.selectionIdentity(for: records[index])
     }
 
     private var thumbnailMaxPixelSize: CGFloat {
@@ -528,18 +551,21 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
 
     private func thumbnailRequest(at index: Int) -> ImageRequest? {
         guard records.indices.contains(index),
-              let coverURL = records[index].coverURL.flatMap(URL.init(string:)) else { return nil }
-        let source = FavoriteSource.source(for: records[index])
+              let source = FavoriteSource.source(for: records[index]),
+              let coverURL = source.validatedCoverURL(for: records[index]) else { return nil }
         return RemoteImagePipeline.shared.request(
             for: coverURL,
             priority: .veryLow,
             maxPixelSize: thumbnailMaxPixelSize,
-            configureURLRequest: source?.imageRequestConfigurator ?? { _ in }
+            configureURLRequest: source.imageRequestConfigurator ?? { _ in }
         )
     }
 
     private func syncSelection() {
-        guard let selectedRecordID, let index = records.firstIndex(where: { $0.id == selectedRecordID }) else {
+        guard let selectedRecordIdentity,
+              let index = records.firstIndex(where: {
+                  FavoritesModuleStore.selectionIdentity(for: $0) == selectedRecordIdentity
+              }) else {
             isApplyingSelection = true
             collectionView.selectionIndexPaths = []
             isApplyingSelection = false
@@ -555,17 +581,19 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         for indexPath in collectionView.indexPathsForVisibleItems() {
             guard let item = collectionView.item(at: indexPath) as? FavoritesGridItemView,
                   records.indices.contains(indexPath.item) else { continue }
-            let id = records[indexPath.item].id
-            item.applySelectionState(id == selectedRecordID)
+            let identity = FavoritesModuleStore.selectionIdentity(for: records[indexPath.item])
+            item.applySelectionState(identity == selectedRecordIdentity)
         }
     }
 
     private func selectAdjacent(delta: Int) -> Bool {
         guard !records.isEmpty else { return false }
-        let current = selectedRecordID.flatMap { id in records.firstIndex { $0.id == id } } ?? 0
+        let current = selectedRecordIdentity.flatMap { identity in
+            records.firstIndex { FavoritesModuleStore.selectionIdentity(for: $0) == identity }
+        } ?? 0
         let next = min(max(current + delta, 0), records.count - 1)
         guard next != current else { return true }
-        selectedRecordID = records[next].id
+        selectedRecordIdentity = FavoritesModuleStore.selectionIdentity(for: records[next])
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [IndexPath(item: next, section: 0)]
         isApplyingSelection = false
@@ -578,7 +606,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private func makeContextMenu(for indexPath: IndexPath?) -> NSMenu? {
         guard let indexPath, records.indices.contains(indexPath.item) else { return nil }
         let record = records[indexPath.item]
-        selectedRecordID = record.id
+        selectedRecordIdentity = FavoritesModuleStore.selectionIdentity(for: record)
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [indexPath]
         isApplyingSelection = false
@@ -590,7 +618,7 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private func openDetail(for indexPath: IndexPath) {
         guard records.indices.contains(indexPath.item) else { return }
         let record = records[indexPath.item]
-        selectedRecordID = record.id
+        selectedRecordIdentity = FavoritesModuleStore.selectionIdentity(for: record)
         isApplyingSelection = true
         collectionView.selectionIndexPaths = [indexPath]
         isApplyingSelection = false

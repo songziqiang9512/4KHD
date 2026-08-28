@@ -240,20 +240,26 @@ jobs:
         id: notes
         run: |
           set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
           current_tag="${{ steps.version.outputs.tag }}"
           previous_tag="$(git tag --list 'build-*' --sort=-version:refname | grep -v "^${current_tag}$" | head -n 1 || true)"
           notes_file="build/release-notes.md"
-          {
-            echo "Prerelease ${{ steps.version.outputs.version }}"
-            echo
-            if [[ -n "$previous_tag" ]]; then
-              echo "Changes since $previous_tag:"
-              git log --pretty=format:'- %s (%h)' "$previous_tag"..HEAD
-            else
-              echo "Changes:"
-              git log --pretty=format:'- %s (%h)' HEAD
-            fi
-          } > "$notes_file"
+          versioned_notes="docs/releases/${version}.md"
+          if [[ -f "$versioned_notes" ]]; then
+            cp "$versioned_notes" "$notes_file"
+          else
+            {
+              echo "Prerelease $version"
+              echo
+              if [[ -n "$previous_tag" ]]; then
+                echo "Changes since $previous_tag:"
+                git log --pretty=format:'- %s (%h)' "$previous_tag"..HEAD
+              else
+                echo "Changes:"
+                git log --pretty=format:'- %s (%h)' HEAD
+              fi
+            } > "$notes_file"
+          fi
           echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
 
       - name: Download verified Sparkle publishing tools
