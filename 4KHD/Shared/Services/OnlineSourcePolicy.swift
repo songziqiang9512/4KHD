@@ -8,6 +8,8 @@ enum OnlineSourcePolicy {
         case wallhaven
         case knit
         case mrds
+        case quanji
+        case porny
     }
 
     enum Resource {
@@ -96,6 +98,21 @@ enum OnlineSourcePolicy {
                 || host == "ts.zhixunkeji.xyz"
         case (.mrds, .api):
             return false
+        case (.quanji, .html):
+            return isExactOrSubdomain(host, of: "91quanji.com")
+        case (.quanji, .media):
+            return isExactOrSubdomain(host, of: "mugua01.cfd")
+                || isExactOrSubdomain(host, of: "o9hx3f-s8jamrmtps5.sbs")
+        case (.quanji, .api):
+            return false
+        case (.porny, .html):
+            return isExactOrSubdomain(host, of: "91porny.com")
+        case (.porny, .media):
+            return host == "int.ucloud161.xyz"
+                || host == "int.qiniuyun37.xyz"
+                || isExactOrSubdomain(host, of: "jiuse3.cloud")
+        case (.porny, .api):
+            return false
         }
     }
 
@@ -104,7 +121,7 @@ enum OnlineSourcePolicy {
     /// delegates because some image loaders do not retain custom Referer
     /// headers on `task.originalRequest`.
     nonisolated static func source(forMediaURL url: URL) -> Source? {
-        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds].filter {
+        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds, .quanji, .porny].filter {
             allows(url, source: $0, resource: .media)
         }
         return matches.count == 1 ? matches[0] : nil
@@ -187,6 +204,8 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         if host == "wallhaven.cc" || host.hasSuffix(".wallhaven.cc") { return .wallhaven }
         if host == "knit.bid" || host.hasSuffix(".knit.bid") { return .knit }
         if host == "mrds66.com" || host.hasSuffix(".mrds66.com") { return .mrds }
+        if host == "91quanji.com" || host.hasSuffix(".91quanji.com") { return .quanji }
+        if host == "91porny.com" || host.hasSuffix(".91porny.com") { return .porny }
         return nil
     }
 }
@@ -203,6 +222,8 @@ final class OnlineSourceSession: NSObject, URLSessionTaskDelegate, @unchecked Se
     static let wallhavenHTML = OnlineSourceSession(source: .wallhaven, resource: .html)
     static let wallhavenMedia = OnlineSourceSession(source: .wallhaven, resource: .media)
     static let mrdsHTML = OnlineSourceSession(source: .mrds, resource: .html)
+    static let quanjiHTML = OnlineSourceSession(source: .quanji, resource: .html)
+    static let pornyHTML = OnlineSourceSession(source: .porny, resource: .html)
 
     private let source: OnlineSourcePolicy.Source
     private let resource: OnlineSourcePolicy.Resource

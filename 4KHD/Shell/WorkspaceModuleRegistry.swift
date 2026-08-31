@@ -31,6 +31,8 @@ struct WorkspaceModulePresentationProfile: Equatable {
     let showsFavoritesFilter: Bool
     var showsKnitFilters: Bool = false
     var showsVideoSave: Bool = false
+    /// 纯视频源只保留列表/网格，双击播放，不使用右侧详情栏。
+    var showsDetailPane: Bool = true
     let filmstripAvailability: FilmstripAvailability
     let refreshRequiresSelection: Bool
     let detailActions: DetailActions
@@ -45,6 +47,7 @@ struct WorkspaceModulePresentationProfile: Equatable {
         showsFavoritesFilter: false,
         showsKnitFilters: false,
         showsVideoSave: false,
+        showsDetailPane: true,
         filmstripAvailability: .none,
         refreshRequiresSelection: false,
         detailActions: .none
@@ -168,7 +171,7 @@ private final class WorkspaceUnavailableController: NSViewController {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -182,7 +185,7 @@ private final class WorkspaceUnavailableController: NSViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
         ])
         view = container
     }

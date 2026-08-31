@@ -36,6 +36,8 @@
     Wallhaven/   — wallhaven.cc 在线壁纸模块
     KnitGallery/ — xx.knit.bid 图片与视频图库模块
     MrdsGallery/ — www.mrds66.com 每日大赛图库模块
+    QuanjiGallery/ — 91quanji.com 木瓜视频模块
+    PornyGallery/ — 91porny.com 视频模块
 ```
 
 ### 模块内部结构
@@ -64,8 +66,10 @@
 | 在线图库 | `Wallhaven` | wallhaven.cc API v1 搜索浏览、分类/排序/比例/分辨率筛选、纯度门控、上传者浏览、本地收藏、详情缓存 |
 | 在线图库 | `KnitGallery` | xx.knit.bid 四分区浏览、分类相关专题/排行筛选、AJAX 分页、渐进式详情、尾页推荐与独立 HLS 视频播放 |
 | 在线图库 | `MrdsGallery` | www.mrds66.com Typecho 分类浏览、详情 `data-xkrkllgl` 图片、尾页相邻推荐与加密 HLS 播放（不保存 MP4） |
+| 在线视频 | `QuanjiGallery` | 91quanji.com 木瓜视频：公开列表/标签/搜索、无右侧详情栏，双击播放，XOR 解码 HLS |
+| 在线视频 | `PornyGallery` | 91porny.com 十四分类浏览与搜索，无右侧详情栏；公开 `data-src` HLS 才播放；不绕过登录 |
 | 本地图片 | `LocalLibrary` | 本地目录导入、扫描、metadata 读取 |
-| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子/每日大赛），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
+| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
 
 ## 4. 共享能力清单
 
@@ -94,7 +98,8 @@
 | `WorkspaceCoalescingQueue` | `Shared/Platform/` | 合并高频刷新 |
 | `FilmstripVisibilityController` | `Shared/State/` | 胶卷条显示/隐藏动画状态 |
 | `WorkspaceDetailPaneController` | `Shared/State/` | 详情窗格展开/收起 |
-| `WorkspaceDetailContentMode` | `Shared/State/` | 详情图片与尾页推荐之间的共享导航状态 |
+| `OnlineVideoGalleryStore` | `Shared/State/` | 木瓜视频 / 91PORNY 共用的视频列表与 HLS 解析状态 |
+| `OnlineVideoFeedViewController` | `Shared/UI/` | 视频模块列表/网格；双击和右键播放/下载，无图集语义 |
 
 ## 5. 变更优先级
 
@@ -111,15 +116,15 @@
 
 ### 统一收藏模块（在线收藏）
 
-- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛，rawValue 作路由 itemID）
-- 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整
-- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery/MrdsGallery 的具体类型
-- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery/MrdsGallery 收藏继续使用原站解析、胶片条和页尾推荐；Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
+- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY，rawValue 作路由 itemID）
+- 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整。木瓜视频/91PORNY 收藏例外：双击或回车直接播放，右键提供「播放」「下载视频」，不打开右侧详情栏
+- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery 的具体类型
+- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery/MrdsGallery 收藏继续使用原站解析、胶片条和页尾推荐；木瓜视频/91PORNY 收藏 `playsFromFeed`，`navigationMode: .sourceRecords`，无详情栏、胶片条与推荐。Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
 - **选择身份与空状态**：列表/网格选择以标准化 `detailURL` 为主键，不得只比较可能跨来源冲突的站点 raw ID；切换到空筛选、删除当前或最后一条收藏时必须同步修正选择并清空旧详情、推荐、视频和工具栏状态
 - **KnitGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放，播放按钮及独立播放器的右键菜单均同时提供保存 MP4 与复制影片源 URL，工具栏「保存」菜单也可保存 MP4；播放和保存均经 App 组装层复用 KnitGallery 原生实现，Favorites 不直接依赖播放器或下载器类型。未解析到受信任视频源时必须禁用菜单；不同视频可进入共享下载队列，同一图集的活动任务由 `DownloadStore` 去重
 - **MrdsGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放；播放按钮、独立播放器和工具栏「保存」均提供保存 MP4 与拷贝源 URL。站点清单是 AES-128 MPEG-TS VOD：下载密钥后按 KEY 行 IV 解密每个 TS，再走与爱妹子相同的无损封装。`FavoriteVideoActions.canSaveAsMP4 = true`。未解析到受信任视频源时必须禁用菜单
 - **Wallhaven 一致性**：收藏详情按同来源收藏记录导航，加载原图与完整 metadata，支持等待原图解析完成后设为壁纸；上传者入口必须在应用内路由到 Wallhaven 上传者作品，不得跳到外部网页或退化为封面图
-- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
+- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数、木瓜视频/91PORNY 1）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
 - **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图的防盗链请求配置从对应 `FavoriteSourceAdapter` 获取
 - **历史封面仍需重新门禁**：从磁盘恢复或旧版本迁移的 `coverURL` 在列表、网格、预取和详情首图使用前，都必须重新通过所属来源的媒体 allowlist；不能因记录已经持久化就直接信任 URL
 - 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
@@ -188,19 +193,39 @@
 - **原图门禁**：列表封面只作详情解析前的过渡图；详情未解析时不得启用「保存当前图片」
 - 站点分页和入口实测快照见 `docs/mrds-site-protocol-2026-08-31.md`
 
+### QuanjiGallery 模块（木瓜视频）
+
+- **侧边栏**：高级模块开关下「木瓜视频」分组：最近更新 `/`、国产精品 `tag.jsp?t=5y9kg97rdzxe`、国产自拍 `tag.jsp?t=649e2zxgw10p`。rawValue 同时是路由 itemID。v1 不做热门厂商/`makers.jsp`
+- **列表**：公开 HTML 卡片 `thumb--videos` + `watch.jsp?v=`；封面 `pics.mugua01.cfd`。标签页分页是不透明 `p=`，下一页来自 chevron。搜索 `/search.jsp?keyword=`，后续页用页面里的 `nextPage`
+- **无详情栏**：`showsDetailPane: false`。双击/回车/右键「播放」解析 HLS 后打开独立播放窗口；右键「下载视频」进入共享下载队列。工具栏不显示详情/沉浸/重置缩放
+- **HLS**：写在公开页 `eval(I("..."))` 里，UTF-16 code unit XOR `0x80` 后取 `url: '...'`。这是页面编码，不是登录绕过
+- **视频**：复用 App 层 `KnitVideoPlayerWindowController`，`source: .quanji`。保存 MP4 走 `KnitVideoDownloadService`（无 Knit Cloudflare 验证）
+- **安全门禁**：HTML 仅 HTTPS exact/subdomain `91quanji.com`；媒体仅 `mugua01.cfd` 与 `o9hx3f-s8jamrmtps5.sbs` 的 exact/subdomain。不要用 `host.contains`
+- 站点分页和入口实测快照见 `docs/quanji-site-protocol-2026-09-01.md`
+
+### PornyGallery 模块（91PORNY）
+
+- **侧边栏**：高级模块开关下「91PORNY」分组，入口为原站 14 个 `/video/category/{slug}`。不做 `/videos` 蝌蚪和 `/vod`
+- **列表**：只收 `/video/view/{id}` 与高清分类 `/video/viewhd/{id}` 卡片，跳过外域广告 gif。封面多为 `//int.ucloud161.xyz/thumb/`。分类分页 `/video/category/{slug}/{n}`，下一页来自 `&raquo;`。搜索 `/search?keywords=`
+- **无详情栏**：`showsDetailPane: false`。双击/回车/右键「播放」现解析公开页再打开独立播放窗口；右键「下载视频」进入共享下载队列
+- **HLS**：公开页 `<video id="video-play" data-src="...m3u8?t=&m=">`。`/video/viewhd/{id}` 公开页只有共享 `/hlsd/` 预告，播放/下载改解析同一 id 的 `/video/view/{id}`；没有可播 `data-src` 仍提示不可播放。**不得**伪造 Cookie、打登录接口或绕 Cloudflare
+- **视频**：复用 App 层播放器，`source: .porny`。签名 `t`/`m` 会过期，每次播放/下载现解析。AVPlayer 子请求仍不经过 `OnlineSourcePolicy`
+- **安全门禁**：HTML 仅 HTTPS exact/subdomain `91porny.com`；媒体仅 exact `int.ucloud161.xyz`、`int.qiniuyun37.xyz` 与 exact/subdomain `jiuse3.cloud`
+- 站点分页和入口实测快照见 `docs/porny-site-protocol-2026-09-01.md`
+
 ### 设置面板
 
-- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/MrdsGallery/本地图库的列表/网格
+- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/本地图库的列表/网格
 - **缓存上限**：在线缓存容量选择（512MB-4GB/无限制）
 - **清除缓存**：一键清除 Nuke 图片缓存、详情页缓存、MissKon/Wallhaven 模块缓存、本地缩略图缓存、临时文件
-- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery/MrdsGallery 模块显示
-- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery/MrdsGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
+- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery 模块显示
+- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
 - 全部中文化
 
 ### 辅助窗口
 
 - **下载窗口**：使用普通、非模态 `NSWindow` 作为图集与视频的统一任务中心；关闭窗口只隐藏界面，不中断队列。窗口标题是唯一标题，内容区顶部只显示任务摘要与批量操作；每个任务在系统进度条下方等宽显示已下载/总大小、整体百分比和当前速度，完成后显示精确落盘大小与平均速度。图集按单图落盘、视频按 HLS 分片完成采样并平滑速度；运行中的图集/视频总大小允许标记为估算值，视频封装完成后必须用最终 MP4 大小校正。活动单文件任务必须预留标准化目标路径，拒绝第二个任务无确认写入同一文件，并在完成、失败或取消时释放预留。空状态、任务类型、目标位置、取消与清理操作均使用系统控件和语义色
-- **信息窗口**：七个模块共用一个 App 层 Inspector；固定来源标题区，下方使用可滚动的动态分组 `NSGridView`，缺失字段整行省略。关闭或最小化后必须停止观察与本地 metadata 读取；未选择项目时信息按钮禁用
+- **信息窗口**：各模块共用一个 App 层 Inspector；固定来源标题区，下方使用可滚动的动态分组 `NSGridView`，缺失字段整行省略。关闭或最小化后必须停止观察与本地 metadata 读取；未选择项目时信息按钮禁用
 
 ### 已知 UI 边界
 
@@ -209,7 +234,7 @@
 ### 全局约束
 
 - 修改 Shell 集成任何模块时，先搜索 `case .模块名` 覆盖所有 switch
-- 工具栏展示能力统一声明在 `WorkspaceModuleDescriptor.presentation`；新增模块先补 descriptor profile，不要在 `WorkspaceToolbarHost` 追加 moduleID 条件链
+- 工具栏展示能力统一声明在 `WorkspaceModuleDescriptor.presentation`；新增模块先补 descriptor profile，不要在 `WorkspaceToolbarHost` 追加 moduleID 条件链。纯视频源设 `showsDetailPane: false`
 - 修改任何在线模块时，以 `4KHDGallery` 的状态流和 UI 行为为参考
 - 在线模块异步结果必须按请求时的 section/query 回写，不能在 `await` 后直接读当前 section 写状态
 - Gallery/MissKon 详情请求合并器必须按 waiter 计数处理取消；最后一个等待者取消时要取消底层网络任务，避免切换详情后继续解析、写缓存或创建 WebKit fallback
@@ -228,3 +253,5 @@
 xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build
 rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 ```
+
+**改完收尾必须启动 Debug 应用**，方便用户立刻验收；不要只构建不打开。若已有实例在跑，先退出再打开刚编出的 `4KHD.app`。

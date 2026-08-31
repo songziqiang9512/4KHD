@@ -191,6 +191,8 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         switch source {
         case .knit: "爱妹子视频"
         case .mrds: "每日大赛视频"
+        case .quanji: "木瓜视频"
+        case .porny: "91PORNY 视频"
         case .gallery, .missKon, .wallhaven: "视频播放"
         }
     }

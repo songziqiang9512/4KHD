@@ -618,6 +618,8 @@ nonisolated enum KnitVideoDownloadService {
     private static func defaultReferer(for source: OnlineSourcePolicy.Source) -> String {
         switch source {
         case .mrds: "https://www.mrds66.com/"
+        case .quanji: "https://91quanji.com/"
+        case .porny: "https://91porny.com/"
         case .knit, .gallery, .missKon, .wallhaven: "https://xx.knit.bid/"
         }
     }

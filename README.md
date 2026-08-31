@@ -45,6 +45,14 @@
 - 解析到 HLS 后可用独立原生窗口播放、拷贝影片源 URL，并保存为 MP4（AES-128 清单先解密 TS 再封装）
 - 收藏、整图集下载、Inspector 已接入统一工作区
 
+### 在线视频 — QuanjiGallery
+- 侧边栏分类入口；列表/瀑布流双布局，搜索与分页使用站点公开 HTML
+- 无右侧详情栏。双击或右键「播放」打开独立原生窗口；右键「下载视频」将公开 HLS 保存为 MP4
+
+### 在线视频 — PornyGallery
+- 侧边栏分类入口；列表收录 `/video/view/` 与 `/video/viewhd/` 卡片，跳过外域广告
+- 无右侧详情栏。只播放公开观看页中的 `data-src`；`viewhd` 卡片改解析同一 id 的 `/video/view/`。不伪造登录态
+
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
 - 上/下张键盘/浮层按钮导航，Escape/Tab/Enter 键盘支持
@@ -61,9 +69,9 @@
 - 搜索匹配文件名和文件夹名，结果高亮
 
 ### 收藏（在线收藏）
-- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven / 爱妹子 / 每日大赛五个模块的收藏
-- 工具栏按来源筛选（全部 / 4KHD / MissKon / Wallhaven / 爱妹子 / 每日大赛）与搜索
-- 列表 / 瀑布流网格双布局（与 MissKon/4KHD 相同的卡片、hover、双击交互）；详情区为大图查看区（缩放、胶片条、沉浸模式）
+- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven / KnitGallery / MrdsGallery / QuanjiGallery / PornyGallery 的收藏
+- 工具栏按来源筛选（全部及各在线模块）与搜索
+- 列表 / 瀑布流网格双布局（与 MissKon/4KHD 相同的卡片、hover、双击交互）；图集来源的详情区为大图查看区（缩放、胶片条、沉浸模式）
 - 持久保存于 FavoritesStore（favorites.json）；旧版本收藏数据按 detailURL host 自动兼容
 - Gallery / MissKon / 爱妹子 / 每日大赛来源的收藏项可「保存整个图集」与「保存当前图片」
 - Gallery / MissKon / 爱妹子 / 每日大赛来源的收藏详情在图集末尾显示推荐，点击后路由到对应在线模块
@@ -71,15 +79,16 @@
 - 收藏筛选为空或删除当前项目时会清空旧详情；历史封面会按所属来源重新校验，分页失败可从原位置重试且不会提前显示推荐
 - 爱妹子含视频收藏在详情中提供播放、空格键播放、影片源 URL 复制及工具栏 MP4 保存，启用状态来自当前已解析视频而不是列表提示
 - 每日大赛含视频收藏可播放、拷贝影片源 URL，并保存为 MP4（AES-128 HLS 先解密再封装）
+- QuanjiGallery / PornyGallery 收藏不打开详情栏：双击播放，右键「播放」「下载视频」
 - MissKon 收藏详情保留 MediaFire 资源入口
 - Wallhaven 收藏详情加载原图和完整元数据，可设为壁纸、浏览同来源收藏的上一张/下一张，并从上传者入口在应用内进入 Wallhaven 对应作品列表
 
 ### 设置
-- 统一布局切换（列表/网格，同时控制 4KHD、MissKon、Wallhaven、爱妹子、每日大赛与本地图库）
+- 统一布局切换（列表/网格，同时控制各在线图库、在线视频模块与本地图库）
 - 在线缓存容量选择（512MB-4GB/无限制）
 - 一键清除所有缓存（图片、详情页、模块数据、临时文件）
-- 侧边栏模块显示开关（4KHD/MissKon/爱妹子/每日大赛）
-- 收藏 JSON 导出/导入覆盖 4KHD、MissKon、Wallhaven、爱妹子与每日大赛；导入会拒绝非受信来源，并安全合并重复记录
+- 侧边栏模块显示开关覆盖各在线图库与在线视频模块
+- 收藏 JSON 导出/导入覆盖全部合法在线来源；导入会拒绝非受信来源，并安全合并重复记录
 - 发布版每天自动检查更新，也可从应用菜单选择“检查更新…”
 
 ### 辅助窗口
@@ -99,6 +108,8 @@
     Wallhaven/  — wallhaven.cc 在线壁纸
     KnitGallery/ — xx.knit.bid 图片与视频图库
     MrdsGallery/ — www.mrds66.com 每日大赛图库
+    QuanjiGallery/ — 在线视频列表与公开 HLS
+    PornyGallery/ — 在线视频列表与公开 HLS
     LocalLibrary/ — 本地图片
     Favorites/  — 收藏记录
 4KHDTests/      — XCTest 回归测试
@@ -106,7 +117,7 @@
 
 Shell 通过 `WorkspaceModuleDescriptor` 组装每个模块的 content/detail controller 与工具栏能力；Favorites 通过 App 注册的 source adapter 使用各在线源能力，业务模块之间不直接引用具体实现。
 
-维护边界见 `AGENTS.md`；当前实现与验证状态见 `docs/ai-handover-2026-09-01.md`；发布操作见 `docs/release-process.md`；1.9.0 用户可见改动见 `docs/releases/1.9.0.md`。
+维护边界见 `AGENTS.md`；当前实现与验证状态见 `docs/ai-handover-2026-09-01.md`；发布操作见 `docs/release-process.md`；1.9.1 用户可见改动见 `docs/releases/1.9.1.md`。
 
 ## 开发
 

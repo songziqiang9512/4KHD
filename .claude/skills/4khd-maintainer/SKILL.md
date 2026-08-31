@@ -52,6 +52,9 @@ Use only the checks justified by the change.
 # Full app build
 xcodebuild -project 4KHD.xcodeproj -scheme 4KHD -configuration Debug -destination 'platform=macOS' build
 
+# After finishing a change the user will test, quit any running instance
+# and launch the Debug 4KHD.app. Do not end the task with only a build.
+
 # 0 SwiftUI production-code check
 rg "import SwiftUI|NSHosting|NSViewRepresentable|AnyView" 4KHD --glob '*.swift'
 

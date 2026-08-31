@@ -9,6 +9,8 @@ enum WorkspaceToolbarSnapshot {
     case favorites(FavoritesSnapshot)
     case knit(KnitSnapshot)
     case mrds(MrdsSnapshot)
+    case quanji(VideoFeedSnapshot)
+    case porny(VideoFeedSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -95,6 +97,20 @@ enum WorkspaceToolbarSnapshot {
         let canResetZoom: Bool
         let canShare: Bool
         let isFilmstripPresented: Bool
+    }
+
+    struct VideoFeedSnapshot {
+        let searchText: String
+        let layout: OnlineVideoContentLayout
+        let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveVideo: Bool
+        let canShare: Bool
     }
 
     struct LocalSnapshot {
@@ -261,7 +277,28 @@ enum WorkspaceToolbarSnapshot {
                 isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
+        case let .quanji(s):
+            Self.videoFields(s, moduleName: "木瓜视频")
+        case let .porny(s):
+            Self.videoFields(s, moduleName: "91PORNY")
         }
+    }
+
+    private static func videoFields(_ s: VideoFeedSnapshot, moduleName: String) -> CommonFields {
+        CommonFields(
+            moduleName: moduleName, searchText: s.searchText,
+            isRefreshing: s.isRefreshing,
+            canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+            canIncreaseGridColumns: s.canIncreaseGridColumns,
+            canDecreaseGridColumns: s.canDecreaseGridColumns,
+            canSelectPreviousImage: s.canSelectPreviousImage,
+            canSelectNextImage: s.canSelectNextImage,
+            canSaveImage: false, canSaveAlbum: false, canSaveVideo: s.canSaveVideo,
+            canResetZoom: false,
+            canShare: s.canShare, canUseFilmstrip: false,
+            isFilmstripPresented: false,
+            hasSelection: s.canShare
+        )
     }
 
     var isListLayout: Bool {
@@ -279,6 +316,8 @@ enum WorkspaceToolbarSnapshot {
         case let .knit(snapshot):
             snapshot.layout == .list
         case let .mrds(snapshot):
+            snapshot.layout == .list
+        case let .quanji(snapshot), let .porny(snapshot):
             snapshot.layout == .list
         }
     }
@@ -343,6 +382,12 @@ final class WorkspaceToolbarContext {
     private let mrdsStore: MrdsGalleryStore
     private let mrdsPreferences: MrdsContentPreferences
     private let mrdsDetailInteraction: MrdsDetailInteractionController
+    private let quanjiStore: OnlineVideoGalleryStore
+    private let quanjiPreferences: OnlineVideoContentPreferences
+    private let quanjiDetailInteraction: OnlineVideoDetailInteractionController
+    private let pornyStore: OnlineVideoGalleryStore
+    private let pornyPreferences: OnlineVideoContentPreferences
+    private let pornyDetailInteraction: OnlineVideoDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -371,6 +416,12 @@ final class WorkspaceToolbarContext {
         mrdsStore: MrdsGalleryStore,
         mrdsPreferences: MrdsContentPreferences,
         mrdsDetailInteraction: MrdsDetailInteractionController,
+        quanjiStore: OnlineVideoGalleryStore,
+        quanjiPreferences: OnlineVideoContentPreferences,
+        quanjiDetailInteraction: OnlineVideoDetailInteractionController,
+        pornyStore: OnlineVideoGalleryStore,
+        pornyPreferences: OnlineVideoContentPreferences,
+        pornyDetailInteraction: OnlineVideoDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -398,6 +449,12 @@ final class WorkspaceToolbarContext {
         self.mrdsStore = mrdsStore
         self.mrdsPreferences = mrdsPreferences
         self.mrdsDetailInteraction = mrdsDetailInteraction
+        self.quanjiStore = quanjiStore
+        self.quanjiPreferences = quanjiPreferences
+        self.quanjiDetailInteraction = quanjiDetailInteraction
+        self.pornyStore = pornyStore
+        self.pornyPreferences = pornyPreferences
+        self.pornyDetailInteraction = pornyDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -522,15 +579,16 @@ final class WorkspaceToolbarContext {
             let selectedRecord = favoritesModuleStore.selectedRecord
             let source = selectedRecord.flatMap(FavoriteSource.source(for:))
             let canSaveAlbum = source == .gallery || source == .missKon || source == .knit || source == .mrds
+            let playsFromFeed = selectedRecord
+                .flatMap { FavoriteSourceAdapterRegistry.shared.adapter(for: $0)?.playsFromFeed } == true
             let detailMatchesSelection = selectedRecord != nil
                 && favoritesDetailStore.currentRecord == selectedRecord
             let canAdjustGridColumns = favoritesPreferences.layout == .grid
                 && !detailPaneController.isPresented
             let canSelectPrevious: Bool
             let canSelectNext: Bool
-            if detailMatchesSelection,
-               let selectedRecord,
-               favoritesDetailStore.navigationMode == .sourceRecords
+            if let selectedRecord,
+               playsFromFeed || (detailMatchesSelection && favoritesDetailStore.navigationMode == .sourceRecords)
             {
                 canSelectPrevious = favoritesModuleStore.canStepSourceRecord(from: selectedRecord, delta: -1)
                 canSelectNext = favoritesModuleStore.canStepSourceRecord(from: selectedRecord, delta: 1)
@@ -538,6 +596,11 @@ final class WorkspaceToolbarContext {
                 canSelectPrevious = detailMatchesSelection && favoritesDetailStore.canStepBackward
                 canSelectNext = detailMatchesSelection && favoritesDetailStore.canStepForward
             }
+            let canSaveFeedVideo = selectedRecord.flatMap { record -> Bool? in
+                let adapter = FavoriteSourceAdapterRegistry.shared.adapter(for: record)
+                guard adapter?.playsFromFeed == true else { return false }
+                return adapter?.videoActions?.canSaveAsMP4 == true
+            } ?? false
             return .favorites(
                 .init(
                     searchText: favoritesModuleStore.searchText,
@@ -554,7 +617,8 @@ final class WorkspaceToolbarContext {
                         && favoritesDetailStore.contentMode == .image
                         && favoritesDetailStore.hasResolvedSelectedImage,
                     canSaveAlbum: canSaveAlbum,
-                    canSaveVideo: detailMatchesSelection && favoritesDetailStore.canSaveVideo,
+                    canSaveVideo: canSaveFeedVideo
+                        || (detailMatchesSelection && favoritesDetailStore.canSaveVideo),
                     canResetZoom: detailMatchesSelection
                         && favoritesDetailStore.contentMode == .image
                         && favoritesDetailStore.selectedSlot != nil,
@@ -617,6 +681,55 @@ final class WorkspaceToolbarContext {
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
+        case .quanjiGallery:
+            return .quanji(videoFeedSnapshot(store: quanjiStore, preferences: quanjiPreferences))
+        case .pornyGallery:
+            return .porny(videoFeedSnapshot(store: pornyStore, preferences: pornyPreferences))
+        }
+    }
+
+    private func videoFeedSnapshot(
+        store: OnlineVideoGalleryStore,
+        preferences: OnlineVideoContentPreferences
+    ) -> WorkspaceToolbarSnapshot.VideoFeedSnapshot {
+        let item = store.selectedItem
+        let canAdjust = preferences.layout == .grid && !detailPaneController.isPresented
+        return .init(
+            searchText: store.searchText,
+            layout: preferences.layout,
+            isRefreshing: store.isRefreshingList,
+            canFavorite: item != nil,
+            isFavorite: item.map { store.isFavorite($0) } ?? false,
+            canIncreaseGridColumns: canAdjust && preferences.canIncreaseGridColumns,
+            canDecreaseGridColumns: canAdjust && preferences.canDecreaseGridColumns,
+            canSelectPreviousImage: store.canStepSelectionBackward,
+            canSelectNextImage: store.canStepSelectionForward,
+            canSaveVideo: item != nil,
+            canShare: item != nil
+        )
+    }
+
+    private func videoStore(for moduleID: WorkspaceModuleID) -> OnlineVideoGalleryStore? {
+        switch moduleID {
+        case .quanjiGallery: quanjiStore
+        case .pornyGallery: pornyStore
+        default: nil
+        }
+    }
+
+    private func videoPreferences(for moduleID: WorkspaceModuleID) -> OnlineVideoContentPreferences? {
+        switch moduleID {
+        case .quanjiGallery: quanjiPreferences
+        case .pornyGallery: pornyPreferences
+        default: nil
+        }
+    }
+
+    private func videoInteraction(for moduleID: WorkspaceModuleID) -> OnlineVideoDetailInteractionController? {
+        switch moduleID {
+        case .quanjiGallery: quanjiDetailInteraction
+        case .pornyGallery: pornyDetailInteraction
+        default: nil
         }
     }
 
@@ -666,6 +779,14 @@ final class WorkspaceToolbarContext {
             {
                 mrdsStore.clearSearch()
             }
+        case .quanjiGallery, .pornyGallery:
+            guard let store = videoStore(for: moduleID) else { return }
+            store.searchText = text
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               store.activeSearchQuery != nil
+            {
+                store.clearSearch()
+            }
         }
     }
 
@@ -685,6 +806,8 @@ final class WorkspaceToolbarContext {
             knitPreferences.layout = isList ? .list : .grid
         case .mrdsGallery:
             mrdsPreferences.layout = isList ? .list : .grid
+        case .quanjiGallery, .pornyGallery:
+            videoPreferences(for: moduleID)?.layout = isList ? .list : .grid
         }
     }
 
@@ -708,6 +831,11 @@ final class WorkspaceToolbarContext {
         case .mrdsGallery:
             guard mrdsPreferences.layout == .grid, !detailPaneController.isPresented else { return }
             mrdsPreferences.adjustGridColumns(delta: delta)
+        case .quanjiGallery, .pornyGallery:
+            guard let preferences = videoPreferences(for: moduleID),
+                  preferences.layout == .grid,
+                  !detailPaneController.isPresented else { return }
+            preferences.adjustGridColumns(delta: delta)
         }
     }
 
@@ -727,6 +855,8 @@ final class WorkspaceToolbarContext {
             knitStore.submitSearch()
         case .mrdsGallery:
             mrdsStore.submitSearch()
+        case .quanjiGallery, .pornyGallery:
+            videoStore(for: moduleID)?.submitSearch()
         }
     }
 
@@ -789,6 +919,8 @@ final class WorkspaceToolbarContext {
             knitStore.refreshFromNetwork()
         case .mrdsGallery:
             mrdsStore.refreshFromNetwork()
+        case .quanjiGallery, .pornyGallery:
+            videoStore(for: moduleID)?.refreshFromNetwork()
         }
     }
 
@@ -820,6 +952,8 @@ final class WorkspaceToolbarContext {
             return knitStore.selectedItem.map { [$0.detailURL] } ?? []
         case .mrdsGallery:
             return mrdsStore.selectedItem.map { [$0.detailURL] } ?? []
+        case .quanjiGallery, .pornyGallery:
+            return videoStore(for: moduleID)?.selectedItem.map { [$0.detailURL] } ?? []
         }
     }
 
@@ -841,6 +975,8 @@ final class WorkspaceToolbarContext {
             return knitStore.selectedItem.map { .web($0.detailURL) }
         case .mrdsGallery:
             return mrdsStore.selectedItem.map { .web($0.detailURL) }
+        case .quanjiGallery, .pornyGallery:
+            return videoStore(for: moduleID)?.selectedItem.map { .web($0.detailURL) }
         }
     }
 
@@ -873,6 +1009,10 @@ final class WorkspaceToolbarContext {
                 case .mrdsGallery:
                     guard let item = mrdsStore.selectedItem else { return }
                     try await mrdsStore.toggleFavorite(for: item)
+                case .quanjiGallery, .pornyGallery:
+                    guard let store = videoStore(for: moduleID),
+                          let item = store.selectedItem else { return }
+                    try await store.toggleFavorite(for: item)
                 }
             } catch {
                 let alert = makeAppAlert(
@@ -914,6 +1054,8 @@ final class WorkspaceToolbarContext {
             knitStore.stepImage(delta)
         case .mrdsGallery:
             mrdsStore.stepImage(delta)
+        case .quanjiGallery, .pornyGallery:
+            videoStore(for: moduleID)?.stepSelection(delta)
         }
     }
 
@@ -956,6 +1098,8 @@ final class WorkspaceToolbarContext {
                   let item = mrdsStore.selectedItem,
                   let slot = mrdsStore.selectedSlot else { return }
             mrdsDetailInteraction.save(item: item, slot: slot)
+        case .quanjiGallery, .pornyGallery:
+            return
         }
     }
 
@@ -983,7 +1127,7 @@ final class WorkspaceToolbarContext {
             case .missKon:
                 guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
-            case .wallhaven, nil:
+            case .wallhaven, .quanji, .porny, nil:
                 return
             case .knit:
                 guard let item = KnitFavoritesBridge.item(from: record) else { return }
@@ -992,7 +1136,7 @@ final class WorkspaceToolbarContext {
                 guard let item = MrdsFavoritesBridge.item(from: record) else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .mrds(item))
             }
-        case .localLibrary, .wallhaven:
+        case .localLibrary, .wallhaven, .quanjiGallery, .pornyGallery:
             return
         }
         switch result {
@@ -1018,12 +1162,55 @@ final class WorkspaceToolbarContext {
                   let videoURL = knitStore.videoURL else { return }
             knitDetailInteraction.saveVideo(item: item, sourceURL: videoURL)
         case .favorites:
-            guard favoritesModuleStore.selectedRecord == favoritesDetailStore.currentRecord else { return }
+            guard let record = favoritesModuleStore.selectedRecord,
+                  let adapter = FavoriteSourceAdapterRegistry.shared.adapter(for: record)
+            else { return }
+            if adapter.playsFromFeed {
+                guard let actions = adapter.videoActions, actions.canSaveAsMP4 else { return }
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        let url = try await adapter.resolvePlayableVideoURL(for: record)
+                        actions.saveAsMP4(record, url)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        let alert = makeAppAlert(
+                            title: "无法下载视频",
+                            message: error.localizedDescription,
+                            style: .warning
+                        )
+                        presentAppAlert(alert, in: appModalHostWindow())
+                    }
+                }
+                return
+            }
+            guard favoritesDetailStore.currentRecord == record else { return }
             favoritesDetailStore.saveVideoAsMP4()
         case .mrdsGallery:
             guard let item = mrdsStore.selectedItem,
                   let videoURL = mrdsStore.videoURL else { return }
             mrdsDetailInteraction.saveVideo(item: item, sourceURL: videoURL)
+        case .quanjiGallery, .pornyGallery:
+            guard let store = videoStore(for: moduleID),
+                  let interaction = videoInteraction(for: moduleID),
+                  let item = store.selectedItem else { return }
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let url = try await store.resolveVideoURL(for: item)
+                    interaction.saveVideo(item: item, sourceURL: url)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    let alert = makeAppAlert(
+                        title: "无法下载视频",
+                        message: error.localizedDescription,
+                        style: .warning
+                    )
+                    presentAppAlert(alert, in: appModalHostWindow())
+                }
+            }
         case .fourKHDGallery, .localLibrary, .missKon, .wallhaven:
             return
         }
@@ -1045,6 +1232,8 @@ final class WorkspaceToolbarContext {
             knitDetailInteraction.resetZoom()
         case .mrdsGallery:
             mrdsDetailInteraction.resetZoom()
+        case .quanjiGallery, .pornyGallery:
+            return
         }
     }
 

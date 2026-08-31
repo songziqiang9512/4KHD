@@ -4,10 +4,9 @@
 
 ## 当前状态
 
-- 当前分支 `main`，本批目标版本 1.9.0（build 190），最低系统 macOS 26.4；生产代码纯 AppKit、0 SwiftUI。
-- 本批新增独立模块 MrdsGallery（侧边栏「每日大赛」）、Favorites/下载/Inspector 五来源接入，以及 Knit/Mrds 共用的 AES-128 MPEG-TS VOD 保存。网格卡片标题始终可见；分类切换走内存列表缓存且封面不先清空。
-- 最终全量 XCTest 共 163 项：162 通过、1 项真实联网 HLS 保存测试按默认门禁跳过、0 失败；Debug 与 Release 构建通过。生产代码 SwiftUI 禁用扫描、workflow/YAML 静态校验与 `git diff --check` 通过。
-- 1.9.0 采用现有受保护 `Build Prerelease` 流程：版本先提交到 `main`，随后由 GitHub Actions 测试、Developer ID 签名、Apple 公证、DMG/staple、Sparkle EdDSA appcast 和不可变 prerelease 完成。按本轮用户要求，正确推送并触发后即移交用户观察，不等待远端任务结束，也不重复下载公开产物。
+- 当前分支 `main`，本批目标版本 1.9.1（build 191），最低系统 macOS 26.4；生产代码纯 AppKit、0 SwiftUI。
+- 本批新增 `QuanjiGallery` / `PornyGallery` 两个在线视频模块：共用视频列表状态与 feed UI，`showsDetailPane: false`，双击/右键播放独立窗口并下载 MP4。在线收藏对这两类来源走 `playsFromFeed`。
+- 1.9.1 采用现有受保护 `Build Prerelease` 流程：版本先提交到 `main`，随后由 GitHub Actions 测试、Developer ID 签名、Apple 公证、DMG/staple、Sparkle EdDSA appcast 和不可变 prerelease 完成。按本轮用户要求，正确推送并触发后即移交用户观察，不等待远端任务结束，也不重复下载公开产物。
 
 ## 当前架构事实
 
@@ -20,8 +19,9 @@
 - Mrds HLS 媒体 host 会在 `ts.syjiaotong.mobi` / `tx.doudou520.online` / `ts.zhixunkeji.xyz` 间轮换；密钥 URI 不在 allowlist 时应抛 `OnlineSourcePolicy.PolicyError.rejectedURL`，不要吞成 `.invalidPlaylist`。
 - Knit/Mrds 视频保存共用 `KnitVideoDownloadService`：`METHOD=AES-128` 先下载 16 字节密钥并按 KEY 行 IV 解密每个 TS，再无损封装。SAMPLE-AES、无 ENDLIST、独立音轨等仍拒绝。Knit 遇 403/`cf-mitigated: challenge` 最多共享一次 WebKit 验证；Mrds 没有 Cloudflare，403 直接失败。
 - 视频播放复用 App 层 `KnitVideoPlayerWindowController`；Mrds 传入 `source: .mrds`。当前 `AVPlayer` 自行发起的 HLS 子请求不经过 `OnlineSourcePolicy`。
-- Favorites 分页容量：4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数。选择身份以标准化 `detailURL` 为主键。
-- 设置中的收藏 JSON 备份直接快照 `FavoritesStore`，因此包含 KnitGallery 与 MrdsGallery 的 `FavoriteRecord` 全字段；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。
+- Favorites 分页容量：4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数、QuanjiGallery/PornyGallery 1。选择身份以标准化 `detailURL` 为主键。视频源收藏 `playsFromFeed`：双击播放，不打开详情栏。
+- QuanjiGallery / PornyGallery 声明 `showsDetailPane: false`。PornyGallery 列表卡片若为 `/video/viewhd/{id}`，播放改解析同一 id 的 `/video/view/{id}`。
+- 设置中的收藏 JSON 备份直接快照 `FavoritesStore`，因此包含全部合法在线来源的 `FavoriteRecord` 全字段；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。
 
 ## 已知边界与结构债务
 
@@ -44,6 +44,7 @@
 1. 先阅读本文件和 `AGENTS.md`；历史交接不得覆盖当前代码事实。
 2. 不要重做已关闭问题；新增改动须继续补对应回归测试并保持生产代码 0 SwiftUI。
 3. 后续新增修改仍需明确授权再提交或推送；保留工作树中与任务无关的并行修改。
+4. QuanjiGallery / PornyGallery 已接入侧边栏高级模块、收藏适配器和独立播放窗口。只使用公开 HTML。没有可播 `data-src` 时显示不可播放，不得绕过登录或站点验证。Quanji HLS 父域可能轮换；Porny 签名查询串会过期。协议见 `docs/quanji-site-protocol-2026-09-01.md` 与 `docs/porny-site-protocol-2026-09-01.md`。
 
 ## 验证命令
 

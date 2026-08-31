@@ -3,6 +3,7 @@ import Observation
 
 /// 统一收藏列表:列表 / 瀑布流网格双布局,交互与 MissKon/4KHD 一致
 /// (单击选中、双击打开详情、hover 高亮、方向键、右键菜单、搜索高亮)。
+/// 木瓜视频 / 91PORNY 收藏双击直接播放，不打开详情栏。
 @MainActor
 final class FavoritesContentViewController: NSViewController, WorkspaceFocusable {
     let moduleStore: FavoritesModuleStore
@@ -97,12 +98,12 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             },
             onEscape: { [weak self] in self?.clearSearch() ?? false },
             onEnter: { [weak self] in
-                self?.openSelectedTableItemInDetail()
+                self?.activateSelectedTableItem()
                 return true
             }
         )
         tableView.target = self
-        tableView.doubleAction = #selector(openSelectedTableItemInDetail)
+        tableView.doubleAction = #selector(activateSelectedTableItem)
     }
 
     private func setupGrid() {
@@ -110,7 +111,8 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             self?.moduleStore.select(record: record)
         }
         gridView.onOpenDetail = { [weak self] in
-            self?.detailPane.setPresented(true)
+            guard let self, let record = self.moduleStore.selectedRecord else { return }
+            self.activate(record)
         }
         gridView.contextMenuProvider = { [weak self] record in
             guard let self else { return nil }
@@ -170,7 +172,8 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             if let pendingScrollRecordIdentity,
                let row = records.firstIndex(where: {
                    moduleStore.selectionIdentity(for: $0) == pendingScrollRecordIdentity
-               }) {
+               })
+            {
                 tableView.scrollRowToVisible(row)
             }
         case .grid:
@@ -215,7 +218,7 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         guard visibleRows.length > 0 else { return nil }
         let upperBound = min(visibleRows.location + visibleRows.length, recordsSnapshot.count)
         guard visibleRows.location < upperBound else { return nil }
-        for row in visibleRows.location..<upperBound {
+        for row in visibleRows.location ..< upperBound {
             if let record = record(at: row) {
                 return moduleStore.selectionIdentity(for: record)
             }
@@ -279,11 +282,62 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         return true
     }
 
-    @objc private func openSelectedTableItemInDetail() {
+    @objc private func activateSelectedTableItem() {
         let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
         guard let record = record(at: row) else { return }
+        activate(record)
+    }
+
+    private func activate(_ record: FavoriteRecord) {
         moduleStore.select(record: record)
+        if playsFromFeed(record) {
+            playFavoriteVideo(record)
+            return
+        }
         detailPane.setPresented(true)
+    }
+
+    private func playsFromFeed(_ record: FavoriteRecord) -> Bool {
+        FavoriteSourceAdapterRegistry.shared.adapter(for: record)?.playsFromFeed == true
+    }
+
+    private func playFavoriteVideo(_ record: FavoriteRecord) {
+        Task { [weak self] in
+            await self?.performFavoriteVideoAction(record, title: "无法播放") { record, url, actions in
+                actions.play(record, url)
+            }
+        }
+    }
+
+    private func saveFavoriteVideo(_ record: FavoriteRecord) {
+        Task { [weak self] in
+            await self?.performFavoriteVideoAction(record, title: "无法下载视频") { record, url, actions in
+                actions.saveAsMP4(record, url)
+            }
+        }
+    }
+
+    private func performFavoriteVideoAction(
+        _ record: FavoriteRecord,
+        title: String,
+        action: @MainActor (FavoriteRecord, URL, FavoriteVideoActions) -> Void
+    ) async {
+        guard let adapter = FavoriteSourceAdapterRegistry.shared.adapter(for: record),
+              let actions = adapter.videoActions
+        else { return }
+        do {
+            let url = try await adapter.resolvePlayableVideoURL(for: record)
+            action(record, url, actions)
+        } catch is CancellationError {
+            return
+        } catch {
+            let alert = makeAppAlert(
+                title: title,
+                message: error.localizedDescription,
+                style: .warning
+            )
+            presentAppAlert(alert, in: view.window)
+        }
     }
 
     // MARK: - 右键菜单
@@ -296,6 +350,25 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     private func makeContextMenu(for record: FavoriteRecord) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+
+        if playsFromFeed(record) {
+            menu.addItem(menuItem(
+                "播放",
+                action: #selector(playFromMenu(_:)),
+                representedObject: record,
+                symbolName: "play.fill"
+            ))
+            let downloadItem = menuItem(
+                "下载视频",
+                action: #selector(saveFromMenu(_:)),
+                representedObject: record,
+                symbolName: "arrow.down.circle"
+            )
+            downloadItem.isEnabled = FavoriteSourceAdapterRegistry.shared
+                .adapter(for: record)?.videoActions?.canSaveAsMP4 == true
+            menu.addItem(downloadItem)
+            menu.addItem(.separator())
+        }
 
         let unfavoriteItem = NSMenuItem(
             title: "取消收藏",
@@ -343,6 +416,18 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: title)
         }
         return item
+    }
+
+    @objc private func playFromMenu(_ sender: NSMenuItem) {
+        guard let record = sender.representedObject as? FavoriteRecord else { return }
+        moduleStore.select(record: record)
+        playFavoriteVideo(record)
+    }
+
+    @objc private func saveFromMenu(_ sender: NSMenuItem) {
+        guard let record = sender.representedObject as? FavoriteRecord else { return }
+        moduleStore.select(record: record)
+        saveFavoriteVideo(record)
     }
 
     @objc private func unfavoriteFromMenu(_ sender: NSMenuItem) {

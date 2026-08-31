@@ -226,6 +226,20 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             render(snapshot(for: item, moduleTitle: "每日大赛"))
+        case .quanjiGallery:
+            cancelLocalMetadata()
+            guard let item = appContext.quanjiStore.selectedItem else {
+                renderEmpty(module: "木瓜视频", symbolName: "play.rectangle")
+                return
+            }
+            render(snapshot(for: item, moduleTitle: "木瓜视频", store: appContext.quanjiStore))
+        case .pornyGallery:
+            cancelLocalMetadata()
+            guard let item = appContext.pornyStore.selectedItem else {
+                renderEmpty(module: "91PORNY", symbolName: "play.tv")
+                return
+            }
+            render(snapshot(for: item, moduleTitle: "91PORNY", store: appContext.pornyStore))
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 cancelLocalMetadata()
@@ -688,6 +702,38 @@ private final class WorkspaceInspectorViewController: NSViewController {
         )
     }
 
+    private func snapshot(
+        for item: OnlineVideoItem,
+        moduleTitle: String,
+        store: OnlineVideoGalleryStore
+    ) -> InspectorSnapshot {
+        let videoStatus: String? = if store.videoURL != nil {
+            "可播放"
+        } else if store.isResolvingDetail {
+            "解析中"
+        } else if let message = store.detailErrorMessage {
+            message
+        } else {
+            nil
+        }
+        return InspectorSnapshot(
+            symbolName: store.policySource == .quanji ? "play.rectangle" : "play.tv",
+            title: item.title,
+            moduleTitle: moduleTitle,
+            summary: [item.durationText, item.subtitle].filter { !$0.isEmpty }.joined(separator: " · ").nilIfEmpty,
+            sections: compactSections([
+                section("概览", rows: [
+                    row("时长", item.durationText.nilIfEmpty),
+                    row("收藏", store.isFavorite(item) ? "已收藏" : "未收藏"),
+                    row("视频状态", videoStatus),
+                ]),
+                section("来源", rows: [
+                    row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL)),
+                ]),
+            ])
+        )
+    }
+
     private func snapshot(for record: FavoriteRecord) -> InspectorSnapshot {
         let source = FavoriteSource.source(for: record)
         let detailStore = appContext.favoritesDetailStore
@@ -800,6 +846,18 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 _ = appContext.mrdsStore.selectedItem
                 _ = appContext.mrdsStore.videoURL
                 _ = appContext.mrdsStore.detailMetadata
+                _ = appContext.favoritesStore.favorites
+            case .quanjiGallery:
+                _ = appContext.quanjiStore.selectedItemID
+                _ = appContext.quanjiStore.selectedItem
+                _ = appContext.quanjiStore.videoURL
+                _ = appContext.quanjiStore.isResolvingDetail
+                _ = appContext.favoritesStore.favorites
+            case .pornyGallery:
+                _ = appContext.pornyStore.selectedItemID
+                _ = appContext.pornyStore.selectedItem
+                _ = appContext.pornyStore.videoURL
+                _ = appContext.pornyStore.isResolvingDetail
                 _ = appContext.favoritesStore.favorites
             case .localLibrary:
                 _ = appContext.localLibraryStore.roots

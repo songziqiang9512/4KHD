@@ -27,6 +27,30 @@ enum WorkspaceAppAssembly {
         let mrdsStore = MrdsGalleryStore(favorites: favoritesStore)
         let mrdsPreferences = MrdsContentPreferences()
         let mrdsDetailInteraction = MrdsDetailInteractionController(downloadStore: downloadStore)
+        let quanjiStore = QuanjiGalleryFactory.makeStore(favorites: favoritesStore)
+        let quanjiPreferences = OnlineVideoContentPreferences(
+            layoutKey: "com.songziqiang.4khd.quanji.layout",
+            gridColumnsKey: "com.songziqiang.4khd.quanji.gridColumns"
+        )
+        let quanjiDetailInteraction = OnlineVideoDetailInteractionController(
+            downloadStore: downloadStore,
+            policySource: .quanji,
+            sourceTitle: "木瓜视频",
+            userAgent: QuanjiRequestFactory.userAgent,
+            referer: QuanjiRequestFactory.htmlOrigin
+        )
+        let pornyStore = PornyGalleryFactory.makeStore(favorites: favoritesStore)
+        let pornyPreferences = OnlineVideoContentPreferences(
+            layoutKey: "com.songziqiang.4khd.porny.layout",
+            gridColumnsKey: "com.songziqiang.4khd.porny.gridColumns"
+        )
+        let pornyDetailInteraction = OnlineVideoDetailInteractionController(
+            downloadStore: downloadStore,
+            policySource: .porny,
+            sourceTitle: "91PORNY",
+            userAgent: PornyRequestFactory.userAgent,
+            referer: PornyRequestFactory.htmlOrigin
+        )
         configureFavoriteSourceAdapters(
             wallhavenPageResolver: { detailPageURL in
                 let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
@@ -64,6 +88,40 @@ enum WorkspaceAppAssembly {
                     guard let item = MrdsFavoritesBridge.item(from: record) else { return }
                     mrdsDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
                 }
+            ),
+            quanjiVideoActions: FavoriteVideoActions(
+                play: { record, sourceURL in
+                    guard let item = QuanjiFavoritesBridge.item(from: record) else { return }
+                    knitVideoPlayer.play(
+                        url: sourceURL,
+                        title: record.title,
+                        source: .quanji,
+                        userAgent: QuanjiRequestFactory.userAgent
+                    ) {
+                        quanjiDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                    }
+                },
+                saveAsMP4: { record, sourceURL in
+                    guard let item = QuanjiFavoritesBridge.item(from: record) else { return }
+                    quanjiDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                }
+            ),
+            pornyVideoActions: FavoriteVideoActions(
+                play: { record, sourceURL in
+                    guard let item = PornyFavoritesBridge.item(from: record) else { return }
+                    knitVideoPlayer.play(
+                        url: sourceURL,
+                        title: record.title,
+                        source: .porny,
+                        userAgent: PornyRequestFactory.userAgent
+                    ) {
+                        pornyDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                    }
+                },
+                saveAsMP4: { record, sourceURL in
+                    guard let item = PornyFavoritesBridge.item(from: record) else { return }
+                    pornyDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                }
             )
         )
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
@@ -94,6 +152,12 @@ enum WorkspaceAppAssembly {
             mrdsStore: mrdsStore,
             mrdsPreferences: mrdsPreferences,
             mrdsDetailInteraction: mrdsDetailInteraction,
+            quanjiStore: quanjiStore,
+            quanjiPreferences: quanjiPreferences,
+            quanjiDetailInteraction: quanjiDetailInteraction,
+            pornyStore: pornyStore,
+            pornyPreferences: pornyPreferences,
+            pornyDetailInteraction: pornyDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -120,6 +184,12 @@ enum WorkspaceAppAssembly {
             mrdsStore: mrdsStore,
             mrdsPreferences: mrdsPreferences,
             mrdsDetailInteraction: mrdsDetailInteraction,
+            quanjiStore: quanjiStore,
+            quanjiPreferences: quanjiPreferences,
+            quanjiDetailInteraction: quanjiDetailInteraction,
+            pornyStore: pornyStore,
+            pornyPreferences: pornyPreferences,
+            pornyDetailInteraction: pornyDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -147,6 +217,8 @@ enum WorkspaceAppAssembly {
             wallhavenStore: wallhavenStore,
             knitStore: knitStore,
             mrdsStore: mrdsStore,
+            quanjiStore: quanjiStore,
+            pornyStore: pornyStore,
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
             favoritesModuleStore: favoritesModuleStore,
@@ -162,7 +234,9 @@ enum WorkspaceAppAssembly {
     static func configureFavoriteSourceAdapters(
         wallhavenPageResolver: @escaping (URL) async throws -> FavoriteResolvedImagePage,
         knitVideoActions: FavoriteVideoActions? = nil,
-        mrdsVideoActions: FavoriteVideoActions? = nil
+        mrdsVideoActions: FavoriteVideoActions? = nil,
+        quanjiVideoActions: FavoriteVideoActions? = nil,
+        pornyVideoActions: FavoriteVideoActions? = nil
     ) {
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
             FavoriteSourceAdapter(
@@ -308,7 +382,79 @@ enum WorkspaceAppAssembly {
                 },
                 videoActions: mrdsVideoActions
             ),
+            makeVideoFavoriteAdapter(
+                source: .quanji,
+                itemFromRecord: QuanjiFavoritesBridge.item(from:),
+                resolve: QuanjiDetailResolver.resolve,
+                configureImageRequest: QuanjiRequestFactory.configureImageRequest,
+                sourceTitle: "木瓜视频",
+                videoActions: quanjiVideoActions
+            ),
+            makeVideoFavoriteAdapter(
+                source: .porny,
+                itemFromRecord: PornyFavoritesBridge.item(from:),
+                resolve: PornyDetailResolver.resolve,
+                configureImageRequest: PornyRequestFactory.configureImageRequest,
+                sourceTitle: "91PORNY",
+                videoActions: pornyVideoActions
+            ),
         ])
+    }
+
+    private static func makeVideoFavoriteAdapter(
+        source: FavoriteSource,
+        itemFromRecord: @escaping (FavoriteRecord) -> OnlineVideoItem?,
+        resolve: @escaping (URL) async throws -> OnlineVideoResolvedDetail,
+        configureImageRequest: @escaping (inout URLRequest) -> Void,
+        sourceTitle: String,
+        videoActions: FavoriteVideoActions?
+    ) -> FavoriteSourceAdapter {
+        FavoriteSourceAdapter(
+            source: source,
+            detailContent: { record in
+                guard let item = itemFromRecord(record) else { return nil }
+                return .paged(
+                    pageURLs: [item.detailURL],
+                    estimatedImageCount: 1,
+                    pageImageCapacity: 1
+                )
+            },
+            resolvePage: { url in
+                let detail = try await resolve(url)
+                return FavoriteResolvedImagePage(
+                    imageURLs: [detail.coverURL].compactMap { $0 },
+                    pageURLs: [url],
+                    metadata: nil,
+                    videoURL: detail.videoURL
+                )
+            },
+            configureImageRequest: configureImageRequest,
+            detailMetadata: { record in
+                guard let item = itemFromRecord(record) else { return nil }
+                return makeOnlineVideoFavoriteMetadata(item, record: record, sourceTitle: sourceTitle)
+            },
+            videoActions: videoActions,
+            navigationMode: .sourceRecords
+        )
+    }
+
+    private static func makeOnlineVideoFavoriteMetadata(
+        _ item: OnlineVideoItem,
+        record: FavoriteRecord,
+        sourceTitle: String
+    ) -> FavoriteDetailMetadata {
+        FavoriteDetailMetadata(
+            title: item.title,
+            detailText: record.subtitle,
+            sourceTitle: "来源: \(sourceTitle)",
+            sourceURL: item.detailURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: [
+                .init(label: "时长", value: item.durationText.isEmpty ? record.subtitle : item.durationText),
+            ].filter { !$0.value.isEmpty }
+        )
     }
 
     private static func makeWallhavenFavoriteMetadata(_ wallpaper: Wallpaper) -> FavoriteDetailMetadata {
@@ -511,6 +657,12 @@ enum WorkspaceAppAssembly {
         mrdsStore: MrdsGalleryStore,
         mrdsPreferences: MrdsContentPreferences,
         mrdsDetailInteraction: MrdsDetailInteractionController,
+        quanjiStore: OnlineVideoGalleryStore,
+        quanjiPreferences: OnlineVideoContentPreferences,
+        quanjiDetailInteraction: OnlineVideoDetailInteractionController,
+        pornyStore: OnlineVideoGalleryStore,
+        pornyPreferences: OnlineVideoContentPreferences,
+        pornyDetailInteraction: OnlineVideoDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -780,6 +932,8 @@ enum WorkspaceAppAssembly {
                                         )
                                     )
                                     mrdsStore.openRecommendation(recommendation)
+                                case .quanji, .porny:
+                                    break
                                 }
                             }
                         )
@@ -892,6 +1046,104 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: { mrdsStore.bootstrapIfNeeded() }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .quanjiGallery,
+                    displayName: "QuanjiGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, showsKnitFilters: false, showsVideoSave: true,
+                        showsDetailPane: false,
+                        filmstripAvailability: .none,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .quanjiGallery, itemID: QuanjiSection.home.rawValue)
+                    },
+                    makeContentController: { _ in
+                        OnlineVideoFeedViewController(
+                            store: quanjiStore,
+                            preferences: quanjiPreferences,
+                            configureImageRequest: QuanjiRequestFactory.configureImageRequest,
+                            onPlayVideo: { item, url in
+                                knitVideoPlayer.play(
+                                    url: url,
+                                    title: item.title,
+                                    source: .quanji,
+                                    userAgent: QuanjiRequestFactory.userAgent
+                                ) {
+                                    quanjiDetailInteraction.saveVideo(item: item, sourceURL: url)
+                                }
+                            },
+                            onSaveVideo: { item, url in
+                                quanjiDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            }
+                        )
+                    },
+                    makeDetailController: { _ in
+                        NSViewController()
+                    },
+                    normalizeRoute: { route in
+                        let section = QuanjiSection(rawValue: route.itemID) ?? .home
+                        return WorkspaceRoute(moduleID: .quanjiGallery, itemID: section.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let section = QuanjiSection(rawValue: route.itemID) else { return }
+                        if quanjiStore.filter != section.rawValue {
+                            quanjiStore.setFilter(section.rawValue)
+                        }
+                    },
+                    bootstrap: { quanjiStore.bootstrapIfNeeded() }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .pornyGallery,
+                    displayName: "PornyGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, showsKnitFilters: false, showsVideoSave: true,
+                        showsDetailPane: false,
+                        filmstripAvailability: .none,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .pornyGallery, itemID: PornySection.latest.rawValue)
+                    },
+                    makeContentController: { _ in
+                        OnlineVideoFeedViewController(
+                            store: pornyStore,
+                            preferences: pornyPreferences,
+                            configureImageRequest: PornyRequestFactory.configureImageRequest,
+                            onPlayVideo: { item, url in
+                                knitVideoPlayer.play(
+                                    url: url,
+                                    title: item.title,
+                                    source: .porny,
+                                    userAgent: PornyRequestFactory.userAgent
+                                ) {
+                                    pornyDetailInteraction.saveVideo(item: item, sourceURL: url)
+                                }
+                            },
+                            onSaveVideo: { item, url in
+                                pornyDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            }
+                        )
+                    },
+                    makeDetailController: { _ in
+                        NSViewController()
+                    },
+                    normalizeRoute: { route in
+                        let section = PornySection(rawValue: route.itemID) ?? .latest
+                        return WorkspaceRoute(moduleID: .pornyGallery, itemID: section.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let section = PornySection(rawValue: route.itemID) else { return }
+                        if pornyStore.filter != section.rawValue {
+                            pornyStore.setFilter(section.rawValue)
+                        }
+                    },
+                    bootstrap: { pornyStore.bootstrapIfNeeded() }
                 ),
             ]
         )

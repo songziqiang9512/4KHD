@@ -11,6 +11,8 @@ final class WorkspaceAppContext {
     let wallhavenStore: WallhavenGalleryStore
     let knitStore: KnitGalleryStore
     let mrdsStore: MrdsGalleryStore
+    let quanjiStore: OnlineVideoGalleryStore
+    let pornyStore: OnlineVideoGalleryStore
     let localLibraryStore: LocalLibraryStore
     let favoritesStore: FavoritesStore
     let favoritesModuleStore: FavoritesModuleStore
@@ -29,6 +31,8 @@ final class WorkspaceAppContext {
         wallhavenStore: WallhavenGalleryStore,
         knitStore: KnitGalleryStore,
         mrdsStore: MrdsGalleryStore,
+        quanjiStore: OnlineVideoGalleryStore,
+        pornyStore: OnlineVideoGalleryStore,
         localLibraryStore: LocalLibraryStore,
         favoritesStore: FavoritesStore,
         favoritesModuleStore: FavoritesModuleStore,
@@ -46,6 +50,8 @@ final class WorkspaceAppContext {
         self.wallhavenStore = wallhavenStore
         self.knitStore = knitStore
         self.mrdsStore = mrdsStore
+        self.quanjiStore = quanjiStore
+        self.pornyStore = pornyStore
         self.localLibraryStore = localLibraryStore
         self.favoritesStore = favoritesStore
         self.favoritesModuleStore = favoritesModuleStore

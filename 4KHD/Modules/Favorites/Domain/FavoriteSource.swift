@@ -9,6 +9,8 @@ enum FavoriteSource: String, CaseIterable {
     case wallhaven
     case knit
     case mrds
+    case quanji
+    case porny
 
     var title: String {
         switch self {
@@ -17,6 +19,8 @@ enum FavoriteSource: String, CaseIterable {
         case .wallhaven: "Wallhaven"
         case .knit: "爱妹子"
         case .mrds: "每日大赛"
+        case .quanji: "木瓜视频"
+        case .porny: "91PORNY"
         }
     }
 
@@ -27,6 +31,8 @@ enum FavoriteSource: String, CaseIterable {
         case .wallhaven: "photo.stack"
         case .knit: "photo.on.rectangle.angled"
         case .mrds: "flag.checkered"
+        case .quanji: "play.rectangle"
+        case .porny: "play.tv"
         }
     }
 
@@ -56,6 +62,8 @@ enum FavoriteSource: String, CaseIterable {
         case .wallhaven: .wallhaven
         case .knit: .knit
         case .mrds: .mrds
+        case .quanji: .quanji
+        case .porny: .porny
         }
     }
 
@@ -66,6 +74,8 @@ enum FavoriteSource: String, CaseIterable {
         if OnlineSourcePolicy.allows(url, source: .wallhaven, resource: .html) { return .wallhaven }
         if OnlineSourcePolicy.allows(url, source: .knit, resource: .html) { return .knit }
         if OnlineSourcePolicy.allows(url, source: .mrds, resource: .html) { return .mrds }
+        if OnlineSourcePolicy.allows(url, source: .quanji, resource: .html) { return .quanji }
+        if OnlineSourcePolicy.allows(url, source: .porny, resource: .html) { return .porny }
         return nil
     }
 }
@@ -78,6 +88,8 @@ enum FavoriteSourceFilter: String, CaseIterable {
     case wallhaven
     case knit
     case mrds
+    case quanji
+    case porny
 
     var title: String {
         switch self {
@@ -87,6 +99,8 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .wallhaven: "Wallhaven"
         case .knit: "爱妹子"
         case .mrds: "每日大赛"
+        case .quanji: "木瓜视频"
+        case .porny: "91PORNY"
         }
     }
 
@@ -98,6 +112,8 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .wallhaven: .wallhaven
         case .knit: .knit
         case .mrds: .mrds
+        case .quanji: .quanji
+        case .porny: .porny
         }
     }
 }

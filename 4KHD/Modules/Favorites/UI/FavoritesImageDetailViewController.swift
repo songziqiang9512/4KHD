@@ -395,6 +395,39 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         hideVideoPresentation()
         hideExternalActionPresentation()
 
+        let playsFromFeed = record.flatMap {
+            FavoriteSourceAdapterRegistry.shared.adapter(for: $0)?.playsFromFeed
+        } == true
+        if playsFromFeed {
+            if detailPane.isPresented {
+                detailPane.setPresented(false)
+            }
+            if detailStore.currentRecord != nil {
+                pendingDesktopWallpaperRecordIdentity = nil
+                detailInteraction.invalidateSaveOperation()
+                detailStore.prepare(record: nil)
+            }
+            currentRecordIdentity = nil
+            pendingDesktopWallpaperRecordIdentity = nil
+            currentSlotID = nil
+            currentImageURL = nil
+            detailFailed = false
+            imageView.setImageURL(nil)
+            imageView.isHidden = true
+            recommendationsView.isHidden = true
+            RemoteImagePipeline.shared.stopDetailPrefetching()
+            emptyLabel.stringValue = "双击卡片即可播放"
+            emptyLabel.isHidden = false
+            previousButton.isHidden = true
+            nextButton.isHidden = true
+            counterChrome.isHidden = true
+            statusChrome.isHidden = true
+            filmstripView.isHidden = true
+            updateFilmstripLayout(showsFilmstrip: false)
+            return
+        }
+        emptyLabel.stringValue = "没有可显示内容"
+
         // 选中变化时重建 detail 状态。
         if record != detailStore.currentRecord {
             pendingDesktopWallpaperRecordIdentity = nil

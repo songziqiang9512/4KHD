@@ -126,6 +126,32 @@ struct FavoriteSourceAdapter {
         self.navigationMode = navigationMode
         self.cachedExternalAction = cachedExternalAction
     }
+
+    /// 木瓜视频 / 91PORNY 这类纯视频收藏：列表双击播放，不打开详情栏。
+    var playsFromFeed: Bool {
+        videoActions != nil && navigationMode == .sourceRecords
+    }
+
+    func resolvePlayableVideoURL(for record: FavoriteRecord) async throws -> URL {
+        guard let detailURL = URL(string: record.detailURL) else {
+            throw FavoriteVideoResolveError.missingPlaylist
+        }
+        let page = try await resolvePage(detailURL)
+        guard let videoURL = page.videoURL else {
+            throw FavoriteVideoResolveError.missingPlaylist
+        }
+        return videoURL
+    }
+}
+
+nonisolated enum FavoriteVideoResolveError: LocalizedError {
+    case missingPlaylist
+
+    var errorDescription: String? {
+        switch self {
+        case .missingPlaylist: "当前页面没有可播放地址"
+        }
+    }
 }
 
 /// Favorites owns only this source-neutral contract. Concrete online modules

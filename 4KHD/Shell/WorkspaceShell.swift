@@ -23,7 +23,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     private var routeObserverID: UUID?
     private var detailObserverID: UUID?
     private var immersiveObserverID: UUID?
-    nonisolated(unsafe) private var toolbarMonitor: Any?
+    private nonisolated(unsafe) var toolbarMonitor: Any?
     private let splitResizeStateSaveQueue = WorkspaceCoalescingQueue(
         name: "Workspace Split Resize State Save",
         interval: 0.2,
@@ -68,7 +68,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -158,130 +158,132 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         super.toggleSidebar(sender)
     }
 
-    @objc func toggleWorkspaceDetailPane(_ sender: Any?) {
+    @objc func toggleWorkspaceDetailPane(_: Any?) {
+        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
+        guard profile.showsDetailPane else { return }
         if appContext.detailPaneController.isPresented {
             rememberPresentedDetailSplitViewState()
         }
         appContext.detailPaneController.toggle()
     }
 
-    @objc func toggleImmersiveMode(_ sender: Any?) {
+    @objc func toggleImmersiveMode(_: Any?) {
         immersive.toggle()
     }
 
-    @objc func navigateToSidebar(_ sender: Any?) {
+    @objc func navigateToSidebar(_: Any?) {
         _ = focusSidebarColumn()
     }
 
-    @objc func navigateToContent(_ sender: Any?) {
+    @objc func navigateToContent(_: Any?) {
         _ = focusContentColumn()
     }
 
-    @objc func navigateToDetail(_ sender: Any?) {
+    @objc func navigateToDetail(_: Any?) {
         _ = focusDetailColumn()
     }
 
-    @objc func moveFocusToSearchField(_ sender: Any?) {
+    @objc func moveFocusToSearchField(_: Any?) {
         _ = focusSearchField()
     }
 
-    @objc func refreshCurrentContent(_ sender: Any?) {
+    @objc func refreshCurrentContent(_: Any?) {
         appContext.toolbarContext.refresh(for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func toggleCurrentFavorite(_ sender: Any?) {
+    @objc func toggleCurrentFavorite(_: Any?) {
         appContext.toolbarContext.toggleFavorite(for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func selectPreviousImage(_ sender: Any?) {
+    @objc func selectPreviousImage(_: Any?) {
         appContext.toolbarContext.stepImage(-1, for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func selectNextImage(_ sender: Any?) {
+    @objc func selectNextImage(_: Any?) {
         appContext.toolbarContext.stepImage(1, for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func setContentListLayout(_ sender: Any?) {
+    @objc func setContentListLayout(_: Any?) {
         setContentLayout(isList: true)
     }
 
-    @objc func setContentGridLayout(_ sender: Any?) {
+    @objc func setContentGridLayout(_: Any?) {
         setContentLayout(isList: false)
     }
 
-    @objc func increaseLocalGridColumns(_ sender: Any?) {
+    @objc func increaseLocalGridColumns(_: Any?) {
         appContext.toolbarContext.adjustGridColumns(delta: 1, for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func decreaseLocalGridColumns(_ sender: Any?) {
+    @objc func decreaseLocalGridColumns(_: Any?) {
         appContext.toolbarContext.adjustGridColumns(delta: -1, for: currentModuleID)
         refreshToolbarState()
     }
 
     @objc func selectLocalSortFieldFromMenu(_ sender: NSMenuItem) {
         guard let field = sender.representedObject as? LocalImageSortField,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+              case let .local(snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
         appContext.toolbarContext.setLocalSort(field: field, direction: snapshot.sortDirection)
         refreshToolbarState()
     }
 
     @objc func selectLocalSortDirectionFromMenu(_ sender: NSMenuItem) {
         guard let direction = sender.representedObject as? LocalImageSortDirection,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+              case let .local(snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
         appContext.toolbarContext.setLocalSort(field: snapshot.sortField, direction: direction)
         refreshToolbarState()
     }
 
-    @objc func openCurrentReference(_ sender: Any?) {
+    @objc func openCurrentReference(_: Any?) {
         guard let reference = currentReference else { return }
         NSWorkspace.shared.open(reference.url)
     }
 
-    @objc func showCurrentInspector(_ sender: Any?) {
+    @objc func showCurrentInspector(_: Any?) {
         WorkspaceInspectorPresenter.show()
     }
 
-    @objc func saveCurrentImage(_ sender: Any?) {
+    @objc func saveCurrentImage(_: Any?) {
         appContext.toolbarContext.saveCurrentImage(for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func resetCurrentZoom(_ sender: Any?) {
+    @objc func resetCurrentZoom(_: Any?) {
         appContext.toolbarContext.resetZoom(for: currentModuleID)
         refreshToolbarState()
     }
 
-    @objc func copyCurrentReference(_ sender: Any?) {
+    @objc func copyCurrentReference(_: Any?) {
         currentReference?.writeToPasteboard()
     }
 
-    @objc func revealCurrentFileInFinder(_ sender: Any?) {
+    @objc func revealCurrentFileInFinder(_: Any?) {
         guard let fileURL = currentReference?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
     }
 
-    @objc func quickLookCurrentFile(_ sender: Any?) {
+    @objc func quickLookCurrentFile(_: Any?) {
         guard let fileURL = currentReference?.fileURL else { return }
         LocalQuickLookController.shared.open(url: fileURL)
     }
 
-    @objc func setCurrentFileAsDesktopWallpaper(_ sender: Any?) {
+    @objc func setCurrentFileAsDesktopWallpaper(_: Any?) {
         guard let fileURL = currentReference?.fileURL else { return }
         LocalDesktopWallpaperSetter.setDesktopWallpaper(fileURL)
     }
 
-    @objc func shareCurrentContent(_ sender: Any?) {
+    @objc func shareCurrentContent(_: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
         guard !items.isEmpty else { return }
         SharingPresenter.show(items: items, of: view, preferredEdge: .maxY)
     }
 
-    @objc func importLocalFolder(_ sender: Any?) {
+    @objc func importLocalFolder(_: Any?) {
         appContext.importRootFolder()
     }
 
@@ -498,6 +500,15 @@ final class WorkspaceSplitViewController: NSSplitViewController {
                 appContext.moduleRegistry.detailController(for: route, context: moduleContext)
             )
         }
+        let profile = appContext.moduleRegistry.descriptor(for: route.moduleID)?.presentation ?? .standard
+        if !profile.showsDetailPane {
+            if immersive.isImmersive {
+                immersive.set(false)
+            }
+            if appContext.detailPaneController.isPresented {
+                appContext.detailPaneController.setPresented(false)
+            }
+        }
     }
 
     private func applyDetailPaneVisibility(_ isPresented: Bool) {
@@ -599,7 +610,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         }
     }
 
-    override func splitViewDidResizeSubviews(_ notification: Notification) {
+    override func splitViewDidResizeSubviews(_: Notification) {
         guard !isApplyingDetailPaneVisibility else { return }
 
         if isRestoringSplitViewState || isApplyingRememberedSidebarWidth {
@@ -675,7 +686,8 @@ final class WorkspaceSplitViewController: NSSplitViewController {
             nextWidths = widths
         } else if includeHiddenDetailWidth,
                   let current = splitLayoutController.currentSplitViewWidths(),
-                  current.count == 3 {
+                  current.count == 3
+        {
             nextWidths = current
         } else {
             nextWidths = fallback
@@ -746,7 +758,7 @@ final class WorkspaceSplitViewController: NSSplitViewController {
         guard splitView.arrangedSubviews.count >= 2 else { return nil }
         let point = splitView.convert(event.locationInWindow, from: nil)
         let tolerance = max(splitView.dividerThickness, 8)
-        for dividerIndex in 0..<(splitView.arrangedSubviews.count - 1) {
+        for dividerIndex in 0 ..< (splitView.arrangedSubviews.count - 1) {
             let dividerX = splitView.arrangedSubviews[dividerIndex].frame.maxX
             if abs(point.x - dividerX) <= tolerance {
                 return dividerIndex
@@ -792,23 +804,23 @@ final class WorkspaceSplitViewController: NSSplitViewController {
 }
 
 extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
-    func sidebarViewController(_ controller: WorkspaceSidebarViewController, didSelect route: WorkspaceRoute) {
+    func sidebarViewController(_: WorkspaceSidebarViewController, didSelect route: WorkspaceRoute) {
         appContext.routeController.select(route)
     }
 
-    func sidebarViewControllerDidRequestLocalImport(_ controller: WorkspaceSidebarViewController) {
+    func sidebarViewControllerDidRequestLocalImport(_: WorkspaceSidebarViewController) {
         appContext.importRootFolder()
     }
 
     func sidebarViewController(
-        _ controller: WorkspaceSidebarViewController,
+        _: WorkspaceSidebarViewController,
         didRequestImportLocalFolderAt url: URL
     ) {
         appContext.localLibraryStore.importRootFolder(url)
     }
 
     func sidebarViewController(
-        _ controller: WorkspaceSidebarViewController,
+        _: WorkspaceSidebarViewController,
         didRequestRemoveLocalFolder folder: LocalFolderNode
     ) {
         appContext.localLibraryStore.removeFolder(folder)
@@ -818,7 +830,7 @@ extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
     }
 
     func sidebarViewController(
-        _ controller: WorkspaceSidebarViewController,
+        _: WorkspaceSidebarViewController,
         didChangeExpandedNodeIDs expandedNodeIDs: [String]
     ) {
         expandedSidebarNodeIDs = expandedNodeIDs
@@ -826,7 +838,7 @@ extension WorkspaceSplitViewController: WorkspaceSidebarViewControllerDelegate {
     }
 
     func sidebarViewControllerKeyboardContext(
-        _ controller: WorkspaceSidebarViewController
+        _: WorkspaceSidebarViewController
     ) -> WorkspaceKeyboardContext {
         makeKeyboardContext()
     }

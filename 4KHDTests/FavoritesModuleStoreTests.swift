@@ -15,7 +15,12 @@ final class FavoritesModuleStoreTests: XCTestCase {
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "k1", detailURL: "https://xx.knit.bid/article/123/")), .knit)
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "k2", detailURL: "https://media.knit.bid/article/456/")), .knit)
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "r1", detailURL: "https://www.mrds66.com/archives/123/")), .mrds)
+        XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "q1", detailURL: "https://91quanji.com/watch.jsp?v=abc")), .quanji)
+        XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "p1", detailURL: "https://91porny.com/video/view/abc")), .porny)
+        XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "p3", detailURL: "https://91porny.com/video/viewhd/abc")), .porny)
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "r2", detailURL: "https://mrds66.com.evil.example/archives/123/")))
+        XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "q2", detailURL: "https://91quanji.com.evil.example/watch.jsp?v=abc")))
+        XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "p2", detailURL: "https://91porny.com.evil.example/video/view/abc")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "k3", detailURL: "https://knit.bid.evil.example/article/789/")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "u1", detailURL: "https://example.com/foo")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "u2", detailURL: "not a url")))
@@ -149,6 +154,30 @@ final class FavoritesModuleStoreTests: XCTestCase {
         let favoritesStore = FavoritesStore(fileURL: fileURL)
         await favoritesStore.waitUntilLoaded()
         return (favoritesStore, FavoritesModuleStore(favoritesStore: favoritesStore))
+    }
+
+    @MainActor
+    func testVideoFavoriteAdapterPlaysFromFeed() {
+        let adapter = FavoriteSourceAdapter(
+            source: .porny,
+            detailContent: { _ in nil },
+            resolvePage: { _ in FavoriteResolvedImagePage(imageURLs: [], pageURLs: []) },
+            configureImageRequest: { _ in },
+            videoActions: FavoriteVideoActions(
+                play: { _, _ in },
+                saveAsMP4: { _, _ in }
+            ),
+            navigationMode: .sourceRecords
+        )
+        XCTAssertTrue(adapter.playsFromFeed)
+
+        let imageAdapter = FavoriteSourceAdapter(
+            source: .gallery,
+            detailContent: { _ in nil },
+            resolvePage: { _ in FavoriteResolvedImagePage(imageURLs: [], pageURLs: []) },
+            configureImageRequest: { _ in }
+        )
+        XCTAssertFalse(imageAdapter.playsFromFeed)
     }
 
     private static func makeRecord(id: String, detailURL: String, title: String? = nil) -> FavoriteRecord {

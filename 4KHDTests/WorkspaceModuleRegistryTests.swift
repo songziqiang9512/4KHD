@@ -1,6 +1,6 @@
+@testable import _KHD
 import AppKit
 import XCTest
-@testable import _KHD
 
 final class WorkspaceModuleRegistryTests: XCTestCase {
     @MainActor
@@ -54,6 +54,8 @@ final class WorkspaceModuleRegistryTests: XCTestCase {
 
         XCTAssertEqual(registry.descriptor(for: .fourKHDGallery)?.presentation, profile)
         XCTAssertTrue(profile.showsVideoSave)
+        XCTAssertTrue(profile.showsDetailPane)
         XCTAssertFalse(WorkspaceModulePresentationProfile.standard.showsVideoSave)
+        XCTAssertTrue(WorkspaceModulePresentationProfile.standard.showsDetailPane)
     }
 }

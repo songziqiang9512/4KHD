@@ -73,9 +73,11 @@ final class WorkspaceCommandValidator {
             updateToggleSidebarValidationItem(item, isCollapsed: state.isSidebarCollapsed)
             return true
         case #selector(WorkspaceSplitViewController.toggleWorkspaceDetailPane(_:)):
+            guard presentation(for: state.currentModuleID).showsDetailPane else { return false }
             updateToggleDetailPaneValidationItem(item, isCollapsed: state.isDetailCollapsed)
             return true
         case #selector(WorkspaceSplitViewController.toggleImmersiveMode(_:)):
+            guard presentation(for: state.currentModuleID).showsDetailPane else { return false }
             updateImmersiveValidationItem(item, isImmersive: state.isImmersive)
             return state.currentReference != nil
         case #selector(WorkspaceSplitViewController.navigateToSidebar(_:)):
@@ -83,7 +85,7 @@ final class WorkspaceCommandValidator {
         case #selector(WorkspaceSplitViewController.navigateToContent(_:)):
             return !state.isContentCollapsed
         case #selector(WorkspaceSplitViewController.navigateToDetail(_:)):
-            return !state.isDetailCollapsed
+            return presentation(for: state.currentModuleID).showsDetailPane && !state.isDetailCollapsed
         default:
             return true
         }
@@ -161,7 +163,7 @@ final class WorkspaceCommandValidator {
     ) {
         guard let menuItem = item as? NSMenuItem,
               let field = menuItem.representedObject as? LocalImageSortField,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else { return }
+              case let .local(snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else { return }
         menuItem.state = field == snapshot.sortField ? .on : .off
     }
 
@@ -171,7 +173,7 @@ final class WorkspaceCommandValidator {
     ) {
         guard let menuItem = item as? NSMenuItem,
               let direction = menuItem.representedObject as? LocalImageSortDirection,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else { return }
+              case let .local(snapshot) = appContext.toolbarContext.snapshot(for: moduleID) else { return }
         menuItem.state = direction == snapshot.sortDirection ? .on : .off
     }
 

@@ -122,6 +122,12 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         case .mrdsGallery:
             let section = MrdsSection(rawValue: route.itemID) ?? .latest
             return "\(section.title) - 每日大赛"
+        case .quanjiGallery:
+            let section = QuanjiSection(rawValue: route.itemID) ?? .home
+            return "\(section.title) - 木瓜视频"
+        case .pornyGallery:
+            let section = PornySection(rawValue: route.itemID) ?? .latest
+            return "\(section.title) - 91PORNY"
         }
     }
 }

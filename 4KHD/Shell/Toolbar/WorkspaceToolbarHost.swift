@@ -167,11 +167,13 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             identifiers.append(ItemID.detailActions)
         }
         identifiers += [
-            ItemID.resetZoom,
-            ItemID.immersive,
             ItemID.share,
-            ItemID.detailPane,
         ]
+        if profile.showsDetailPane {
+            identifiers.append(ItemID.resetZoom)
+            identifiers.append(ItemID.immersive)
+            identifiers.append(ItemID.detailPane)
+        }
         if profile.showsFavoritesFilter {
             identifiers.append(ItemID.favoritesFilter)
         }
@@ -648,6 +650,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case let .favorites(s): _ = s.layout; _ = appContext.favoritesModuleStore.filter
         case let .knit(s): _ = s.layout; _ = s.filter; _ = s.pageStatusText
         case let .mrds(s): _ = s.layout
+        case let .quanji(s): _ = s.layout
+        case let .porny(s): _ = s.layout
         }
     }
 

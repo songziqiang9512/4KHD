@@ -339,6 +339,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             systemName = section.sidebarSystemImage
         case let .mrds(section):
             systemName = section.sidebarSystemImage
+        case let .quanji(section):
+            systemName = section.sidebarSystemImage
+        case let .porny(section):
+            systemName = section.sidebarSystemImage
         case .favoritesModule:
             systemName = "heart"
         }
@@ -374,6 +378,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .knitGallery, itemID: section.defaultFilter.rawValue)
         case let .mrds(section):
             selectedRoute = WorkspaceRoute(moduleID: .mrdsGallery, itemID: section.rawValue)
+        case let .quanji(section):
+            selectedRoute = WorkspaceRoute(moduleID: .quanjiGallery, itemID: section.rawValue)
+        case let .porny(section):
+            selectedRoute = WorkspaceRoute(moduleID: .pornyGallery, itemID: section.rawValue)
         case .favoritesModule:
             selectedRoute = WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
         case .group:
@@ -519,6 +527,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         case let (.knitGallery, .knit(section)):
             KnitBrowseFilter.filter(forRouteItemID: route.itemID)?.sidebarSection == section
         case let (.mrdsGallery, .mrds(section)):
+            route.itemID == section.rawValue
+        case let (.quanjiGallery, .quanji(section)):
+            route.itemID == section.rawValue
+        case let (.pornyGallery, .porny(section)):
             route.itemID == section.rawValue
         case let (.localLibrary, .localFolder(folder)):
             route.itemID == folder.id
