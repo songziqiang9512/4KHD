@@ -35,6 +35,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         button.imagePosition = .imageLeading
         return button
     }()
+
     private let metadataChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let metadataLabel = NSTextField(labelWithString: "")
     private let sourceChrome = DetailOverlayChromeView(cornerRadius: 11)
@@ -48,6 +49,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         button.imagePosition = .imageLeading
         return button
     }()
+
     private let secondaryChrome = DetailOverlayChromeView(cornerRadius: 11)
     private let secondaryButton: NSButton = {
         let button = NSButton(title: "", target: nil, action: nil)
@@ -59,6 +61,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         button.imagePosition = .imageLeading
         return button
     }()
+
     private let desktopButton: NSButton = {
         let image = NSImage(
             systemSymbolName: "photo.on.rectangle",
@@ -70,6 +73,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         button.toolTip = "设为桌面壁纸"
         return button
     }()
+
     private var filmstripHeightConstraint: NSLayoutConstraint?
     private var isObserving = false
     private var isObservingSaveMessage = false
@@ -424,7 +428,8 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         // 打开详情后开始/恢复解析(resolve 幂等:在途任务、已全部解析、失败时均 no-op)。
         // 面板关闭会取消后续页预取,重开面板时由此恢复解析链。
         if shouldLoadDetailContent,
-           detailStore.errorMessage == nil {
+           detailStore.errorMessage == nil
+        {
             detailStore.resolve()
         }
 
@@ -437,6 +442,7 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
             RemoteImagePipeline.shared.stopDetailPrefetching()
             detailStore.cancelResolution()
             isDetailReady = false
+            updateFilmstripLayout(showsFilmstrip: false)
             return
         }
 
@@ -548,15 +554,19 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         }
 
         let metadata = detailStore.detailMetadata
-        counterChrome.isHidden = metadata != nil
+        // Inspector metadata 在 prepare() 就会写入,胶片条改跟分页导航模式走。
+        let usesPagedImageFilmstrip = detailStore.navigationMode == .images
+        counterChrome.isHidden = !usesPagedImageFilmstrip
         counterLabel.stringValue = "\(selectedSlot.displayIndex + 1) / \(slots.count)"
-        updateMetadataPresentation(metadata, hasResolvedOriginal: detailStore.resolvedPageCount > 0)
+        if !usesPagedImageFilmstrip {
+            updateMetadataPresentation(metadata, hasResolvedOriginal: detailStore.resolvedPageCount > 0)
+        }
         updateVideoPresentation()
         updateExternalActionPresentation()
         completePendingDesktopWallpaperIfPossible()
         updateSaveStatus()
 
-        let showsFilmstrip = filmstripVisibility.isPresented && !slots.isEmpty && metadata == nil
+        let showsFilmstrip = filmstripVisibility.isPresented && !slots.isEmpty && usesPagedImageFilmstrip
         updateFilmstripLayout(showsFilmstrip: showsFilmstrip)
         filmstripView.update(
             slots: slots,
@@ -685,7 +695,8 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
         if detailFailed { return "解析失败" }
         if let errorMessage = detailStore.errorMessage { return errorMessage }
         if let currentRecord = detailStore.currentRecord,
-           pendingDesktopWallpaperRecordIdentity == moduleStore.selectionIdentity(for: currentRecord) {
+           pendingDesktopWallpaperRecordIdentity == moduleStore.selectionIdentity(for: currentRecord)
+        {
             return "正在获取原图"
         }
         switch detailInteraction.saveMessage {
@@ -727,7 +738,8 @@ final class FavoritesImageDetailViewController: NSViewController, WorkspaceFocus
               let record = detailStore.currentRecord else { return }
         guard detailStore.resolvedPageCount > 0,
               detailStore.hasResolvedSelectedImage,
-              let imageURL = currentImageURL else {
+              let imageURL = currentImageURL
+        else {
             pendingDesktopWallpaperRecordIdentity = moduleStore.selectionIdentity(for: record)
             detailStore.resolve()
             updateSaveStatus()
