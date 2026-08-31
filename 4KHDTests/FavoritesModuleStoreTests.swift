@@ -14,6 +14,8 @@ final class FavoritesModuleStoreTests: XCTestCase {
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "w2", detailURL: "https://whvn.cc/w/456")), .wallhaven)
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "k1", detailURL: "https://xx.knit.bid/article/123/")), .knit)
         XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "k2", detailURL: "https://media.knit.bid/article/456/")), .knit)
+        XCTAssertEqual(FavoriteSource.source(for: Self.makeRecord(id: "r1", detailURL: "https://www.mrds66.com/archives/123/")), .mrds)
+        XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "r2", detailURL: "https://mrds66.com.evil.example/archives/123/")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "k3", detailURL: "https://knit.bid.evil.example/article/789/")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "u1", detailURL: "https://example.com/foo")))
         XCTAssertNil(FavoriteSource.source(for: Self.makeRecord(id: "u2", detailURL: "not a url")))
@@ -56,7 +58,7 @@ final class FavoritesModuleStoreTests: XCTestCase {
         let (_, moduleStore) = try await makeLoadedStores(records: [
             Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html", title: "Sunset Vol 1"),
             Self.makeRecord(id: "m1", detailURL: "https://misskon.com/xxx/", title: "Beach Day"),
-            Self.makeRecord(id: "w1", detailURL: "https://wallhaven.cc/w/123", title: "Sunset Wallpaper")
+            Self.makeRecord(id: "w1", detailURL: "https://wallhaven.cc/w/123", title: "Sunset Wallpaper"),
         ])
 
         moduleStore.searchText = "sunset"
@@ -101,7 +103,7 @@ final class FavoritesModuleStoreTests: XCTestCase {
     @MainActor
     func testSwitchingToEmptySourceFilterClearsSelectionIdentity() async throws {
         let (_, moduleStore) = try await makeLoadedStores(records: [
-            Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html")
+            Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html"),
         ])
         moduleStore.select(record: moduleStore.visibleRecords.first)
         XCTAssertNotNil(moduleStore.selectedRecordIdentity)
@@ -117,13 +119,13 @@ final class FavoritesModuleStoreTests: XCTestCase {
     @MainActor
     func testRemovingLastFavoriteClearsSelectionIdentity() async throws {
         let (favoritesStore, moduleStore) = try await makeLoadedStores(records: [
-            Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html")
+            Self.makeRecord(id: "g1", detailURL: "https://www.4khd.com/content/a.html"),
         ])
         let record = try XCTUnwrap(moduleStore.visibleRecords.first)
         moduleStore.select(record: record)
 
         try await favoritesStore.toggle(record)
-        for _ in 0..<10 where moduleStore.selectedRecordIdentity != nil {
+        for _ in 0 ..< 10 where moduleStore.selectedRecordIdentity != nil {
             await Task.yield()
         }
 

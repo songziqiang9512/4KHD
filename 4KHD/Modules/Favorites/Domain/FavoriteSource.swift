@@ -8,6 +8,7 @@ enum FavoriteSource: String, CaseIterable {
     case missKon
     case wallhaven
     case knit
+    case mrds
 
     var title: String {
         switch self {
@@ -15,6 +16,7 @@ enum FavoriteSource: String, CaseIterable {
         case .missKon: "MissKon"
         case .wallhaven: "Wallhaven"
         case .knit: "爱妹子"
+        case .mrds: "每日大赛"
         }
     }
 
@@ -24,6 +26,7 @@ enum FavoriteSource: String, CaseIterable {
         case .missKon: "person.crop.square"
         case .wallhaven: "photo.stack"
         case .knit: "photo.on.rectangle.angled"
+        case .mrds: "flag.checkered"
         }
     }
 
@@ -39,7 +42,8 @@ enum FavoriteSource: String, CaseIterable {
     nonisolated func validatedCoverURL(for record: FavoriteRecord) -> URL? {
         guard Self.source(for: record) == self,
               let url = record.coverURL.flatMap(URL.init(string:)),
-              OnlineSourcePolicy.allows(url, source: policySource, resource: .media) else {
+              OnlineSourcePolicy.allows(url, source: policySource, resource: .media)
+        else {
             return nil
         }
         return url
@@ -51,6 +55,7 @@ enum FavoriteSource: String, CaseIterable {
         case .missKon: .missKon
         case .wallhaven: .wallhaven
         case .knit: .knit
+        case .mrds: .mrds
         }
     }
 
@@ -60,6 +65,7 @@ enum FavoriteSource: String, CaseIterable {
         if OnlineSourcePolicy.allows(url, source: .missKon, resource: .html) { return .missKon }
         if OnlineSourcePolicy.allows(url, source: .wallhaven, resource: .html) { return .wallhaven }
         if OnlineSourcePolicy.allows(url, source: .knit, resource: .html) { return .knit }
+        if OnlineSourcePolicy.allows(url, source: .mrds, resource: .html) { return .mrds }
         return nil
     }
 }
@@ -71,6 +77,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
     case missKon
     case wallhaven
     case knit
+    case mrds
 
     var title: String {
         switch self {
@@ -79,6 +86,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .missKon: "MissKon"
         case .wallhaven: "Wallhaven"
         case .knit: "爱妹子"
+        case .mrds: "每日大赛"
         }
     }
 
@@ -89,6 +97,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .missKon: .missKon
         case .wallhaven: .wallhaven
         case .knit: .knit
+        case .mrds: .mrds
         }
     }
 }

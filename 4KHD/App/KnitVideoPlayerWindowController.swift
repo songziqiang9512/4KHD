@@ -7,6 +7,7 @@ import AVKit
 final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegate {
     private let playerView = AVPlayerView()
     private var currentSourceURL: URL?
+    private var currentPolicySource: OnlineSourcePolicy.Source = .knit
     private var currentSaveAction: (() -> Void)?
     private var playerItemStatusObservation: NSKeyValueObservation?
     private var playbackFailureAlert: NSAlert?
@@ -21,6 +22,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         item.isEnabled = false
         return item
     }()
+
     private lazy var copySourceURLMenuItem: NSMenuItem = {
         let item = NSMenuItem(
             title: "拷贝影片源 URL",
@@ -60,26 +62,34 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
-    func play(url: URL, title: String, onSave: @escaping () -> Void) {
-        guard OnlineSourcePolicy.allows(url, source: .knit, resource: .media),
-              url.pathExtension.lowercased() == "m3u8" else {
+    func play(
+        url: URL,
+        title: String,
+        source: OnlineSourcePolicy.Source = .knit,
+        userAgent: String = KnitRequestFactory.userAgent,
+        onSave: (() -> Void)? = nil
+    ) {
+        guard OnlineSourcePolicy.allows(url, source: source, resource: .media),
+              url.pathExtension.lowercased() == "m3u8"
+        else {
             clearPlayback()
             return
         }
         clearPlayback()
         let asset = AVURLAsset(
             url: url,
-            options: [AVURLAssetHTTPUserAgentKey: KnitRequestFactory.userAgent]
+            options: [AVURLAssetHTTPUserAgentKey: userAgent]
         )
         let playerItem = AVPlayerItem(asset: asset)
         playerView.player = AVPlayer(playerItem: playerItem)
         observeStatus(of: playerItem)
+        currentPolicySource = source
         updateCurrentVideoContext(url: url, saveAction: onSave)
-        window?.title = title.isEmpty ? "爱妹子视频" : title
+        window?.title = title.isEmpty ? Self.defaultTitle(for: source) : title
         if window?.isVisible != true {
             window?.center()
         }
@@ -89,7 +99,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         playerView.player?.play()
     }
 
-    func windowWillClose(_ notification: Notification) {
+    func windowWillClose(_: Notification) {
         clearPlayback()
     }
 
@@ -99,6 +109,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         dismissPlaybackFailureAlert()
         playerView.player?.pause()
         playerView.player = nil
+        currentPolicySource = .knit
         updateCurrentVideoContext(url: nil, saveAction: nil)
     }
 
@@ -155,22 +166,32 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
 
     @objc private func saveVideo(_: NSMenuItem) {
         guard let url = currentSourceURL,
-              OnlineSourcePolicy.allows(url, source: .knit, resource: .media),
+              OnlineSourcePolicy.allows(url, source: currentPolicySource, resource: .media),
               url.pathExtension.lowercased() == "m3u8",
-              let currentSaveAction else {
+              let currentSaveAction
+        else {
             updateCurrentVideoContext(url: nil, saveAction: nil)
             return
         }
         currentSaveAction()
     }
 
-    @objc private func copySourceURL(_ sender: NSMenuItem) {
+    @objc private func copySourceURL(_: NSMenuItem) {
         guard let url = currentSourceURL,
-              OnlineSourcePolicy.allows(url, source: .knit, resource: .media),
-              url.pathExtension.lowercased() == "m3u8" else {
+              OnlineSourcePolicy.allows(url, source: currentPolicySource, resource: .media),
+              url.pathExtension.lowercased() == "m3u8"
+        else {
             updateCurrentVideoContext(url: nil, saveAction: nil)
             return
         }
         WorkspaceCurrentReference.web(url).writeToPasteboard()
+    }
+
+    private static func defaultTitle(for source: OnlineSourcePolicy.Source) -> String {
+        switch source {
+        case .knit: "爱妹子视频"
+        case .mrds: "每日大赛视频"
+        case .gallery, .missKon, .wallhaven: "视频播放"
+        }
     }
 }

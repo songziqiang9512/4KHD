@@ -7,8 +7,11 @@ enum WorkspaceModuleID: String, Hashable, Codable, Identifiable {
     case wallhaven
     case favorites
     case knitGallery
+    case mrdsGallery
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }
 
 struct WorkspaceRoute: Hashable {
@@ -34,7 +37,8 @@ struct WorkspaceRoute: Hashable {
         guard parts.count == 2,
               let moduleID = WorkspaceModuleID(rawValue: parts[0]),
               let data = Data(base64Encoded: parts[1]),
-              let itemID = String(data: data, encoding: .utf8) else {
+              let itemID = String(data: data, encoding: .utf8)
+        else {
             return nil
         }
         self.moduleID = moduleID

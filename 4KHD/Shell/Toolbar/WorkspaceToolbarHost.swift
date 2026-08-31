@@ -90,7 +90,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         }
     }
 
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    func toolbarAllowedItemIdentifiers(_: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .flexibleSpace,
             .toggleSidebar,
@@ -115,11 +115,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.wallhavenBack,
             ItemID.favoritesFilter,
             ItemID.knitFilters,
-            ItemID.search
+            ItemID.search,
         ]
     }
 
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    func toolbarDefaultItemIdentifiers(_: NSToolbar) -> [NSToolbarItem.Identifier] {
         defaultItemIdentifiers()
     }
 
@@ -132,7 +132,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.refresh,
             .flexibleSpace,
             ItemID.detailTrackingSeparator,
-            .flexibleSpace
+            .flexibleSpace,
         ]
         if profile.showsLocalSort {
             identifiers.append(ItemID.localGridColumns)
@@ -170,7 +170,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.resetZoom,
             ItemID.immersive,
             ItemID.share,
-            ItemID.detailPane
+            ItemID.detailPane,
         ]
         if profile.showsFavoritesFilter {
             identifiers.append(ItemID.favoritesFilter)
@@ -183,9 +183,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     }
 
     func toolbar(
-        _ toolbar: NSToolbar,
+        _: NSToolbar,
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
+        willBeInsertedIntoToolbar _: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
         case .toggleSidebar:
@@ -523,22 +523,22 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         refresh()
     }
 
-    @objc private func refreshContent(_ sender: Any?) {
+    @objc private func refreshContent(_: Any?) {
         appContext.toolbarContext.refresh(for: currentModuleID)
         refresh()
     }
 
-    @objc private func toggleFavorite(_ sender: Any?) {
+    @objc private func toggleFavorite(_: Any?) {
         appContext.toolbarContext.toggleFavorite(for: currentModuleID)
         refresh()
     }
 
-    @objc private func resetZoom(_ sender: Any?) {
+    @objc private func resetZoom(_: Any?) {
         appContext.toolbarContext.resetZoom(for: currentModuleID)
         refresh()
     }
 
-    @objc private func toggleFilmstrip(_ sender: Any?) {
+    @objc private func toggleFilmstrip(_: Any?) {
         appContext.toolbarContext.toggleFilmstrip()
         refresh()
     }
@@ -548,7 +548,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         refresh()
     }
 
-    @objc private func shareContent(_ sender: Any?) {
+    @objc private func shareContent(_: Any?) {
         let items = appContext.toolbarContext.shareItems(for: currentModuleID)
         guard !items.isEmpty else { return }
         let anchorView = shareItem?.view ?? splitController?.view
@@ -558,52 +558,52 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     @objc private func selectLocalSortField(_ sender: NSMenuItem) {
         guard let field = sender.representedObject as? LocalImageSortField,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+              case let .local(snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
         appContext.toolbarContext.setLocalSort(field: field, direction: snapshot.sortDirection)
         refresh()
     }
 
     @objc private func selectLocalSortDirection(_ sender: NSMenuItem) {
         guard let direction = sender.representedObject as? LocalImageSortDirection,
-              case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
+              case let .local(snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else { return }
         appContext.toolbarContext.setLocalSort(field: snapshot.sortField, direction: direction)
         refresh()
     }
 
-    @objc private func importFolder(_ sender: Any?) {
+    @objc private func importFolder(_: Any?) {
         appContext.importRootFolder()
     }
 
-    @objc private func openCurrentReference(_ sender: Any?) {
+    @objc private func openCurrentReference(_: Any?) {
         guard let reference = appContext.toolbarContext.currentReference(for: currentModuleID) else { return }
         NSWorkspace.shared.open(reference.url)
     }
 
-    @objc private func showCurrentInspector(_ sender: Any?) {
+    @objc private func showCurrentInspector(_: Any?) {
         WorkspaceInspectorPresenter.show()
     }
 
-    @objc private func saveCurrentImage(_ sender: Any?) {
+    @objc private func saveCurrentImage(_: Any?) {
         appContext.toolbarContext.saveCurrentImage(for: currentModuleID)
         refresh()
     }
 
-    @objc private func saveGalleryItem(_ sender: Any?) {
+    @objc private func saveGalleryItem(_: Any?) {
         appContext.toolbarContext.saveGalleryItem(for: currentModuleID)
         refresh()
     }
 
-    @objc private func saveCurrentVideo(_ sender: Any?) {
+    @objc private func saveCurrentVideo(_: Any?) {
         appContext.toolbarContext.saveCurrentVideo(for: currentModuleID)
         refresh()
     }
 
-    @objc private func revealCurrentFileInFinder(_ sender: Any?) {
+    @objc private func revealCurrentFileInFinder(_: Any?) {
         guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
     }
 
-    @objc private func quickLookCurrentFile(_ sender: Any?) {
+    @objc private func quickLookCurrentFile(_: Any?) {
         guard let fileURL = appContext.toolbarContext.currentReference(for: currentModuleID)?.fileURL else { return }
         LocalQuickLookController.shared.open(url: fileURL)
     }
@@ -641,12 +641,13 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         // layout, sortField, sortDirection.
         _ = snapshot.fields
         switch snapshot {
-        case .gallery(let s):  _ = s.layout
-        case .local(let s):    _ = s.layout; _ = s.sortField; _ = s.sortDirection
-        case .missKon(let s):  _ = s.layout
-        case .wallhaven(let s): _ = s.layout
-        case .favorites(let s): _ = s.layout; _ = appContext.favoritesModuleStore.filter
-        case .knit(let s): _ = s.layout; _ = s.filter; _ = s.pageStatusText
+        case let .gallery(s): _ = s.layout
+        case let .local(s): _ = s.layout; _ = s.sortField; _ = s.sortDirection
+        case let .missKon(s): _ = s.layout
+        case let .wallhaven(s): _ = s.layout
+        case let .favorites(s): _ = s.layout; _ = appContext.favoritesModuleStore.filter
+        case let .knit(s): _ = s.layout; _ = s.filter; _ = s.pageStatusText
+        case let .mrds(s): _ = s.layout
         }
     }
 
@@ -682,7 +683,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func updateLocalSortItem() {
         guard let localSortItem else { return }
         localSortItem.menu = makeLocalSortMenu()
-        if case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) {
+        if case let .local(snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) {
             localSortItem.toolTip = "排序：\(snapshot.sortField.title)，\(snapshot.sortDirection.title)"
         } else {
             localSortItem.toolTip = "本地图片排序"
@@ -864,7 +865,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
         // Remove items that should no longer be present (iterate in reverse
         // so that earlier indices remain valid after each removal).
-        for index in (0..<currentIdentifiers.count).reversed() {
+        for index in (0 ..< currentIdentifiers.count).reversed() {
             if !targetSet.contains(currentIdentifiers[index]) {
                 removeItem(at: index)
             }
@@ -965,7 +966,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func makeLocalSortMenu() -> NSMenu {
         let menu = NSMenu(title: "排序")
-        guard case .local(let snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
+        guard case let .local(snapshot) = appContext.toolbarContext.snapshot(for: currentModuleID) else {
             return menu
         }
 
@@ -1117,8 +1118,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case .recentUpdates:
             menu.addItem(makeKnitFilterMenuItem(.all, selectedFilter: selectedFilter))
         case .girls:
-            KnitBrowseFilter.girlTypes.forEach {
-                menu.addItem(makeKnitFilterMenuItem($0, selectedFilter: selectedFilter))
+            for girlType in KnitBrowseFilter.girlTypes {
+                menu.addItem(makeKnitFilterMenuItem(girlType, selectedFilter: selectedFilter))
             }
 
             let parentType = selectedFilter.parentGirlType ?? KnitSidebarSection.girls.defaultFilter
@@ -1128,15 +1129,15 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
                 let topicGroup = NSMenuItem(title: "\(parentType.title) · 相关专题", action: nil, keyEquivalent: "")
                 let topicMenu = NSMenu(title: topicGroup.title)
                 topicMenu.autoenablesItems = false
-                topics.forEach {
-                    topicMenu.addItem(makeKnitFilterMenuItem($0, selectedFilter: selectedFilter))
+                for topic in topics {
+                    topicMenu.addItem(makeKnitFilterMenuItem(topic, selectedFilter: selectedFilter))
                 }
                 topicGroup.submenu = topicMenu
                 menu.addItem(topicGroup)
             }
         case .rankings:
-            KnitBrowseFilter.rankingFilters.forEach {
-                menu.addItem(makeKnitFilterMenuItem($0, selectedFilter: selectedFilter))
+            for rankingFilter in KnitBrowseFilter.rankingFilters {
+                menu.addItem(makeKnitFilterMenuItem(rankingFilter, selectedFilter: selectedFilter))
             }
         case .video:
             menu.addItem(makeKnitFilterMenuItem(.behindTheScenes, selectedFilter: selectedFilter))
@@ -1188,7 +1189,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         appContext.wallhavenStore.setResolution(r)
     }
 
-    @objc private func wallhavenClearTagSearch(_ sender: Any?) {
+    @objc private func wallhavenClearTagSearch(_: Any?) {
         if appContext.wallhavenStore.isBrowsingUploader {
             appContext.wallhavenStore.restorePreviousBrowseState()
         } else {
@@ -1202,7 +1203,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         appContext.wallhavenStore.setPurity(p)
     }
 
-    @objc private func wallhavenSetAPIKey(_ sender: NSMenuItem) {
+    @objc private func wallhavenSetAPIKey(_: NSMenuItem) {
         let alert = NSAlert()
         alert.messageText = "Wallhaven API Key"
         alert.informativeText = "输入你的 Wallhaven API Key。没有 Key 时仅可用 SFW 内容。"

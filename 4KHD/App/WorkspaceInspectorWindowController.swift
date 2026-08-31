@@ -36,7 +36,7 @@ final class WorkspaceInspectorWindowController: NSWindowController, NSWindowDele
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -57,17 +57,17 @@ final class WorkspaceInspectorWindowController: NSWindowController, NSWindowDele
         )
     }
 
-    func windowWillClose(_ notification: Notification) {
+    func windowWillClose(_: Notification) {
         inspectorViewController.setActive(false)
         UserDefaults.standard.set(false, forKey: State.isOpenKey)
     }
 
-    func windowDidMiniaturize(_ notification: Notification) {
+    func windowDidMiniaturize(_: Notification) {
         inspectorViewController.setActive(false)
         UserDefaults.standard.set(false, forKey: State.isOpenKey)
     }
 
-    func windowDidDeminiaturize(_ notification: Notification) {
+    func windowDidDeminiaturize(_: Notification) {
         inspectorViewController.setActive(true)
         UserDefaults.standard.set(true, forKey: State.isOpenKey)
     }
@@ -117,7 +117,9 @@ private struct InspectorRow {
 }
 
 private final class InspectorFlippedView: NSView {
-    override var isFlipped: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
 }
 
 @MainActor
@@ -146,7 +148,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -217,6 +219,13 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             render(snapshot(for: item, moduleTitle: "爱妹子"))
+        case .mrdsGallery:
+            cancelLocalMetadata()
+            guard let item = appContext.mrdsStore.selectedItem else {
+                renderEmpty(module: "每日大赛", symbolName: "flag.checkered")
+                return
+            }
+            render(snapshot(for: item, moduleTitle: "每日大赛"))
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 cancelLocalMetadata()
@@ -313,7 +322,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
             contentStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 20),
             contentStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -20),
             contentStack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 18),
-            contentStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -20)
+            contentStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -20),
         ])
     }
 
@@ -478,10 +487,10 @@ private final class WorkspaceInspectorViewController: NSViewController {
     @objc private func performRowAction(_ sender: NSButton) {
         guard let action = rowActions[sender.tag] else { return }
         switch action {
-        case .open(let url):
+        case let .open(url):
             guard url.scheme?.lowercased() == "https", url.host != nil else { return }
             NSWorkspace.shared.open(url)
-        case .reveal(let url):
+        case let .reveal(url):
             guard url.isFileURL else { return }
             NSWorkspace.shared.activateFileViewerSelecting([url])
         }
@@ -509,17 +518,17 @@ private final class WorkspaceInspectorViewController: NSViewController {
                         ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
                     }),
                     row("修改日期", metadata?.modifiedDate?.formatted(date: .abbreviated, time: .shortened)),
-                    fileStatus
+                    fileStatus,
                 ]),
                 section("位置", rows: [
-                    row("路径", image.url.path, allowsWrapping: false, action: .reveal(image.url))
-                ])
+                    row("路径", image.url.path, allowsWrapping: false, action: .reveal(image.url)),
+                ]),
             ])
         )
     }
 
     private func snapshot(for item: GalleryItem, moduleTitle: String) -> InspectorSnapshot {
-        let kindTitle: String = switch item.kind {
+        let kindTitle = switch item.kind {
         case .gallery: "图集"
         case .recommended: "推荐"
         case .advertisement: "广告"
@@ -535,11 +544,11 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     row("栏目", item.section.title),
                     row("图片数", item.imageCount.formatted()),
                     row("页数", item.pageCount.formatted()),
-                    row("收藏", appContext.galleryStore.isFavorite(item) ? "已收藏" : "未收藏")
+                    row("收藏", appContext.galleryStore.isFavorite(item) ? "已收藏" : "未收藏"),
                 ]),
                 section("来源", rows: [
-                    row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL))
-                ])
+                    row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL)),
+                ]),
             ])
         )
     }
@@ -560,14 +569,14 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     row("图片数", item.imageCount > 0 ? item.imageCount.formatted() : "未知"),
                     row("页数", item.pageCount.formatted()),
                     row("标签", item.tags.isEmpty ? nil : item.tags.joined(separator: ", ")),
-                    row("收藏", appContext.missKonStore.isFavorite(item) ? "已收藏" : "未收藏")
+                    row("收藏", appContext.missKonStore.isFavorite(item) ? "已收藏" : "未收藏"),
                 ]),
                 section("资源", rows: [
                     row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL)),
                     mediaFireURL.flatMap {
                         row("MediaFire", $0.absoluteString, allowsWrapping: false, action: .open($0))
-                    }
-                ])
+                    },
+                ]),
             ])
         )
     }
@@ -590,7 +599,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     }),
                     row("格式", format),
                     row("分类", category),
-                    row("内容分级", wallpaper.purity.title)
+                    row("内容分级", wallpaper.purity.title),
                 ]),
                 section("发布信息", rows: [
                     row("上传者", wallpaper.uploader),
@@ -598,14 +607,14 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     row("浏览数", wallpaper.views?.formatted()),
                     row("站内收藏", wallpaper.favorites?.formatted()),
                     row("标签", wallpaper.tags.isEmpty ? nil : wallpaper.tags.joined(separator: ", ")),
-                    row("应用收藏", appContext.wallhavenStore.isFavorite(wallpaper) ? "已收藏" : "未收藏")
+                    row("应用收藏", appContext.wallhavenStore.isFavorite(wallpaper) ? "已收藏" : "未收藏"),
                 ]),
                 section("来源", rows: [
                     wallpaper.uploaderProfileURL.flatMap {
                         row("作者主页", $0.absoluteString, allowsWrapping: false, action: .open($0))
                     },
-                    row("原网页", wallpaper.sourcePageUrl.absoluteString, allowsWrapping: false, action: .open(wallpaper.sourcePageUrl))
-                ])
+                    row("原网页", wallpaper.sourcePageUrl.absoluteString, allowsWrapping: false, action: .open(wallpaper.sourcePageUrl)),
+                ]),
             ])
         )
     }
@@ -632,18 +641,49 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     row("视频", item.reportedVideoCount > 0 ? item.reportedVideoCount.formatted() : nil),
                     row("浏览数", item.viewCount?.formatted()),
                     row("发布日期", item.publishedDate.nilIfEmpty),
-                    row("收藏", appContext.knitStore.isFavorite(item) ? "已收藏" : "未收藏")
+                    row("收藏", appContext.knitStore.isFavorite(item) ? "已收藏" : "未收藏"),
                 ]),
                 section("已解析详情", rows: [
                     row("实际图片", metadata?.totalImages.formatted()),
                     row("图集页数", metadata?.totalPages.formatted()),
                     row("视频状态", videoStatus),
                     row("标签", metadata?.tags.isEmpty == false ? metadata?.tags.joined(separator: ", ") : nil),
-                    row("描述", metadata?.description.nilIfEmpty)
+                    row("描述", metadata?.description.nilIfEmpty),
                 ]),
                 section("来源", rows: [
-                    row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL))
-                ])
+                    row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL)),
+                ]),
+            ])
+        )
+    }
+
+    private func snapshot(for item: MrdsGalleryItem, moduleTitle: String) -> InspectorSnapshot {
+        let metadata = appContext.mrdsStore.detailMetadata
+        let videoStatus: String? = if appContext.mrdsStore.videoURL != nil {
+            "可播放"
+        } else {
+            nil
+        }
+        return InspectorSnapshot(
+            symbolName: "flag.checkered",
+            title: item.title,
+            moduleTitle: moduleTitle,
+            summary: [item.category, item.metadataText].filter { !$0.isEmpty }.joined(separator: " · ").nilIfEmpty,
+            sections: compactSections([
+                section("概览", rows: [
+                    row("分类", item.category.nilIfEmpty),
+                    row("发布日期", item.publishedDate.nilIfEmpty),
+                    row("收藏", appContext.mrdsStore.isFavorite(item) ? "已收藏" : "未收藏"),
+                ]),
+                section("已解析详情", rows: [
+                    row("实际图片", metadata?.totalImages.formatted()),
+                    row("视频状态", videoStatus),
+                    row("标签", metadata?.tags.isEmpty == false ? metadata?.tags.joined(separator: ", ") : nil),
+                    row("描述", metadata?.description.nilIfEmpty),
+                ]),
+                section("来源", rows: [
+                    row("原网页", item.detailURL.absoluteString, allowsWrapping: false, action: .open(item.detailURL)),
+                ]),
             ])
         )
     }
@@ -674,14 +714,14 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     row("图片数", record.imageCount > 0 ? record.imageCount.formatted() : "未知"),
                     row("页数", record.pageCount.formatted()),
                     row("来源标识", record.sourceID.nilIfEmpty),
-                    row("作者或专题", metadata?.secondaryTitle)
+                    row("作者或专题", metadata?.secondaryTitle),
                 ]),
                 section("来源详情", rows: sourceFactRows),
                 section("可用资源", rows: [
                     row("视频", videoURL == nil ? nil : "可播放并下载"),
                     externalAction.flatMap {
                         row($0.title, $0.url.absoluteString, allowsWrapping: false, action: .open($0.url))
-                    }
+                    },
                 ]),
                 section("来源", rows: [
                     metadata?.secondaryURL.flatMap {
@@ -689,8 +729,8 @@ private final class WorkspaceInspectorViewController: NSViewController {
                     },
                     detailURL.flatMap {
                         row("原网页", $0.absoluteString, allowsWrapping: false, action: .open($0))
-                    }
-                ])
+                    },
+                ]),
             ])
         )
     }
@@ -754,6 +794,12 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 _ = appContext.knitStore.selectedItem
                 _ = appContext.knitStore.videoURL
                 _ = appContext.knitStore.detailMetadata
+                _ = appContext.favoritesStore.favorites
+            case .mrdsGallery:
+                _ = appContext.mrdsStore.selectedItemID
+                _ = appContext.mrdsStore.selectedItem
+                _ = appContext.mrdsStore.videoURL
+                _ = appContext.mrdsStore.detailMetadata
                 _ = appContext.favoritesStore.favorites
             case .localLibrary:
                 _ = appContext.localLibraryStore.roots

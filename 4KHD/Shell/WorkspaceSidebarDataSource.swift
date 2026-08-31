@@ -36,20 +36,27 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         let misskon = WorkspaceSidebarNode.group("MissKon")
         let wallhaven = WorkspaceSidebarNode.group("在线壁纸")
         let knit = WorkspaceSidebarNode.group("爱妹子")
+        let mrds = WorkspaceSidebarNode.group("每日大赛")
         let local = WorkspaceSidebarNode.group("本地")
 
         let showAdvanced = SidebarModuleVisibility.showAdvancedModules
         nodes = [local, wallhaven]
-        if showAdvanced { nodes.append(online); nodes.append(misskon); nodes.append(knit) }
+        if showAdvanced {
+            nodes.append(online)
+            nodes.append(misskon)
+            nodes.append(knit)
+            nodes.append(mrds)
+        }
 
         childrenByNode[online] = GallerySection.allCases.map(WorkspaceSidebarNode.gallery)
         childrenByNode[misskon] = MissKonSection.allCases.map(WorkspaceSidebarNode.missKon)
         childrenByNode[wallhaven] = WallhavenSection.allCases.map(WorkspaceSidebarNode.wallhaven)
         childrenByNode[knit] = KnitSidebarSection.allCases.map(WorkspaceSidebarNode.knit)
+        childrenByNode[mrds] = MrdsSection.allCases.map(WorkspaceSidebarNode.mrds)
         // 在线收藏作为「本地」分组的子节点,紧跟在「我的图片」下方。
         var localChildren: [WorkspaceSidebarNode] = [
             .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount }),
-            .favoritesModule
+            .favoritesModule,
         ]
         localChildren.append(contentsOf: localRoots.map { makeFolderNode($0.tree) })
         childrenByNode[local] = localChildren
@@ -80,28 +87,28 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         pathToNode { $0.stateIdentifier == stateIdentifier }?.last
     }
 
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+    func outlineView(_: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let node = item as? WorkspaceSidebarNode else {
             return nodes.count
         }
         return children(of: node).count
     }
 
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+    func outlineView(_: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         guard let node = item as? WorkspaceSidebarNode else {
             return nodes[index]
         }
         return children(of: node)[index]
     }
 
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+    func outlineView(_: NSOutlineView, isItemExpandable item: Any) -> Bool {
         guard let node = item as? WorkspaceSidebarNode else { return false }
         return !children(of: node).isEmpty
     }
 
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> (any NSPasteboardWriting)? {
+    func outlineView(_: NSOutlineView, pasteboardWriterForItem item: Any) -> (any NSPasteboardWriting)? {
         guard let node = item as? WorkspaceSidebarNode,
-              case .localFolder(let folder) = node,
+              case let .localFolder(folder) = node,
               localRootFolderIDs.contains(folder.id) else { return nil }
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setString(folder.id, forType: Self.localFolderDragType)
@@ -131,10 +138,10 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     }
 
     func outlineView(
-        _ outlineView: NSOutlineView,
+        _: NSOutlineView,
         acceptDrop info: NSDraggingInfo,
-        item: Any?,
-        childIndex index: Int
+        item _: Any?,
+        childIndex _: Int
     ) -> Bool {
         if localRootFolderID(from: info.draggingPasteboard) != nil {
             lastLiveLocalRootDestination = nil
@@ -148,7 +155,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
 
     func currentLocalRootFolderIDs() -> [LocalFolderNode.ID] {
         children(of: localRootGroup()).compactMap { node in
-            guard case .localFolder(let folder) = node,
+            guard case let .localFolder(folder) = node,
                   localRootFolderIDs.contains(folder.id) else { return nil }
             return folder.id
         }
@@ -164,7 +171,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
             return true
         }
         for node in localRoots {
-            guard case .localFolder(let folder) = node else { continue }
+            guard case let .localFolder(folder) = node else { continue }
             folderByID[folder.id] = node
         }
         guard folderByID.count == ids.count else { return }
@@ -183,9 +190,10 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         let localGroup = localRootGroup()
         guard var localRoots = childrenByNode[localGroup],
               let sourceIndex = localRoots.firstIndex(where: { node in
-                  guard case .localFolder(let folder) = node else { return false }
+                  guard case let .localFolder(folder) = node else { return false }
                   return folder.id == folderID && localRootFolderIDs.contains(folder.id)
-              }) else {
+              })
+        else {
             return currentLocalRootFolderIDs()
         }
         var insertionIndex = max(1, min(dropIndex, localRoots.count))
@@ -265,17 +273,20 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
     ) -> Int? {
         let localGroup = localRootGroup()
         if let node = item as? WorkspaceSidebarNode,
-           node == localGroup {
+           node == localGroup
+        {
             return max(1, min(index, children(of: localGroup).count))
         }
         if let node = item as? WorkspaceSidebarNode,
-           case .localAllImages = node {
+           case .localAllImages = node
+        {
             return 1
         }
         guard let node = item as? WorkspaceSidebarNode,
-              case .localFolder(let folder) = node,
+              case let .localFolder(folder) = node,
               localRootFolderIDs.contains(folder.id),
-              let row = rowForNode(node, in: outlineView) else {
+              let row = rowForNode(node, in: outlineView)
+        else {
             return nil
         }
         let rowRect = outlineView.rect(ofRow: row)

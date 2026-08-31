@@ -47,7 +47,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -100,7 +100,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: rootView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
         ])
         view = rootView
     }
@@ -115,7 +115,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         }
     }
 
-    nonisolated(unsafe) private var moduleVisibilityObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var moduleVisibilityObserver: NSObjectProtocol?
 
     deinit {
         if let routeObserverID {
@@ -151,7 +151,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         guard oldDisplaySignatures != newDisplaySignatures else { return }
         let visibleRows = outlineView.rows(in: outlineView.visibleRect)
         guard visibleRows.length > 0 else { return }
-        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) where row >= 0 && row < outlineView.numberOfRows {
+        for row in visibleRows.location ..< (visibleRows.location + visibleRows.length) where row >= 0 && row < outlineView.numberOfRows {
             guard let oldNode = outlineView.item(atRow: row) as? WorkspaceSidebarNode,
                   let node = dataSource.node(withStateIdentifier: oldNode.stateIdentifier),
                   let view = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) else { continue }
@@ -184,10 +184,10 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         delegate?.sidebarViewControllerDidRequestLocalImport(self)
     }
 
-    // macOS 26+ 的 sourceList 系统分组行渲染(标题文字)在 macOS 27 上失效,
-    // 分组行按普通行渲染,由 viewFor 的自定义 cell 完全接管。
-    // 选中保护由 shouldSelectItem / selectionIndexesForProposedSelection 完成。
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+    /// macOS 26+ 的 sourceList 系统分组行渲染(标题文字)在 macOS 27 上失效,
+    /// 分组行按普通行渲染,由 viewFor 的自定义 cell 完全接管。
+    /// 选中保护由 shouldSelectItem / selectionIndexesForProposedSelection 完成。
+    func outlineView(_: NSOutlineView, isGroupItem _: Any) -> Bool {
         false
     }
 
@@ -204,12 +204,12 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         return proposedSelectionIndexes
     }
 
-    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+    func outlineView(_: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         guard let node = item as? WorkspaceSidebarNode else { return true }
         return !isGroupNode(node)
     }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem _: Any) -> NSTableRowView? {
         let identifier = NSUserInterfaceItemIdentifier("WorkspaceSidebarRowView")
         let rowView = outlineView.makeView(withIdentifier: identifier, owner: self) as? WorkspaceSidebarRowView
             ?? WorkspaceSidebarRowView()
@@ -220,11 +220,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     func outlineView(
         _ outlineView: NSOutlineView,
         draggingSession session: NSDraggingSession,
-        willBeginAt screenPoint: NSPoint,
+        willBeginAt _: NSPoint,
         forItems draggedItems: [Any]
     ) {
         guard let node = draggedItems.first as? WorkspaceSidebarNode,
-              case .localFolder(let folder) = node,
+              case let .localFolder(folder) = node,
               appContext.localLibraryStore.roots.contains(where: { $0.tree.id == folder.id }) else { return }
         liveLocalRootFolderID = folder.id
         liveLocalRootFolderIDs = dataSource.currentLocalRootFolderIDs()
@@ -232,7 +232,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         session.animatesToStartingPositionsOnCancelOrFail = false
         let row = outlineView.row(forItem: node)
         if row >= 0,
-           let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) as? WorkspaceSidebarRowView {
+           let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) as? WorkspaceSidebarRowView
+        {
             rowView.suppressSelectionDuringDrag = true
             rowView.needsDisplay = true
         }
@@ -244,12 +245,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     func outlineView(
         _ outlineView: NSOutlineView,
         draggingImageForRowsWith dragRows: IndexSet,
-        tableColumns: [NSTableColumn],
-        event: NSEvent,
+        tableColumns _: [NSTableColumn],
+        event _: NSEvent,
         offset dragImageOffset: NSPointPointer
     ) -> NSImage {
         guard let row = dragRows.first,
-              let rowView = outlineView.rowView(atRow: row, makeIfNecessary: true) as? WorkspaceSidebarRowView else {
+              let rowView = outlineView.rowView(atRow: row, makeIfNecessary: true) as? WorkspaceSidebarRowView
+        else {
             return NSImage(size: .zero)
         }
 
@@ -275,17 +277,17 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         return image
     }
 
-    func outlineViewItemDidExpand(_ notification: Notification) {
+    func outlineViewItemDidExpand(_: Notification) {
         saveExpandedNodeIDsFromOutlineView()
     }
 
-    func outlineViewItemDidCollapse(_ notification: Notification) {
+    func outlineViewItemDidCollapse(_: Notification) {
         saveExpandedNodeIDsFromOutlineView()
     }
 
     func outlineView(
         _ outlineView: NSOutlineView,
-        viewFor tableColumn: NSTableColumn?,
+        viewFor _: NSTableColumn?,
         item: Any
     ) -> NSView? {
         guard let node = item as? WorkspaceSidebarNode else { return nil }
@@ -323,17 +325,19 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         switch node {
         case .group:
             return nil
-        case .gallery(let section):
+        case let .gallery(section):
             systemName = section.sidebarSystemImage
         case .localAllImages:
             systemName = "photo.on.rectangle.angled"
         case .localFolder:
             systemName = "folder"
-        case .missKon(let section):
+        case let .missKon(section):
             systemName = section.sidebarSystemImage
-        case .wallhaven(let section):
+        case let .wallhaven(section):
             systemName = section.sidebarSystemImage
-        case .knit(let section):
+        case let .knit(section):
+            systemName = section.sidebarSystemImage
+        case let .mrds(section):
             systemName = section.sidebarSystemImage
         case .favoritesModule:
             systemName = "heart"
@@ -350,37 +354,40 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         return false
     }
 
-    @objc private func selectionDidChange(_ sender: Any?) {
+    @objc private func selectionDidChange(_: Any?) {
         let selectedRow = outlineView.selectedRow
         guard selectedRow >= 0,
               let node = outlineView.item(atRow: selectedRow) as? WorkspaceSidebarNode else { return }
         let selectedRoute: WorkspaceRoute?
         switch node {
-        case .gallery(let section):
+        case let .gallery(section):
             selectedRoute = WorkspaceRoute(moduleID: .fourKHDGallery, itemID: section.rawValue)
-        case .localFolder(let folder):
+        case let .localFolder(folder):
             selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: folder.id)
         case .localAllImages:
             selectedRoute = WorkspaceRoute(moduleID: .localLibrary, itemID: LocalLibraryStore.allImagesFolderID)
-        case .missKon(let section):
+        case let .missKon(section):
             selectedRoute = WorkspaceRoute(moduleID: .missKon, itemID: section.rawValue)
-        case .wallhaven(let section):
+        case let .wallhaven(section):
             selectedRoute = WorkspaceRoute(moduleID: .wallhaven, itemID: section.rawValue)
-        case .knit(let section):
+        case let .knit(section):
             selectedRoute = WorkspaceRoute(moduleID: .knitGallery, itemID: section.defaultFilter.rawValue)
+        case let .mrds(section):
+            selectedRoute = WorkspaceRoute(moduleID: .mrdsGallery, itemID: section.rawValue)
         case .favoritesModule:
             selectedRoute = WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
         case .group:
             selectedRoute = nil
         }
         guard let selectedRoute,
-              appContext.routeController.route != selectedRoute else {
+              appContext.routeController.route != selectedRoute
+        else {
             return
         }
         delegate?.sidebarViewController(self, didSelect: selectedRoute)
     }
 
-    @objc private func doubleClick(_ sender: Any?) {
+    @objc private func doubleClick(_: Any?) {
         let clickedRow = outlineView.clickedRow
         guard clickedRow >= 0,
               let node = outlineView.item(atRow: clickedRow) as? WorkspaceSidebarNode,
@@ -430,10 +437,11 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
 
     private func updateLocalRootDraggingPresentation() {
         guard outlineView.numberOfRows > 0 else { return }
-        for row in 0..<outlineView.numberOfRows {
+        for row in 0 ..< outlineView.numberOfRows {
             guard let node = outlineView.item(atRow: row) as? WorkspaceSidebarNode,
-                  case .localFolder(let folder) = node,
-                  let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) as? WorkspaceSidebarRowView else {
+                  case let .localFolder(folder) = node,
+                  let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) as? WorkspaceSidebarRowView
+            else {
                 continue
             }
             let dragging = liveLocalRootFolderID == folder.id
@@ -453,7 +461,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private func selectCurrentRoute() {
         let route = appContext.routeController.route
         guard let path = dataSource.pathToNode(where: { routeMatches(route, node: $0) }),
-              let selectedNode = path.last else {
+              let selectedNode = path.last
+        else {
             if outlineView.selectedRow >= 0 {
                 outlineView.deselectAll(nil)
             }
@@ -501,15 +510,17 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
 
     private func routeMatches(_ route: WorkspaceRoute, node: WorkspaceSidebarNode) -> Bool {
         switch (route.moduleID, node) {
-        case (.fourKHDGallery, .gallery(let section)):
+        case let (.fourKHDGallery, .gallery(section)):
             route.itemID == section.rawValue
-        case (.missKon, .missKon(let section)):
+        case let (.missKon, .missKon(section)):
             route.itemID == section.rawValue
-        case (.wallhaven, .wallhaven(let section)):
+        case let (.wallhaven, .wallhaven(section)):
             route.itemID == section.rawValue
-        case (.knitGallery, .knit(let section)):
+        case let (.knitGallery, .knit(section)):
             KnitBrowseFilter.filter(forRouteItemID: route.itemID)?.sidebarSection == section
-        case (.localLibrary, .localFolder(let folder)):
+        case let (.mrdsGallery, .mrds(section)):
+            route.itemID == section.rawValue
+        case let (.localLibrary, .localFolder(folder)):
             route.itemID == folder.id
         case (.localLibrary, .localAllImages):
             route.itemID == LocalLibraryStore.allImagesFolderID

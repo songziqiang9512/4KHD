@@ -2,14 +2,15 @@ import Foundation
 import OSLog
 
 enum OnlineSourcePolicy {
-    enum Source: String, Sendable {
+    enum Source: String {
         case gallery
         case missKon
         case wallhaven
         case knit
+        case mrds
     }
 
-    enum Resource: Sendable {
+    enum Resource {
         case html
         case api
         case media
@@ -35,7 +36,8 @@ enum OnlineSourcePolicy {
 
     nonisolated static func validate(_ response: URLResponse, source: Source, resource: Resource) throws {
         guard let finalURL = response.url,
-              allows(finalURL, source: source, resource: resource) else {
+              allows(finalURL, source: source, resource: resource)
+        else {
             throw PolicyError.rejectedRedirect
         }
     }
@@ -64,7 +66,6 @@ enum OnlineSourcePolicy {
                         || url.path.hasPrefix("/yt4.googleusercontent.com/")))
         case (.gallery, .api):
             return false
-
         case (.missKon, .html):
             return isExactOrSubdomain(host, of: "misskon.com")
                 || isExactOrSubdomain(host, of: "mrcong.com")
@@ -73,19 +74,27 @@ enum OnlineSourcePolicy {
                 || isExactOrSubdomain(host, of: "mrcong.com")
         case (.missKon, .api):
             return false
-
         case (.wallhaven, .api):
             return host == "wallhaven.cc" && url.path.hasPrefix("/api/v1/")
         case (.wallhaven, .html):
             return host == "wallhaven.cc" || host == "www.wallhaven.cc" || host == "whvn.cc"
         case (.wallhaven, .media):
             return isExactOrSubdomain(host, of: "wallhaven.cc")
-
         case (.knit, .html):
             return isExactOrSubdomain(host, of: "knit.bid")
         case (.knit, .media):
             return isExactOrSubdomain(host, of: "knit.bid")
         case (.knit, .api):
+            return false
+        case (.mrds, .html):
+            return isExactOrSubdomain(host, of: "mrds66.com")
+        case (.mrds, .media):
+            return host == "pic.sbhioa.cn"
+                || host == "hls.piotrt.cn"
+                || host == "ts.syjiaotong.mobi"
+                || host == "tx.doudou520.online"
+                || host == "ts.zhixunkeji.xyz"
+        case (.mrds, .api):
             return false
         }
     }
@@ -95,7 +104,7 @@ enum OnlineSourcePolicy {
     /// delegates because some image loaders do not retain custom Referer
     /// headers on `task.originalRequest`.
     nonisolated static func source(forMediaURL url: URL) -> Source? {
-        let matches = [Source.gallery, .missKon, .wallhaven, .knit].filter {
+        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds].filter {
             allows(url, source: $0, resource: .media)
         }
         return matches.count == 1 ? matches[0] : nil
@@ -129,9 +138,9 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
     )
 
     func urlSession(
-        _ session: URLSession,
+        _: URLSession,
         task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
+        willPerformHTTPRedirection _: HTTPURLResponse,
         newRequest request: URLRequest,
         completionHandler: @Sendable @escaping (URLRequest?) -> Void
     ) {
@@ -139,7 +148,8 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         let targetURL = request.url
         guard let source,
               let targetURL,
-              OnlineSourcePolicy.allows(targetURL, source: source, resource: .media) else {
+              OnlineSourcePolicy.allows(targetURL, source: source, resource: .media)
+        else {
             let originalHost = task.originalRequest?.url?.host ?? "<none>"
             let currentHost = task.currentRequest?.url?.host ?? "<none>"
             let targetHost = targetURL?.host ?? "<none>"
@@ -160,7 +170,8 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
                 return source
             }
             if let url = request.url,
-               let source = OnlineSourcePolicy.source(forMediaURL: url) {
+               let source = OnlineSourcePolicy.source(forMediaURL: url)
+            {
                 return source
             }
         }
@@ -175,6 +186,7 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         if host == "misskon.com" || host.hasSuffix(".misskon.com") { return .missKon }
         if host == "wallhaven.cc" || host.hasSuffix(".wallhaven.cc") { return .wallhaven }
         if host == "knit.bid" || host.hasSuffix(".knit.bid") { return .knit }
+        if host == "mrds66.com" || host.hasSuffix(".mrds66.com") { return .mrds }
         return nil
     }
 }
@@ -190,6 +202,7 @@ final class OnlineSourceSession: NSObject, URLSessionTaskDelegate, @unchecked Se
     static let wallhavenAPI = OnlineSourceSession(source: .wallhaven, resource: .api)
     static let wallhavenHTML = OnlineSourceSession(source: .wallhaven, resource: .html)
     static let wallhavenMedia = OnlineSourceSession(source: .wallhaven, resource: .media)
+    static let mrdsHTML = OnlineSourceSession(source: .mrds, resource: .html)
 
     private let source: OnlineSourcePolicy.Source
     private let resource: OnlineSourcePolicy.Resource
@@ -224,9 +237,9 @@ final class OnlineSourceSession: NSObject, URLSessionTaskDelegate, @unchecked Se
     }
 
     func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
+        _: URLSession,
+        task _: URLSessionTask,
+        willPerformHTTPRedirection _: HTTPURLResponse,
         newRequest request: URLRequest,
         completionHandler: @Sendable @escaping (URLRequest?) -> Void
     ) {

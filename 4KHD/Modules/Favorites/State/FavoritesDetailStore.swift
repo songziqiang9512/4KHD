@@ -11,7 +11,7 @@ final class FavoritesDetailStore {
     // entire filmstrip synchronously would block AppKit's MainActor. Start with
     // a bounded progressive window; pages without placeholders are inserted
     // normally by replaceSlots when they resolve, so no final images are lost.
-    private static let maximumInitialSlotCount = 1_000
+    private static let maximumInitialSlotCount = 1000
     private(set) var currentRecord: FavoriteRecord?
     private(set) var currentSource: FavoriteSource?
     private(set) var imageSlots: [FavoritesImageSlot] = []
@@ -76,14 +76,16 @@ final class FavoritesDetailStore {
             && knownPageURLs.allSatisfy { resolvedPages[$0] != nil }
     }
 
-    var hasResolvedSelectedImage: Bool { selectedSlotRepresentsResolvedImage }
+    var hasResolvedSelectedImage: Bool {
+        selectedSlotRepresentsResolvedImage
+    }
 
     var canPlayVideo: Bool {
         currentVideoContext != nil
     }
 
     var canSaveVideo: Bool {
-        currentVideoContext != nil
+        currentVideoContext?.actions.canSaveAsMP4 == true
     }
 
     var navigationMode: FavoriteDetailNavigationMode {
@@ -128,11 +130,11 @@ final class FavoritesDetailStore {
         let pageURLs: [URL]
         let estimatedImageCount: Int
         switch content {
-        case .paged(let urls, let count, let capacity):
+        case let .paged(urls, count, capacity):
             pageURLs = urls
             estimatedImageCount = count
             pageImageCapacity = max(capacity, 1)
-        case .singleImage(let imageURL):
+        case let .singleImage(imageURL):
             imageSlots = [FavoritesImageSlot(
                 id: "\(record.id)-cover",
                 displayIndex: 0,
@@ -150,7 +152,8 @@ final class FavoritesDetailStore {
 
         // 首页缓存命中直接建立已解析页。
         if let cached = DetailPageImageCache.shared.page(for: knownPageURLs[0]),
-           let cachedRecommendations = cached.recommendations {
+           let cachedRecommendations = cached.recommendations
+        {
             resolvedPages[cached.pageURL] = ResolvedPage(
                 imageURLs: cached.imageURLs,
                 pageURLs: cached.pageURLs,
@@ -184,7 +187,8 @@ final class FavoritesDetailStore {
         }
         imageSlots = slots
         if let firstPageURL = knownPageURLs.first,
-           let cachedPage = resolvedPages[firstPageURL] {
+           let cachedPage = resolvedPages[firstPageURL]
+        {
             replaceSlots(
                 for: firstPageURL,
                 with: resolvedSlots(for: cachedPage, pageURL: firstPageURL, record: record)
@@ -374,7 +378,8 @@ final class FavoritesDetailStore {
 
     private func resolvePage(_ pageURL: URL) async throws -> ResolvedPage {
         guard let record = currentRecord,
-              let adapter = sourceAdapters.adapter(for: record) else {
+              let adapter = sourceAdapters.adapter(for: record)
+        else {
             throw URLError(.unsupportedURL)
         }
         let page = try await adapter.resolvePage(pageURL)
@@ -554,7 +559,8 @@ final class FavoritesDetailStore {
         case .afterLastImage:
             let nextIndex = selectedIndex + 1
             if imageSlots.indices.contains(nextIndex),
-               isResolvedNavigableImage(at: nextIndex) {
+               isResolvedNavigableImage(at: nextIndex)
+            {
                 self.pendingNavigationTarget = nil
                 selectSlot(at: nextIndex)
                 return
@@ -568,13 +574,14 @@ final class FavoritesDetailStore {
                 loadNextUnresolvedPage()
             }
 
-        case .slot(let pageURL, let requestedImageIndex):
+        case let .slot(pageURL, requestedImageIndex):
             guard let pageOrder = knownPageURLs.firstIndex(of: pageURL) else {
                 self.pendingNavigationTarget = nil
                 return
             }
             guard pageOrder < contiguousResolvedPageCount,
-                  let page = resolvedPages[pageURL] else {
+                  let page = resolvedPages[pageURL]
+            else {
                 loadNextUnresolvedPage()
                 return
             }
@@ -633,7 +640,8 @@ final class FavoritesDetailStore {
         guard contentMode == .image,
               let record = currentRecord,
               let url = videoURL,
-              let actions = sourceAdapters.adapter(for: record)?.videoActions else {
+              let actions = sourceAdapters.adapter(for: record)?.videoActions
+        else {
             return nil
         }
         return (record, url, actions)

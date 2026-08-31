@@ -49,7 +49,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -61,15 +61,15 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func windowWillClose(_ notification: Notification) {
+    func windowWillClose(_: Notification) {
         saveStateToUserDefaults()
     }
 
-    func windowDidEnterFullScreen(_ notification: Notification) {
+    func windowDidEnterFullScreen(_: Notification) {
         saveStateToUserDefaults()
     }
 
-    func windowDidExitFullScreen(_ notification: Notification) {
+    func windowDidExitFullScreen(_: Notification) {
         saveStateToUserDefaults()
     }
 
@@ -119,6 +119,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         case .knitGallery:
             let section = KnitBrowseFilter.filter(forRouteItemID: route.itemID)?.sidebarSection ?? .recentUpdates
             return "\(section.title) - 爱妹子"
+        case .mrdsGallery:
+            let section = MrdsSection(rawValue: route.itemID) ?? .latest
+            return "\(section.title) - 每日大赛"
         }
     }
 }

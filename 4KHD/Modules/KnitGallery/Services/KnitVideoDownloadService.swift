@@ -1,8 +1,9 @@
 import AVFoundation
+import CommonCrypto
 import Foundation
 
-nonisolated struct KnitVideoDownloadProgress: Sendable, Equatable {
-    enum Stage: Sendable, Equatable {
+nonisolated struct KnitVideoDownloadProgress: Equatable {
+    enum Stage: Equatable {
         case resolvingPlaylist
         case downloadingSegments
         case exportingMP4
@@ -64,7 +65,7 @@ nonisolated struct KnitVideoDownloadProgress: Sendable, Equatable {
     }
 }
 
-nonisolated struct KnitVideoTransferMetrics: Sendable, Equatable {
+nonisolated struct KnitVideoTransferMetrics: Equatable {
     let downloadedBytes: Int64
     let estimatedTotalBytes: Int64?
     let bytesPerSecond: Double
@@ -74,7 +75,7 @@ nonisolated struct KnitVideoTransferMetrics: Sendable, Equatable {
 /// Tracks bytes at completed HLS segment boundaries. The recent speed is
 /// exponentially smoothed so the task center does not jump between segments;
 /// the average always spans the whole segment-download phase.
-nonisolated struct KnitVideoTransferMeter: Sendable {
+nonisolated struct KnitVideoTransferMeter {
     private let startedAt: Date
     private var lastSampleAt: Date
     private(set) var downloadedBytes: Int64 = 0
@@ -83,7 +84,7 @@ nonisolated struct KnitVideoTransferMeter: Sendable {
 
     init(startedAt: Date = Date()) {
         self.startedAt = startedAt
-        self.lastSampleAt = startedAt
+        lastSampleAt = startedAt
     }
 
     mutating func record(
@@ -135,6 +136,7 @@ nonisolated enum KnitVideoDownloadError: LocalizedError, Equatable {
     case playlistTooLarge
     case tooManySegments
     case encryptedPlaylist
+    case invalidEncryptionKey
     case separateAudioTrack
     case byteRangePlaylist
     case fragmentedMP4Playlist
@@ -148,7 +150,7 @@ nonisolated enum KnitVideoDownloadError: LocalizedError, Equatable {
         switch self {
         case .invalidPlaylistURL:
             "影片源地址无效"
-        case .badStatus(let status):
+        case let .badStatus(status):
             "影片服务器返回状态码 \(status)"
         case .challengeNotResolved:
             "影片访问验证未通过"
@@ -163,7 +165,9 @@ nonisolated enum KnitVideoDownloadError: LocalizedError, Equatable {
         case .tooManySegments:
             "影片片段数量异常，已停止下载"
         case .encryptedPlaylist:
-            "该影片使用了加密清单，暂时无法保存为 MP4"
+            "该影片使用了不支持的加密方式，暂时无法保存为 MP4"
+        case .invalidEncryptionKey:
+            "影片密钥无效，无法解密保存为 MP4"
         case .separateAudioTrack:
             "该影片使用了独立音轨，暂时无法完整保存为 MP4"
         case .byteRangePlaylist:
@@ -176,7 +180,7 @@ nonisolated enum KnitVideoDownloadError: LocalizedError, Equatable {
             "下载到的影片片段无法封装为 MP4"
         case .exportUnavailable:
             "系统无法创建 MP4 导出任务"
-        case .exportFailed(let message):
+        case let .exportFailed(message):
             "MP4 封装失败：\(message)"
         case .invalidExportedFile:
             "生成的 MP4 未通过系统播放校验"
@@ -184,16 +188,30 @@ nonisolated enum KnitVideoDownloadError: LocalizedError, Equatable {
     }
 }
 
-nonisolated enum KnitHLSPlaylist: Equatable, Sendable {
-    struct Variant: Equatable, Sendable {
+nonisolated enum KnitHLSPlaylist: Equatable {
+    struct Variant: Equatable {
         let url: URL
         let bandwidth: Int
     }
 
-    case master([Variant])
-    case media([URL])
+    struct AES128Encryption: Equatable {
+        let keyURL: URL
+        let iv: Data
+    }
 
-    static func parse(_ text: String, baseURL: URL) throws -> KnitHLSPlaylist {
+    struct MediaSegment: Equatable {
+        let url: URL
+        let encryption: AES128Encryption?
+    }
+
+    case master([Variant])
+    case media([MediaSegment])
+
+    static func parse(
+        _ text: String,
+        baseURL: URL,
+        source: OnlineSourcePolicy.Source = .knit
+    ) throws -> KnitHLSPlaylist {
         let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
         let lines = normalized
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -203,7 +221,9 @@ nonisolated enum KnitHLSPlaylist: Equatable, Sendable {
         }
         if lines.contains(where: { line in
             let upper = line.uppercased()
-            return upper.hasPrefix("#EXT-X-KEY:") && !upper.contains("METHOD=NONE")
+            guard upper.hasPrefix("#EXT-X-KEY:") else { return false }
+            let method = hlsAttributeMap(line)["METHOD"]?.uppercased() ?? ""
+            return method != "NONE" && method != "AES-128"
         }) {
             throw KnitVideoDownloadError.encryptedPlaylist
         }
@@ -230,8 +250,9 @@ nonisolated enum KnitHLSPlaylist: Equatable, Sendable {
             let line = lines[index]
             guard line.uppercased().hasPrefix("#EXT-X-STREAM-INF:") else { continue }
             guard let rawURL = nextResourceLine(after: index, in: lines),
-                  let url = validatedMediaURL(rawURL, relativeTo: baseURL),
-                  url.pathExtension.lowercased() == "m3u8" else {
+                  let url = validatedMediaURL(rawURL, relativeTo: baseURL, source: source),
+                  url.pathExtension.lowercased() == "m3u8"
+            else {
                 throw KnitVideoDownloadError.invalidPlaylist
             }
             variants.append(Variant(url: url, bandwidth: bandwidth(in: line)))
@@ -251,12 +272,58 @@ nonisolated enum KnitHLSPlaylist: Equatable, Sendable {
         guard lines.contains(where: { $0.uppercased() == "#EXT-X-ENDLIST" }) else {
             throw KnitVideoDownloadError.livePlaylist
         }
-        let segmentURLs = try lines.compactMap { line -> URL? in
-            guard !line.isEmpty, !line.hasPrefix("#") else { return nil }
-            guard let url = validatedMediaURL(line, relativeTo: baseURL) else {
+        var mediaSequence = 0
+        var keyURL: URL?
+        var explicitIV: Data?
+        var segmentURLs: [MediaSegment] = []
+        for line in lines {
+            let upper = line.uppercased()
+            if upper.hasPrefix("#EXT-X-MEDIA-SEQUENCE:") {
+                let value = line.split(separator: ":", maxSplits: 1).last
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+                mediaSequence = Int(value) ?? 0
+                continue
+            }
+            if upper.hasPrefix("#EXT-X-KEY:") {
+                let attributes = hlsAttributeMap(line)
+                let method = attributes["METHOD"]?.uppercased() ?? ""
+                if method == "NONE" {
+                    keyURL = nil
+                    explicitIV = nil
+                    continue
+                }
+                guard method == "AES-128", let uri = attributes["URI"] else {
+                    throw KnitVideoDownloadError.invalidPlaylist
+                }
+                guard let resolvedKeyURL = validatedMediaURL(uri, relativeTo: baseURL, source: source) else {
+                    throw OnlineSourcePolicy.PolicyError.rejectedURL
+                }
+                keyURL = resolvedKeyURL
+                if let ivValue = attributes["IV"] {
+                    guard let iv = dataFromHexIV(ivValue), iv.count == 16 else {
+                        throw KnitVideoDownloadError.invalidPlaylist
+                    }
+                    explicitIV = iv
+                } else {
+                    explicitIV = nil
+                }
+                continue
+            }
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+            guard let url = validatedMediaURL(line, relativeTo: baseURL, source: source) else {
                 throw OnlineSourcePolicy.PolicyError.rejectedURL
             }
-            return url
+            let encryption: AES128Encryption?
+            if let keyURL {
+                encryption = AES128Encryption(
+                    keyURL: keyURL,
+                    iv: explicitIV ?? ivFromMediaSequence(mediaSequence)
+                )
+            } else {
+                encryption = nil
+            }
+            segmentURLs.append(MediaSegment(url: url, encryption: encryption))
+            mediaSequence += 1
         }
         guard !segmentURLs.isEmpty else { throw KnitVideoDownloadError.emptyPlaylist }
         guard segmentURLs.count <= KnitVideoDownloadService.maximumSegmentCount else {
@@ -274,11 +341,15 @@ nonisolated enum KnitHLSPlaylist: Equatable, Sendable {
         return nil
     }
 
-    private static func validatedMediaURL(_ value: String, relativeTo baseURL: URL) -> URL? {
+    private static func validatedMediaURL(
+        _ value: String,
+        relativeTo baseURL: URL,
+        source: OnlineSourcePolicy.Source
+    ) -> URL? {
         OnlineSourcePolicy.resolvedURL(
             value,
             relativeTo: baseURL,
-            source: .knit,
+            source: source,
             resource: .media
         )
     }
@@ -292,20 +363,85 @@ nonisolated enum KnitHLSPlaylist: Equatable, Sendable {
         for attribute in attributes {
             let pair = attribute.split(separator: "=", maxSplits: 1)
             guard pair.count == 2,
-                  pair[0].trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "BANDWIDTH" else {
+                  pair[0].trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "BANDWIDTH"
+            else {
                 continue
             }
             return Int(pair[1].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
         }
         return 0
     }
+
+    private static func hlsAttributeMap(_ line: String) -> [String: String] {
+        guard let colon = line.firstIndex(of: ":") else { return [:] }
+        let body = line[line.index(after: colon)...]
+        var result: [String: String] = [:]
+        var index = body.startIndex
+        while index < body.endIndex {
+            while index < body.endIndex, body[index] == "," || body[index].isWhitespace {
+                index = body.index(after: index)
+            }
+            guard index < body.endIndex,
+                  let equals = body[index...].firstIndex(of: "=")
+            else { break }
+            let name = body[index ..< equals].trimmingCharacters(in: .whitespaces).uppercased()
+            var valueStart = body.index(after: equals)
+            let value: String
+            if valueStart < body.endIndex, body[valueStart] == "\"" {
+                valueStart = body.index(after: valueStart)
+                if let endQuote = body[valueStart...].firstIndex(of: "\"") {
+                    value = String(body[valueStart ..< endQuote])
+                    index = body.index(after: endQuote)
+                } else {
+                    value = String(body[valueStart...])
+                    index = body.endIndex
+                }
+            } else if let comma = body[valueStart...].firstIndex(of: ",") {
+                value = String(body[valueStart ..< comma]).trimmingCharacters(in: .whitespaces)
+                index = comma
+            } else {
+                value = String(body[valueStart...]).trimmingCharacters(in: .whitespaces)
+                index = body.endIndex
+            }
+            result[name] = value
+        }
+        return result
+    }
+
+    private static func dataFromHexIV(_ value: String) -> Data? {
+        var hex = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.lowercased().hasPrefix("0x") {
+            hex = String(hex.dropFirst(2))
+        }
+        guard hex.count == 32, hex.allSatisfy(\.isHexDigit) else { return nil }
+        var data = Data()
+        data.reserveCapacity(16)
+        var cursor = hex.startIndex
+        while cursor < hex.endIndex {
+            let next = hex.index(cursor, offsetBy: 2)
+            guard let byte = UInt8(hex[cursor ..< next], radix: 16) else { return nil }
+            data.append(byte)
+            cursor = next
+        }
+        return data
+    }
+
+    private static func ivFromMediaSequence(_ sequence: Int) -> Data {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        var value = UInt64(max(sequence, 0))
+        for offset in (0 ..< 8).reversed() {
+            bytes[8 + offset] = UInt8(truncatingIfNeeded: value)
+            value >>= 8
+        }
+        return Data(bytes)
+    }
 }
 
 nonisolated enum KnitVideoDownloadService {
-    static let maximumSegmentCount = 10_000
-    private static let maximumPlaylistBytes = 5 * 1_024 * 1_024
+    static let maximumSegmentCount = 10000
+    private static let maximumPlaylistBytes = 5 * 1024 * 1024
     private static let maximumPlaylistDepth = 3
-    private static let copyBufferSize = 1_024 * 1_024
+    private static let copyBufferSize = 1024 * 1024
 
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -338,23 +474,48 @@ nonisolated enum KnitVideoDownloadService {
         }
     }
 
+    private static let maximumKeyBytes = 64
+
+    private struct SessionContext {
+        let source: OnlineSourcePolicy.Source
+        let userAgent: String
+        let referer: String
+        let challengeRecovery: ChallengeRecoveryContext
+
+        var allowsChallengeRecovery: Bool {
+            source == .knit
+        }
+    }
+
+    static func suggestedFilename(title: String, id: String) -> String {
+        "\(AlbumDownloadFileNaming.sanitizedFolderName(title))-\(id).mp4"
+    }
+
     static func suggestedFilename(for item: KnitGalleryItem) -> String {
-        "\(AlbumDownloadFileNaming.sanitizedFolderName(item.title))-\(item.id).mp4"
+        suggestedFilename(title: item.title, id: item.id)
     }
 
     static func saveMP4(
         from playlistURL: URL,
         to destinationURL: URL,
+        source: OnlineSourcePolicy.Source = .knit,
+        userAgent: String? = nil,
+        referer: String? = nil,
         progress: @escaping @Sendable (KnitVideoDownloadProgress) -> Void
     ) async throws {
         guard destinationURL.isFileURL else { throw CocoaError(.fileWriteUnsupportedScheme) }
-        try validatePlaylistURL(playlistURL)
+        try validatePlaylistURL(playlistURL, source: source)
         progress(.init(stage: .resolvingPlaylist, completedSegments: 0, totalSegments: 0))
-        let challengeRecovery = ChallengeRecoveryContext()
-        let segmentURLs = try await resolveMediaPlaylist(
+        let context = SessionContext(
+            source: source,
+            userAgent: userAgent ?? KnitRequestFactory.userAgent,
+            referer: referer ?? defaultReferer(for: source),
+            challengeRecovery: ChallengeRecoveryContext()
+        )
+        let segments = try await resolveMediaPlaylist(
             at: playlistURL,
             depth: 0,
-            challengeRecovery: challengeRecovery
+            context: context
         )
         try Task.checkCancellation()
 
@@ -371,27 +532,37 @@ nonisolated enum KnitVideoDownloadService {
         }
         let outputHandle = try FileHandle(forWritingTo: transportStreamURL)
         var transferMeter = KnitVideoTransferMeter()
+        var keyCache: [URL: Data] = [:]
         do {
-            for (index, segmentURL) in segmentURLs.enumerated() {
+            for (index, segment) in segments.enumerated() {
                 try Task.checkCancellation()
-                let request = try makeMediaRequest(url: segmentURL, kind: .segment)
+                let request = try makeMediaRequest(url: segment.url, kind: .segment, context: context)
                 let temporarySegmentURL = try await downloadMediaFile(
                     for: request,
-                    challengeRecovery: challengeRecovery,
+                    context: context,
                     fileManager: fileManager
                 )
                 defer { try? fileManager.removeItem(at: temporarySegmentURL) }
-                let segmentBytes = try fileSize(at: temporarySegmentURL)
-                try appendFile(at: temporarySegmentURL, to: outputHandle)
+                let segmentBytes: Int64
+                if let encryption = segment.encryption {
+                    let key = try await cachedKey(encryption.keyURL, cache: &keyCache, context: context)
+                    let cipher = try Data(contentsOf: temporarySegmentURL)
+                    segmentBytes = Int64(cipher.count)
+                    let plain = try KnitHLSAES128.decrypt(cipher, key: key, iv: encryption.iv)
+                    try outputHandle.write(contentsOf: plain)
+                } else {
+                    segmentBytes = try fileSize(at: temporarySegmentURL)
+                    try appendFile(at: temporarySegmentURL, to: outputHandle)
+                }
                 let transferMetrics = transferMeter.record(
                     segmentBytes: segmentBytes,
                     completedSegments: index + 1,
-                    totalSegments: segmentURLs.count
+                    totalSegments: segments.count
                 )
                 progress(.init(
                     stage: .downloadingSegments,
                     completedSegments: index + 1,
-                    totalSegments: segmentURLs.count,
+                    totalSegments: segments.count,
                     downloadedBytes: transferMetrics.downloadedBytes,
                     totalBytes: transferMetrics.estimatedTotalBytes,
                     bytesPerSecond: transferMetrics.bytesPerSecond,
@@ -407,8 +578,8 @@ nonisolated enum KnitVideoDownloadService {
 
         progress(.init(
             stage: .exportingMP4,
-            completedSegments: segmentURLs.count,
-            totalSegments: segmentURLs.count,
+            completedSegments: segments.count,
+            totalSegments: segments.count,
             downloadedBytes: transferMeter.downloadedBytes,
             totalBytes: transferMeter.downloadedBytes,
             averageBytesPerSecond: transferMeter.averageBytesPerSecond
@@ -435,8 +606,8 @@ nonisolated enum KnitVideoDownloadService {
 
         progress(.init(
             stage: .installingFile,
-            completedSegments: segmentURLs.count,
-            totalSegments: segmentURLs.count,
+            completedSegments: segments.count,
+            totalSegments: segments.count,
             downloadedBytes: exportedBytes,
             totalBytes: exportedBytes,
             averageBytesPerSecond: transferMeter.averageBytesPerSecond
@@ -444,27 +615,53 @@ nonisolated enum KnitVideoDownloadService {
         try installAtomically(exportedURL, at: destinationURL)
     }
 
+    private static func defaultReferer(for source: OnlineSourcePolicy.Source) -> String {
+        switch source {
+        case .mrds: "https://www.mrds66.com/"
+        case .knit, .gallery, .missKon, .wallhaven: "https://xx.knit.bid/"
+        }
+    }
+
+    private static func cachedKey(
+        _ url: URL,
+        cache: inout [URL: Data],
+        context: SessionContext
+    ) async throws -> Data {
+        if let cached = cache[url] { return cached }
+        let request = try makeMediaRequest(url: url, kind: .key, context: context)
+        let data = try await loadMediaData(
+            for: request,
+            context: context,
+            maximumBytes: maximumKeyBytes
+        )
+        guard data.count == kCCKeySizeAES128 else {
+            throw KnitVideoDownloadError.invalidEncryptionKey
+        }
+        cache[url] = data
+        return data
+    }
+
     private static func resolveMediaPlaylist(
         at url: URL,
         depth: Int,
-        challengeRecovery: ChallengeRecoveryContext
-    ) async throws -> [URL] {
+        context: SessionContext
+    ) async throws -> [KnitHLSPlaylist.MediaSegment] {
         guard depth <= maximumPlaylistDepth else { throw KnitVideoDownloadError.invalidPlaylist }
-        let request = try makeMediaRequest(url: url, kind: .playlist)
-        let data = try await loadMediaData(for: request, challengeRecovery: challengeRecovery)
+        let request = try makeMediaRequest(url: url, kind: .playlist, context: context)
+        let data = try await loadMediaData(for: request, context: context)
         guard data.count <= maximumPlaylistBytes else { throw KnitVideoDownloadError.playlistTooLarge }
         guard let text = String(data: data, encoding: .utf8) else {
             throw KnitVideoDownloadError.invalidPlaylist
         }
-        switch try KnitHLSPlaylist.parse(text, baseURL: url) {
-        case .media(let segments):
+        switch try KnitHLSPlaylist.parse(text, baseURL: url, source: context.source) {
+        case let .media(segments):
             return segments
-        case .master(let variants):
+        case let .master(variants):
             guard let preferred = variants.first else { throw KnitVideoDownloadError.emptyPlaylist }
             return try await resolveMediaPlaylist(
                 at: preferred.url,
                 depth: depth + 1,
-                challengeRecovery: challengeRecovery
+                context: context
             )
         }
     }
@@ -472,13 +669,18 @@ nonisolated enum KnitVideoDownloadService {
     private enum MediaRequestKind {
         case playlist
         case segment
+        case key
     }
 
-    private static func makeMediaRequest(url: URL, kind: MediaRequestKind) throws -> URLRequest {
-        try OnlineSourcePolicy.validate(url, source: .knit, resource: .media)
+    private static func makeMediaRequest(
+        url: URL,
+        kind: MediaRequestKind,
+        context: SessionContext
+    ) throws -> URLRequest {
+        try OnlineSourcePolicy.validate(url, source: context.source, resource: .media)
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 90)
-        request.setValue(KnitRequestFactory.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("https://xx.knit.bid/", forHTTPHeaderField: "Referer")
+        request.setValue(context.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(context.referer, forHTTPHeaderField: "Referer")
         switch kind {
         case .playlist:
             request.setValue(
@@ -487,12 +689,14 @@ nonisolated enum KnitVideoDownloadService {
             )
         case .segment:
             request.setValue("video/mp2t,application/octet-stream;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        case .key:
+            request.setValue("application/octet-stream,*/*;q=0.8", forHTTPHeaderField: "Accept")
         }
         return request
     }
 
-    private static func validatePlaylistURL(_ url: URL) throws {
-        try OnlineSourcePolicy.validate(url, source: .knit, resource: .media)
+    private static func validatePlaylistURL(_ url: URL, source: OnlineSourcePolicy.Source) throws {
+        try OnlineSourcePolicy.validate(url, source: source, resource: .media)
         guard url.pathExtension.lowercased() == "m3u8" else {
             throw KnitVideoDownloadError.invalidPlaylistURL
         }
@@ -500,20 +704,22 @@ nonisolated enum KnitVideoDownloadService {
 
     private static func loadMediaData(
         for request: URLRequest,
-        challengeRecovery: ChallengeRecoveryContext
+        context: SessionContext,
+        maximumBytes: Int? = nil
     ) async throws -> Data {
         // Playlists are downloaded to URLSession's temporary file first. This
         // keeps a malformed/oversized response from being materialized in RAM
         // before the 5 MB contract can be enforced.
+        let limit = maximumBytes ?? maximumPlaylistBytes
         let fileManager = FileManager.default
         let temporaryURL = try await downloadMediaFile(
             for: request,
-            challengeRecovery: challengeRecovery,
+            context: context,
             fileManager: fileManager
         )
         defer { try? fileManager.removeItem(at: temporaryURL) }
         let fileSize = try temporaryURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard fileSize <= maximumPlaylistBytes else {
+        guard fileSize <= limit else {
             throw KnitVideoDownloadError.playlistTooLarge
         }
         try Task.checkCancellation()
@@ -522,13 +728,13 @@ nonisolated enum KnitVideoDownloadService {
 
     private static func downloadMediaFile(
         for request: URLRequest,
-        challengeRecovery: ChallengeRecoveryContext,
+        context: SessionContext,
         fileManager: FileManager
     ) async throws -> URL {
         let first = try await session.download(for: request)
         let firstResponse: HTTPURLResponse
         do {
-            firstResponse = try validatedHTTPResponse(first.1)
+            firstResponse = try validatedHTTPResponse(first.1, source: context.source)
         } catch {
             try? fileManager.removeItem(at: first.0)
             throw error
@@ -536,7 +742,7 @@ nonisolated enum KnitVideoDownloadService {
 
         guard isChallenge(firstResponse) else {
             do {
-                try validateSuccessfulResponse(firstResponse)
+                try validateSuccessfulResponse(firstResponse, source: context.source)
                 return first.0
             } catch {
                 try? fileManager.removeItem(at: first.0)
@@ -544,16 +750,21 @@ nonisolated enum KnitVideoDownloadService {
             }
         }
 
+        guard context.allowsChallengeRecovery else {
+            try? fileManager.removeItem(at: first.0)
+            throw KnitVideoDownloadError.badStatus(firstResponse.statusCode)
+        }
+
         // URLSession owns this temporary response body. Remove the challenge
         // page before waiting for user verification or issuing the sole retry.
         try? fileManager.removeItem(at: first.0)
         let retriedRequest = try await challengeRetryRequest(
             for: request,
-            challengeRecovery: challengeRecovery
+            challengeRecovery: context.challengeRecovery
         )
         let retry = try await session.download(for: retriedRequest)
         do {
-            try validateSuccessfulResponse(retry.1)
+            try validateSuccessfulResponse(retry.1, source: context.source)
             return retry.0
         } catch {
             try? fileManager.removeItem(at: retry.0)
@@ -574,18 +785,24 @@ nonisolated enum KnitVideoDownloadService {
         return await KnitRequestFactory.addingCookies(cookies, to: request)
     }
 
-    private static func validatedHTTPResponse(_ response: URLResponse) throws -> HTTPURLResponse {
-        try OnlineSourcePolicy.validate(response, source: .knit, resource: .media)
+    private static func validatedHTTPResponse(
+        _ response: URLResponse,
+        source: OnlineSourcePolicy.Source
+    ) throws -> HTTPURLResponse {
+        try OnlineSourcePolicy.validate(response, source: source, resource: .media)
         guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         return response
     }
 
-    private static func validateSuccessfulResponse(_ response: URLResponse) throws {
-        let response = try validatedHTTPResponse(response)
+    private static func validateSuccessfulResponse(
+        _ response: URLResponse,
+        source: OnlineSourcePolicy.Source
+    ) throws {
+        let response = try validatedHTTPResponse(response, source: source)
         guard !isChallenge(response) else {
             throw KnitVideoDownloadError.challengeNotResolved
         }
-        guard (200..<300).contains(response.statusCode) else {
+        guard (200 ..< 300).contains(response.statusCode) else {
             throw KnitVideoDownloadError.badStatus(response.statusCode)
         }
     }
@@ -605,7 +822,7 @@ nonisolated enum KnitVideoDownloadService {
     }
 
     private static func fileSize(at url: URL) throws -> Int64 {
-        Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+        try Int64(url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
     }
 
     private static func installAtomically(_ sourceURL: URL, at destinationURL: URL) throws {
@@ -675,7 +892,8 @@ nonisolated enum KnitVideoDownloadService {
             guard isPlayable,
                   duration.seconds.isFinite,
                   duration.seconds > 0,
-                  !videoTracks.isEmpty else {
+                  !videoTracks.isEmpty
+            else {
                 throw KnitVideoDownloadError.invalidExportedFile
             }
         } catch let error as KnitVideoDownloadError {
@@ -683,5 +901,55 @@ nonisolated enum KnitVideoDownloadService {
         } catch {
             throw KnitVideoDownloadError.invalidExportedFile
         }
+    }
+}
+
+nonisolated enum KnitHLSAES128 {
+    nonisolated static func decrypt(_ data: Data, key: Data, iv: Data) throws -> Data {
+        try crypt(operation: CCOperation(kCCDecrypt), data: data, key: key, iv: iv)
+    }
+
+    nonisolated static func encryptForTesting(_ data: Data, key: Data, iv: Data) throws -> Data {
+        try crypt(operation: CCOperation(kCCEncrypt), data: data, key: key, iv: iv)
+    }
+
+    private nonisolated static func crypt(
+        operation: CCOperation,
+        data: Data,
+        key: Data,
+        iv: Data
+    ) throws -> Data {
+        guard key.count == kCCKeySizeAES128,
+              iv.count == kCCBlockSizeAES128,
+              !data.isEmpty
+        else {
+            throw KnitVideoDownloadError.invalidEncryptionKey
+        }
+        var outLength = 0
+        var output = Data(count: data.count + kCCBlockSizeAES128)
+        let status = output.withUnsafeMutableBytes { outBytes in
+            data.withUnsafeBytes { dataBytes in
+                key.withUnsafeBytes { keyBytes in
+                    iv.withUnsafeBytes { ivBytes in
+                        CCCrypt(
+                            operation,
+                            CCAlgorithm(kCCAlgorithmAES),
+                            CCOptions(kCCOptionPKCS7Padding),
+                            keyBytes.baseAddress,
+                            key.count,
+                            ivBytes.baseAddress,
+                            dataBytes.baseAddress,
+                            data.count,
+                            outBytes.baseAddress,
+                            outBytes.count,
+                            &outLength
+                        )
+                    }
+                }
+            }
+        }
+        guard status == kCCSuccess else { throw KnitVideoDownloadError.invalidEncryptionKey }
+        output.removeSubrange(outLength...)
+        return output
     }
 }

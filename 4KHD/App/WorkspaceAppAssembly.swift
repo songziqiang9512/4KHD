@@ -24,6 +24,9 @@ enum WorkspaceAppAssembly {
         let downloadStore = DownloadStore()
         let knitDetailInteraction = KnitDetailInteractionController(downloadStore: downloadStore)
         let knitVideoPlayer = KnitVideoPlayerWindowController()
+        let mrdsStore = MrdsGalleryStore(favorites: favoritesStore)
+        let mrdsPreferences = MrdsContentPreferences()
+        let mrdsDetailInteraction = MrdsDetailInteractionController(downloadStore: downloadStore)
         configureFavoriteSourceAdapters(
             wallhavenPageResolver: { detailPageURL in
                 let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
@@ -43,6 +46,23 @@ enum WorkspaceAppAssembly {
                 saveAsMP4: { record, sourceURL in
                     guard let item = KnitFavoritesBridge.item(from: record) else { return }
                     knitDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                }
+            ),
+            mrdsVideoActions: FavoriteVideoActions(
+                play: { record, sourceURL in
+                    guard let item = MrdsFavoritesBridge.item(from: record) else { return }
+                    knitVideoPlayer.play(
+                        url: sourceURL,
+                        title: record.title,
+                        source: .mrds,
+                        userAgent: MrdsRequestFactory.userAgent
+                    ) {
+                        mrdsDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                    }
+                },
+                saveAsMP4: { record, sourceURL in
+                    guard let item = MrdsFavoritesBridge.item(from: record) else { return }
+                    mrdsDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
                 }
             )
         )
@@ -71,6 +91,9 @@ enum WorkspaceAppAssembly {
             knitPreferences: knitPreferences,
             knitDetailInteraction: knitDetailInteraction,
             knitVideoPlayer: knitVideoPlayer,
+            mrdsStore: mrdsStore,
+            mrdsPreferences: mrdsPreferences,
+            mrdsDetailInteraction: mrdsDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -94,6 +117,9 @@ enum WorkspaceAppAssembly {
             knitStore: knitStore,
             knitPreferences: knitPreferences,
             knitDetailInteraction: knitDetailInteraction,
+            mrdsStore: mrdsStore,
+            mrdsPreferences: mrdsPreferences,
+            mrdsDetailInteraction: mrdsDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -120,6 +146,7 @@ enum WorkspaceAppAssembly {
             missKonStore: missKonStore,
             wallhavenStore: wallhavenStore,
             knitStore: knitStore,
+            mrdsStore: mrdsStore,
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
             favoritesModuleStore: favoritesModuleStore,
@@ -134,7 +161,8 @@ enum WorkspaceAppAssembly {
     @MainActor
     static func configureFavoriteSourceAdapters(
         wallhavenPageResolver: @escaping (URL) async throws -> FavoriteResolvedImagePage,
-        knitVideoActions: FavoriteVideoActions? = nil
+        knitVideoActions: FavoriteVideoActions? = nil,
+        mrdsVideoActions: FavoriteVideoActions? = nil
     ) {
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
             FavoriteSourceAdapter(
@@ -215,7 +243,7 @@ enum WorkspaceAppAssembly {
                 detailContent: { record in
                     guard let item = KnitFavoritesBridge.item(from: record) else { return nil }
                     let count = min(max(record.pageCount, 1), KnitDetailResolver.maximumDetailPageCount)
-                    let pageURLs = (1...count).compactMap { page -> URL? in
+                    let pageURLs = (1 ... count).compactMap { page -> URL? in
                         if page == 1 { return item.detailURL }
                         var components = URLComponents(url: item.detailURL, resolvingAgainstBaseURL: false)
                         components?.path = "/article/\(item.id)/page/\(page)/"
@@ -249,6 +277,36 @@ enum WorkspaceAppAssembly {
                     }
                 },
                 videoActions: knitVideoActions
+            ),
+            FavoriteSourceAdapter(
+                source: .mrds,
+                detailContent: { record in
+                    guard let item = MrdsFavoritesBridge.item(from: record) else { return nil }
+                    return .paged(
+                        pageURLs: [item.detailURL],
+                        estimatedImageCount: max(record.imageCount, 1),
+                        pageImageCapacity: max(record.imageCount, 1)
+                    )
+                },
+                resolvePage: { url in
+                    let page = try await MrdsDetailResolver.resolve(pageURL: url)
+                    return FavoriteResolvedImagePage(
+                        imageURLs: page.imageURLs,
+                        pageURLs: page.pageURLs,
+                        recommendations: page.recommendations,
+                        metadata: page.metadata.map {
+                            makeMrdsFavoriteMetadata($0, sourceURL: page.pageURLs.first ?? url)
+                        },
+                        videoURL: page.videoURL
+                    )
+                },
+                configureImageRequest: MrdsRequestFactory.configureImageRequest,
+                detailMetadata: { record in
+                    MrdsFavoritesBridge.item(from: record).map {
+                        makeMrdsFavoriteMetadata($0, record: record)
+                    }
+                },
+                videoActions: mrdsVideoActions
             ),
         ])
     }
@@ -296,7 +354,7 @@ enum WorkspaceAppAssembly {
     }
 
     private static func makeGalleryFavoriteMetadata(_ item: GalleryItem) -> FavoriteDetailMetadata {
-        let kindTitle: String = switch item.kind {
+        let kindTitle = switch item.kind {
         case .gallery: "图集"
         case .recommended: "推荐"
         case .advertisement: "广告"
@@ -313,7 +371,7 @@ enum WorkspaceAppAssembly {
                 .init(label: "类型", value: kindTitle),
                 .init(label: "栏目", value: item.section.title),
                 .init(label: "图片数", value: item.imageCount > 0 ? item.imageCount.formatted() : "未知"),
-                .init(label: "页数", value: item.pageCount.formatted())
+                .init(label: "页数", value: item.pageCount.formatted()),
             ]
         )
     }
@@ -322,7 +380,7 @@ enum WorkspaceAppAssembly {
         var facts = [
             FavoriteDetailFact(label: "栏目", value: item.section.title),
             FavoriteDetailFact(label: "图片数", value: item.imageCount > 0 ? item.imageCount.formatted() : "未知"),
-            FavoriteDetailFact(label: "页数", value: item.pageCount.formatted())
+            FavoriteDetailFact(label: "页数", value: item.pageCount.formatted()),
         ]
         if !item.tags.isEmpty {
             facts.append(.init(label: "标签", value: item.tags.joined(separator: ", ")))
@@ -355,7 +413,7 @@ enum WorkspaceAppAssembly {
             facts: [
                 .init(label: "分类", value: category),
                 .init(label: "图片数", value: record.imageCount > 0 ? record.imageCount.formatted() : "未知"),
-                .init(label: "页数", value: record.pageCount.formatted())
+                .init(label: "页数", value: record.pageCount.formatted()),
             ]
         )
     }
@@ -366,7 +424,7 @@ enum WorkspaceAppAssembly {
     ) -> FavoriteDetailMetadata {
         var facts = [
             FavoriteDetailFact(label: "实际图片", value: metadata.totalImages.formatted()),
-            FavoriteDetailFact(label: "图集页数", value: metadata.totalPages.formatted())
+            FavoriteDetailFact(label: "图集页数", value: metadata.totalPages.formatted()),
         ]
         if !metadata.tags.isEmpty {
             facts.append(.init(label: "标签", value: metadata.tags.joined(separator: ", ")))
@@ -380,6 +438,53 @@ enum WorkspaceAppAssembly {
                 .filter { !$0.isEmpty }
                 .joined(separator: " · "),
             sourceTitle: "来源: 爱妹子",
+            sourceURL: sourceURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: facts
+        )
+    }
+
+    private static func makeMrdsFavoriteMetadata(
+        _ item: MrdsGalleryItem,
+        record: FavoriteRecord
+    ) -> FavoriteDetailMetadata {
+        let category = record.subtitle.components(separatedBy: " · ").first ?? item.category
+        return FavoriteDetailMetadata(
+            title: item.title,
+            detailText: record.subtitle,
+            sourceTitle: "来源: 每日大赛",
+            sourceURL: item.detailURL,
+            secondaryTitle: nil,
+            secondaryURL: nil,
+            supportsDesktopWallpaper: false,
+            facts: [
+                .init(label: "分类", value: category),
+                .init(label: "图片数", value: record.imageCount > 0 ? record.imageCount.formatted() : "未知"),
+            ]
+        )
+    }
+
+    private static func makeMrdsFavoriteMetadata(
+        _ metadata: MrdsDetailMetadata,
+        sourceURL: URL
+    ) -> FavoriteDetailMetadata {
+        var facts = [
+            FavoriteDetailFact(label: "实际图片", value: metadata.totalImages.formatted()),
+        ]
+        if !metadata.tags.isEmpty {
+            facts.append(.init(label: "标签", value: metadata.tags.joined(separator: ", ")))
+        }
+        if !metadata.description.isEmpty {
+            facts.append(.init(label: "描述", value: metadata.description))
+        }
+        return FavoriteDetailMetadata(
+            title: "",
+            detailText: [metadata.description, metadata.tags.joined(separator: " · ")]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · "),
+            sourceTitle: "来源: 每日大赛",
             sourceURL: sourceURL,
             secondaryTitle: nil,
             secondaryURL: nil,
@@ -403,6 +508,9 @@ enum WorkspaceAppAssembly {
         knitPreferences: KnitContentPreferences,
         knitDetailInteraction: KnitDetailInteractionController,
         knitVideoPlayer: KnitVideoPlayerWindowController,
+        mrdsStore: MrdsGalleryStore,
+        mrdsPreferences: MrdsContentPreferences,
+        mrdsDetailInteraction: MrdsDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -664,6 +772,14 @@ enum WorkspaceAppAssembly {
                                         )
                                     )
                                     knitStore.openRecommendation(recommendation)
+                                case .mrds:
+                                    context.appContext.routeController.select(
+                                        WorkspaceRoute(
+                                            moduleID: .mrdsGallery,
+                                            itemID: mrdsStore.filter.rawValue
+                                        )
+                                    )
+                                    mrdsStore.openRecommendation(recommendation)
                                 }
                             }
                         )
@@ -725,7 +841,58 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: { knitStore.bootstrapIfNeeded() }
-                )
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .mrdsGallery,
+                    displayName: "MrdsGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, showsKnitFilters: false, showsVideoSave: true,
+                        filmstripAvailability: .detail,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .mrdsGallery, itemID: MrdsSection.latest.rawValue)
+                    },
+                    makeContentController: { context in
+                        MrdsContentViewController(
+                            store: mrdsStore,
+                            preferences: mrdsPreferences,
+                            detailPane: context.detailPaneController
+                        )
+                    },
+                    makeDetailController: { context in
+                        MrdsImageDetailViewController(
+                            store: mrdsStore,
+                            immersive: context.immersive,
+                            detailPane: context.detailPaneController,
+                            interaction: mrdsDetailInteraction,
+                            filmstripVisibility: filmstripVisibility,
+                            onPlayVideo: { item, url in
+                                knitVideoPlayer.play(
+                                    url: url,
+                                    title: item.title,
+                                    source: .mrds,
+                                    userAgent: MrdsRequestFactory.userAgent
+                                ) {
+                                    mrdsDetailInteraction.saveVideo(item: item, sourceURL: url)
+                                }
+                            }
+                        )
+                    },
+                    normalizeRoute: { route in
+                        let section = MrdsSection(rawValue: route.itemID) ?? .latest
+                        return WorkspaceRoute(moduleID: .mrdsGallery, itemID: section.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let section = MrdsSection(rawValue: route.itemID) else { return }
+                        if mrdsStore.filter != section {
+                            mrdsStore.setFilter(section)
+                        }
+                    },
+                    bootstrap: { mrdsStore.bootstrapIfNeeded() }
+                ),
             ]
         )
     }

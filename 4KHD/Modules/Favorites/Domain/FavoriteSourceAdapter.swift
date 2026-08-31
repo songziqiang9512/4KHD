@@ -73,6 +73,18 @@ struct FavoriteResolvedImagePage {
 struct FavoriteVideoActions {
     let play: @MainActor (FavoriteRecord, URL) -> Void
     let saveAsMP4: @MainActor (FavoriteRecord, URL) -> Void
+    /// 站点 HLS 若加密或无法无损封装，收藏详情仍可播放，但不得启用保存 MP4。
+    let canSaveAsMP4: Bool
+
+    init(
+        play: @escaping @MainActor (FavoriteRecord, URL) -> Void,
+        saveAsMP4: @escaping @MainActor (FavoriteRecord, URL) -> Void,
+        canSaveAsMP4: Bool = true
+    ) {
+        self.play = play
+        self.saveAsMP4 = saveAsMP4
+        self.canSaveAsMP4 = canSaveAsMP4
+    }
 }
 
 enum FavoriteDetailContent {

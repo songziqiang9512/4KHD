@@ -1,8 +1,8 @@
 import AppKit
 import CryptoKit
 import Foundation
-import Nuke
 import ImageIO
+import Nuke
 
 enum OnlineCacheLimit: String, CaseIterable, Identifiable {
     case mb512
@@ -13,7 +13,9 @@ enum OnlineCacheLimit: String, CaseIterable, Identifiable {
 
     static let defaultsKey = "com.songziqiang.4khd.onlineCacheLimit.v1"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -59,7 +61,9 @@ final class RemoteImageLoadTask {
         self.onCancel = onCancel
     }
 
-    var isCancelled: Bool { isFinished }
+    var isCancelled: Bool {
+        isFinished
+    }
 
     func install(_ task: ImageTask) {
         guard !isFinished else {
@@ -126,7 +130,7 @@ final class RemoteImagePipeline {
         var configuration = ImagePipeline.Configuration()
         let dataLoader = DataLoader(configuration: Self.urlSessionConfiguration(urlCache: urlCache))
         dataLoader.delegate = OnlineRedirectGuard.shared
-        configuration.dataLoader = dataLoader
+        configuration.dataLoader = RemoteImageMappingDataLoader(inner: dataLoader)
         configuration.imageCache = ImageCache(costLimit: 288 * 1024 * 1024, countLimit: 700)
         if let dataCache = try? DataCache(name: AppStorageFolders.imageCacheFolderName) {
             dataCache.sizeLimit = cacheLimit
@@ -137,7 +141,7 @@ final class RemoteImagePipeline {
                 dataCache.sweep()
             }
         } else {
-            self.dataCache = nil
+            dataCache = nil
         }
         configuration.dataCachePolicy = .storeOriginalData
         configuration.isTaskCoalescingEnabled = true
@@ -147,18 +151,18 @@ final class RemoteImagePipeline {
         let pipeline = ImagePipeline(configuration: configuration)
         self.pipeline = pipeline
         self.urlCache = urlCache
-        self.detailPrefetcher = ImagePrefetcher(
+        detailPrefetcher = ImagePrefetcher(
             pipeline: pipeline,
             destination: .diskCache,
             maxConcurrentRequestCount: 3
         )
-        self.detailPrefetcher.priority = .low
-        self.thumbnailPrefetcher = ImagePrefetcher(
+        detailPrefetcher.priority = .low
+        thumbnailPrefetcher = ImagePrefetcher(
             pipeline: pipeline,
             destination: .diskCache,
             maxConcurrentRequestCount: 2
         )
-        self.thumbnailPrefetcher.priority = .veryLow
+        thumbnailPrefetcher.priority = .veryLow
     }
 
     func applyCacheLimit(_ limit: OnlineCacheLimit) {
@@ -215,7 +219,7 @@ final class RemoteImagePipeline {
                     unit: .pixels,
                     contentMode: .aspectFit,
                     upscale: false
-                )
+                ),
             ]
         } else {
             processors = []
@@ -231,7 +235,8 @@ final class RemoteImagePipeline {
             return nil
         }
         if isNegativeCacheEligible(request), let url = request.url, let failedAt = failedURLs[url],
-           Date().timeIntervalSince(failedAt) < negativeCacheWindow {
+           Date().timeIntervalSince(failedAt) < negativeCacheWindow
+        {
             completion(nil)
             return nil
         }
@@ -250,13 +255,13 @@ final class RemoteImagePipeline {
                 return
             }
             switch result {
-            case .success(let response):
+            case let .success(response):
                 if let url = request.url {
                     self.failedURLs[url] = nil
                 }
                 completion(response.image)
                 self.finish(loadTask)
-            case .failure(let error):
+            case let .failure(error):
                 if self.isRetriableLoadingError(error) {
                     // 瞬时网络错误自动重试一次，避免一次抖动让缩略图/详情图永久空白。
                     loadTask.scheduleRetry(after: 1) { [weak self, weak loadTask] in
@@ -320,7 +325,7 @@ final class RemoteImagePipeline {
                 return
             }
             switch result {
-            case .success(let response):
+            case let .success(response):
                 if let url = request.url {
                     self.failedURLs[url] = nil
                 }
@@ -338,7 +343,7 @@ final class RemoteImagePipeline {
     }
 
     private func isRetriableLoadingError(_ error: ImagePipeline.Error) -> Bool {
-        guard case .dataLoadingFailed(let wrappedError) = error,
+        guard case let .dataLoadingFailed(wrappedError) = error,
               let urlError = wrappedError as? URLError else { return false }
         switch urlError.code {
         case .timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet:
@@ -355,8 +360,12 @@ final class RemoteImagePipeline {
     func loadData(with request: ImageRequest, completion: @escaping (Data?) -> Void) -> ImageTask {
         let task = pipeline.loadData(with: request) { [weak self] result in
             switch result {
-            case .success(let payload):
-                completion(payload.data)
+            case let .success(payload):
+                if let url = request.url {
+                    completion(RemoteImageResponseMapper.mappedData(for: url, from: payload.data))
+                } else {
+                    completion(payload.data)
+                }
             case .failure:
                 completion(nil)
             }
@@ -421,7 +430,7 @@ final class RemoteImagePipeline {
 }
 
 actor LocalImageCache {
-    struct FileVersion: Sendable {
+    struct FileVersion {
         let fileSize: Int64?
         let modifiedAt: Date?
     }
@@ -445,7 +454,8 @@ actor LocalImageCache {
         let fileManager = FileManager.default
         let legacyDirectory = legacyDiskCacheDirectory
         if !fileManager.fileExists(atPath: directory.path),
-           fileManager.fileExists(atPath: legacyDirectory.path) {
+           fileManager.fileExists(atPath: legacyDirectory.path)
+        {
             try? fileManager.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? fileManager.moveItem(at: legacyDirectory, to: directory)
         }
@@ -453,12 +463,13 @@ actor LocalImageCache {
         return directory
     }()
 
-    nonisolated(unsafe) private static let cache: NSCache<NSString, NSImage> = {
+    private nonisolated(unsafe) static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 500
         cache.totalCostLimit = 384 * 1024 * 1024
         return cache
     }()
+
     /// 本地图解码并发上限：冷启动浏览大库时几十个 cell 同时解码会打满 CPU，
     /// 限流到 3 路让缩略图分批出图（与 Nuke 侧 2 路解码队列同理）。
     private static let decodeSemaphore = DispatchSemaphore(value: 3)
@@ -485,13 +496,15 @@ actor LocalImageCache {
 
     private init() {}
 
-#if DEBUG
-    nonisolated static var diskCacheDirectoryForTesting: URL { diskCacheDirectory }
+    #if DEBUG
+        nonisolated static var diskCacheDirectoryForTesting: URL {
+            diskCacheDirectory
+        }
 
-    func clearMemoryOnlyForTesting() {
-        Self.cache.removeAllObjects()
-    }
-#endif
+        func clearMemoryOnlyForTesting() {
+            Self.cache.removeAllObjects()
+        }
+    #endif
 
     nonisolated func cachedImage(
         for url: URL,
@@ -663,7 +676,8 @@ actor LocalImageCache {
 
     private func fileVersion(for url: URL) -> FileVersion {
         if let entry = fileVersionCache[url.path],
-           Date().timeIntervalSince(entry.cachedAt) < fileVersionTTL {
+           Date().timeIntervalSince(entry.cachedAt) < fileVersionTTL
+        {
             return entry.version
         }
         let version = statFileVersion(for: url)
@@ -700,7 +714,8 @@ actor LocalImageCache {
     private nonisolated static func diskImage(forKey key: String) -> NSImage? {
         let url = diskCacheURL(forKey: key)
         guard let data = try? Data(contentsOf: url),
-              let image = NSImage(data: data) else {
+              let image = NSImage(data: data)
+        else {
             return nil
         }
         return image
@@ -743,7 +758,7 @@ actor LocalImageCache {
         let resourceKeys: Set<URLResourceKey> = [
             .isRegularFileKey,
             .fileSizeKey,
-            .contentModificationDateKey
+            .contentModificationDateKey,
         ]
         guard let urls = try? fileManager.contentsOfDirectory(
             at: diskCacheDirectory,
@@ -755,7 +770,8 @@ actor LocalImageCache {
 
         let entries = urls.compactMap { url -> (url: URL, size: Int64, modifiedAt: Date)? in
             guard let values = try? url.resourceValues(forKeys: resourceKeys),
-                  values.isRegularFile == true else {
+                  values.isRegularFile == true
+            else {
                 return nil
             }
             return (
@@ -766,7 +782,7 @@ actor LocalImageCache {
         }.sorted { $0.modifiedAt > $1.modifiedAt }
 
         let maxBytes: Int64 = 1024 * 1024 * 1024
-        let maxFileCount = 20_000
+        let maxFileCount = 20000
         var retainedBytes: Int64 = 0
         var retainedCount = 0
         for entry in entries {
@@ -788,13 +804,13 @@ actor LocalImageCache {
     }
 }
 
-nonisolated private func loadImage(at url: URL, maxPixelSize: CGFloat?) -> NSImage? {
+private nonisolated func loadImage(at url: URL, maxPixelSize: CGFloat?) -> NSImage? {
     guard let maxPixelSize, maxPixelSize > 0 else {
         return NSImage(contentsOf: url)
     }
 
     let options: CFDictionary = [
-        kCGImageSourceShouldCache: false
+        kCGImageSourceShouldCache: false,
     ] as CFDictionary
     guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else { return nil }
 
@@ -802,7 +818,7 @@ nonisolated private func loadImage(at url: URL, maxPixelSize: CGFloat?) -> NSIma
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceShouldCacheImmediately: true,
         kCGImageSourceCreateThumbnailWithTransform: true,
-        kCGImageSourceThumbnailMaxPixelSize: Int(maxPixelSize)
+        kCGImageSourceThumbnailMaxPixelSize: Int(maxPixelSize),
     ] as CFDictionary
 
     guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else { return nil }

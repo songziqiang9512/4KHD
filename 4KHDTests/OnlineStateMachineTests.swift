@@ -1,12 +1,12 @@
-import XCTest
 @testable import _KHD
+import XCTest
 
 final class OnlineStateMachineTests: XCTestCase {
     @MainActor
     func testMissKonInitialResolutionHasBoundedThreePageBudget() async throws {
         let slug = UUID().uuidString
         let base = try XCTUnwrap(URL(string: "https://misskon.com/\(slug)/"))
-        let pages = (1...8).map { number in
+        let pages = (1 ... 8).map { number in
             number == 1 ? base : base.appendingPathComponent("\(number)")
         }
         let recorder = MissKonPageRecorder(pageURLs: pages)
@@ -17,7 +17,9 @@ final class OnlineStateMachineTests: XCTestCase {
         store.resolve(item: item)
 
         await waitUntil { await recorder.count == 3 }
-        for _ in 0..<40 { await Task.yield() }
+        for _ in 0 ..< 40 {
+            await Task.yield()
+        }
         let requestCount = await recorder.count
         XCTAssertEqual(requestCount, 3)
         XCTAssertFalse(store.isResolutionComplete)
@@ -150,7 +152,7 @@ final class OnlineStateMachineTests: XCTestCase {
                     )
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug,
@@ -223,15 +225,21 @@ final class OnlineStateMachineTests: XCTestCase {
                     switch pageURL {
                     case page2:
                         page2Started.fulfill()
-                        for await _ in page2Gate.stream { break }
+                        for await _ in page2Gate.stream {
+                            break
+                        }
                         return FavoriteResolvedImagePage(imageURLs: [], pageURLs: pageURLs)
                     case page3:
                         page3Started.fulfill()
-                        for await _ in page3Gate.stream { break }
+                        for await _ in page3Gate.stream {
+                            break
+                        }
                         return FavoriteResolvedImagePage(imageURLs: [], pageURLs: pageURLs)
                     case page4:
                         page4Started.fulfill()
-                        for await _ in page4Gate.stream { break }
+                        for await _ in page4Gate.stream {
+                            break
+                        }
                         return FavoriteResolvedImagePage(imageURLs: [], pageURLs: pageURLs)
                     default:
                         return FavoriteResolvedImagePage(
@@ -242,7 +250,7 @@ final class OnlineStateMachineTests: XCTestCase {
                     }
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug,
@@ -337,10 +345,14 @@ final class OnlineStateMachineTests: XCTestCase {
                     await recorder.record(url)
                     switch url {
                     case page2:
-                        for await _ in page2Gate.stream { break }
+                        for await _ in page2Gate.stream {
+                            break
+                        }
                         return FavoriteResolvedImagePage(imageURLs: [image2], pageURLs: pages)
                     case page3:
-                        for await _ in page3Gate.stream { break }
+                        for await _ in page3Gate.stream {
+                            break
+                        }
                         return FavoriteResolvedImagePage(imageURLs: [image3], pageURLs: pages)
                     case page4:
                         return FavoriteResolvedImagePage(imageURLs: [], pageURLs: pages)
@@ -349,7 +361,7 @@ final class OnlineStateMachineTests: XCTestCase {
                     }
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug,
@@ -445,7 +457,7 @@ final class OnlineStateMachineTests: XCTestCase {
             let content = try XCTUnwrap(
                 FavoriteSourceAdapterRegistry.shared.adapter(for: source)?.detailContent(record)
             )
-            guard case .paged(_, _, let capacity) = content else {
+            guard case let .paged(_, _, capacity) = content else {
                 XCTFail("\(source) should use paged favorite detail content")
                 continue
             }
@@ -465,7 +477,7 @@ final class OnlineStateMachineTests: XCTestCase {
         let slug = UUID().uuidString
         let page1 = try XCTUnwrap(URL(string: "https://www.4khd.com/content/\(slug).html"))
         let page2 = page1.appendingPathComponent("2")
-        let cachedImages = try (0..<20).map { index in
+        let cachedImages = try (0 ..< 20).map { index in
             try XCTUnwrap(URL(string: "https://pic.4khd.com/\(slug)-\(index).jpg"))
         }
         DetailPageImageCache.shared.store(
@@ -487,7 +499,7 @@ final class OnlineStateMachineTests: XCTestCase {
                 },
                 resolvePage: { _ in throw URLError(.unsupportedURL) },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug, sourceID: GallerySection.latest.rawValue, title: slug, rawTitle: slug,
@@ -512,7 +524,7 @@ final class OnlineStateMachineTests: XCTestCase {
     func testFavoritesBoundsInitialPlaceholderWindowForPathologicalCounts() throws {
         let slug = UUID().uuidString
         let page1 = try XCTUnwrap(URL(string: "https://www.4khd.com/content/\(slug).html"))
-        let pages = (1...500).map { page in
+        let pages = (1 ... 500).map { page in
             page == 1 ? page1 : page1.appendingPathComponent("\(page)")
         }
         defer { FavoriteSourceAdapterRegistry.shared.replaceAdapters([]) }
@@ -522,42 +534,44 @@ final class OnlineStateMachineTests: XCTestCase {
                 detailContent: {
                     _ in .paged(
                         pageURLs: pages,
-                        estimatedImageCount: 10_000,
+                        estimatedImageCount: 10000,
                         pageImageCapacity: 20
                     )
                 },
                 resolvePage: { _ in throw URLError(.unsupportedURL) },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug, sourceID: GallerySection.latest.rawValue, title: slug, rawTitle: slug,
             subtitle: "", detailURL: page1.absoluteString, coverURL: nil,
-            imageCount: 10_000, pageCount: 500
+            imageCount: 10000, pageCount: 500
         )
         let store = FavoritesDetailStore()
 
         store.prepare(record: record)
 
-        XCTAssertEqual(store.imageSlots.count, 1_000)
+        XCTAssertEqual(store.imageSlots.count, 1000)
         XCTAssertEqual(store.imageSlots.last?.pageURL, pages[49])
-        XCTAssertTrue(store.imageSlots.allSatisfy { $0.displayIndex < 1_000 })
+        XCTAssertTrue(store.imageSlots.allSatisfy { $0.displayIndex < 1000 })
     }
 
     @MainActor
     func testFavoritesFarPlaceholderAdvancesOnlyThroughContiguousPages() async throws {
         let slug = UUID().uuidString
         let page1 = try XCTUnwrap(URL(string: "https://www.4khd.com/content/\(slug).html"))
-        let pages = (0..<6).map { index in
+        let pages = (0 ..< 6).map { index in
             index == 0 ? page1 : page1.appendingPathComponent("\(index + 1)")
         }
-        let images = try (0..<6).map { index in
+        let images = try (0 ..< 6).map { index in
             try XCTUnwrap(URL(string: "https://pic.4khd.com/\(slug)-\(index + 1).jpg"))
         }
         let gates = pages.map { _ in AsyncStream<Void>.makeStream() }
         let recorder = FavoritePageRequestRecorder()
         defer {
-            for gate in gates { gate.continuation.finish() }
+            for gate in gates {
+                gate.continuation.finish()
+            }
             FavoriteSourceAdapterRegistry.shared.replaceAdapters([])
         }
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
@@ -569,12 +583,14 @@ final class OnlineStateMachineTests: XCTestCase {
                 resolvePage: { url in
                     guard let index = pages.firstIndex(of: url) else { throw URLError(.badURL) }
                     await recorder.record(url)
-                    for await _ in gates[index].stream { break }
+                    for await _ in gates[index].stream {
+                        break
+                    }
                     try Task.checkCancellation()
                     return FavoriteResolvedImagePage(imageURLs: [images[index]], pageURLs: pages)
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let crossSourceCover = try XCTUnwrap(URL(string: "https://misskon.com/media/cross-source.jpg"))
         let record = FavoriteRecord(
@@ -591,7 +607,7 @@ final class OnlineStateMachineTests: XCTestCase {
         var requested = await recorder.urls
         XCTAssertEqual(requested, [pages[0]])
 
-        for index in 0..<5 {
+        for index in 0 ..< 5 {
             gates[index].continuation.yield()
             gates[index].continuation.finish()
             await waitUntil { await recorder.urls.count == index + 2 }
@@ -638,7 +654,7 @@ final class OnlineStateMachineTests: XCTestCase {
                     )
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug, sourceID: GallerySection.latest.rawValue, title: slug, rawTitle: slug,
@@ -680,16 +696,16 @@ final class OnlineStateMachineTests: XCTestCase {
         let page2 = page1.appendingPathComponent("2")
         let page3 = page1.appendingPathComponent("3")
         let pages = [page1, page2, page3]
-        let images = try (0..<3).map { index in
+        let images = try (0 ..< 3).map { index in
             try XCTUnwrap(URL(string: "https://misskon.com/media/\(slug)-\(index + 1).jpg"))
         }
-        let page2Action = FavoriteDetailExternalAction(
+        let page2Action = try FavoriteDetailExternalAction(
             title: "MediaFire 下载",
-            url: try XCTUnwrap(URL(string: "https://ouo.io/\(slug)-2"))
+            url: XCTUnwrap(URL(string: "https://ouo.io/\(slug)-2"))
         )
-        let page3Action = FavoriteDetailExternalAction(
+        let page3Action = try FavoriteDetailExternalAction(
             title: "MediaFire 下载",
-            url: try XCTUnwrap(URL(string: "https://ouo.io/\(slug)-3"))
+            url: XCTUnwrap(URL(string: "https://ouo.io/\(slug)-3"))
         )
         let page2Gate = AsyncStream<Void>.makeStream()
         let galleryPage = try XCTUnwrap(URL(string: "https://www.4khd.com/content/\(slug).html"))
@@ -706,7 +722,9 @@ final class OnlineStateMachineTests: XCTestCase {
                 resolvePage: { url in
                     guard let index = pages.firstIndex(of: url) else { throw URLError(.badURL) }
                     if url == page2 {
-                        for await _ in page2Gate.stream { break }
+                        for await _ in page2Gate.stream {
+                            break
+                        }
                     }
                     return FavoriteResolvedImagePage(
                         imageURLs: [images[index]],
@@ -791,7 +809,7 @@ final class OnlineStateMachineTests: XCTestCase {
                     FavoriteResolvedImagePage(imageURLs: [galleryImage], pageURLs: [galleryPage])
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let knitRecord = FavoriteRecord(
             id: "knit:12345", sourceID: "knit", title: "Video", rawTitle: "Video", subtitle: "",
@@ -1017,7 +1035,9 @@ final class OnlineStateMachineTests: XCTestCase {
                 },
                 resolvePage: { _ in
                     pageStarted.fulfill()
-                    for await _ in pageGate.stream { break }
+                    for await _ in pageGate.stream {
+                        break
+                    }
                     return FavoriteResolvedImagePage(
                         imageURLs: [resolvedImageURL],
                         pageURLs: [pageURL],
@@ -1025,7 +1045,7 @@ final class OnlineStateMachineTests: XCTestCase {
                     )
                 },
                 configureImageRequest: { _ in }
-            )
+            ),
         ])
         let record = FavoriteRecord(
             id: slug,
@@ -1080,7 +1100,7 @@ final class OnlineStateMachineTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
-        for _ in 0..<500 {
+        for _ in 0 ..< 500 {
             if await condition() { return }
             await Task.yield()
         }
@@ -1110,7 +1130,7 @@ final class OnlineStateMachineTests: XCTestCase {
     private func makeGalleryItem(id: String, pageCount: Int) throws -> GalleryItem {
         let detail = try XCTUnwrap(URL(string: "https://www.4khd.com/content/\(id).html"))
         let cover = try XCTUnwrap(URL(string: "https://pic.4khd.com/\(id).jpg"))
-        let pages = (1...pageCount).map { $0 == 1 ? detail : detail.appendingPathComponent("\($0)") }
+        let pages = (1 ... pageCount).map { $0 == 1 ? detail : detail.appendingPathComponent("\($0)") }
         return GalleryItem(
             id: id,
             section: .latest,
@@ -1134,15 +1154,15 @@ final class OnlineStateMachineTests: XCTestCase {
         uploader: String,
         views: Int = 1
     ) throws -> Wallpaper {
-        Wallpaper(
+        try Wallpaper(
             id: id,
             displayName: id,
             source: .wallhaven,
-            sourcePageUrl: try XCTUnwrap(URL(string: "https://wallhaven.cc/w/\(id)")),
+            sourcePageUrl: XCTUnwrap(URL(string: "https://wallhaven.cc/w/\(id)")),
             sourceUrl: nil,
-            thumbnailUrl: try XCTUnwrap(URL(string: "https://th.wallhaven.cc/small/\(id).jpg")),
-            previewUrl: try XCTUnwrap(URL(string: "https://th.wallhaven.cc/lg/\(id).jpg")),
-            fullImageUrl: try XCTUnwrap(URL(string: "https://w.wallhaven.cc/full/\(id).jpg")),
+            thumbnailUrl: XCTUnwrap(URL(string: "https://th.wallhaven.cc/small/\(id).jpg")),
+            previewUrl: XCTUnwrap(URL(string: "https://th.wallhaven.cc/lg/\(id).jpg")),
+            fullImageUrl: XCTUnwrap(URL(string: "https://w.wallhaven.cc/full/\(id).jpg")),
             width: 1920,
             height: 1080,
             resolutionText: "1920x1080",
@@ -1169,7 +1189,7 @@ final class OnlineStateMachineTests: XCTestCase {
         case .missKon:
             detailURL = try XCTUnwrap(URL(string: "https://misskon.com/related/"))
             coverURL = try XCTUnwrap(URL(string: "https://misskon.com/media/related.jpg"))
-        case .wallhaven, .knit:
+        case .wallhaven, .knit, .mrds:
             throw XCTSkip("Source is not part of related gallery navigation")
         }
         return OnlineGalleryRecommendation(
@@ -1200,7 +1220,9 @@ private actor MissKonPageRecorder {
     private(set) var count = 0
     private let pageURLs: [URL]
 
-    init(pageURLs: [URL]) { self.pageURLs = pageURLs }
+    init(pageURLs: [URL]) {
+        self.pageURLs = pageURLs
+    }
 
     func resolve(_ url: URL) throws -> MissKonResolvedImagePage {
         count += 1
@@ -1227,7 +1249,9 @@ private actor GalleryFailOnceRecorder {
     private(set) var urls: [URL] = []
     private let pageURLs: [URL]
 
-    init(pageURLs: [URL]) { self.pageURLs = pageURLs }
+    init(pageURLs: [URL]) {
+        self.pageURLs = pageURLs
+    }
 
     func resolve(_ url: URL) throws -> ResolvedImagePage {
         urls.append(url)

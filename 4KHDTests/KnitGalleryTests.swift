@@ -1,6 +1,6 @@
+@testable import _KHD
 import AVFoundation
 import XCTest
-@testable import _KHD
 
 final class KnitGalleryTests: XCTestCase {
     @MainActor
@@ -92,7 +92,7 @@ final class KnitGalleryTests: XCTestCase {
     }
 
     @MainActor
-    func testListRoutesUseSitePaginationProtocol() throws {
+    func testListRoutesUseSitePaginationProtocol() {
         XCTAssertEqual(
             KnitListContext.filter(.all).pageURL(page: 1)?.absoluteString,
             "https://xx.knit.bid/?ajax=1"
@@ -131,7 +131,7 @@ final class KnitGalleryTests: XCTestCase {
         """#
         let payload: [String: Any] = [
             "html": html,
-            "pagination": ["current_page": 1, "total_pages": 13, "has_next": true, "next_page": 2]
+            "pagination": ["current_page": 1, "total_pages": 13, "has_next": true, "next_page": 2],
         ]
         let data = try JSONSerialization.data(withJSONObject: payload)
 
@@ -151,7 +151,7 @@ final class KnitGalleryTests: XCTestCase {
         let html = Self.cardHTML(id: "74017", title: "Adjacent counts 74P17V")
         let payload: [String: Any] = [
             "html": html,
-            "pagination": ["current_page": 1, "total_pages": 1, "has_next": false]
+            "pagination": ["current_page": 1, "total_pages": 1, "has_next": false],
         ]
         let data = try JSONSerialization.data(withJSONObject: payload)
 
@@ -181,7 +181,7 @@ final class KnitGalleryTests: XCTestCase {
 
         XCTAssertEqual(result.imageURLs.map(\.absoluteString), [
             "https://xx.knit.bid/static/images/test/01.jpg",
-            "https://r2-media.knit.bid/test/02.jpg"
+            "https://r2-media.knit.bid/test/02.jpg",
         ])
         XCTAssertEqual(result.pageURLs.count, 3)
         XCTAssertEqual(result.pageURLs.last?.path, "/article/32463/page/3")
@@ -279,13 +279,14 @@ final class KnitGalleryTests: XCTestCase {
 
         let parsed = try KnitHLSPlaylist.parse(playlist, baseURL: baseURL)
 
-        guard case .media(let segments) = parsed else {
+        guard case let .media(segments) = parsed else {
             return XCTFail("Expected a media playlist")
         }
-        XCTAssertEqual(segments.map(\.absoluteString), [
+        XCTAssertEqual(segments.map(\.url.absoluteString), [
             "https://media.knit.bid/play/segment-001.ts",
-            "https://r2-media.knit.bid/play/segment-002.ts"
+            "https://r2-media.knit.bid/play/segment-002.ts",
         ])
+        XCTAssertTrue(segments.allSatisfy { $0.encryption == nil })
     }
 
     func testHLSMasterPlaylistChoosesHighestBandwidthFirst() throws {
@@ -300,18 +301,18 @@ final class KnitGalleryTests: XCTestCase {
 
         let parsed = try KnitHLSPlaylist.parse(playlist, baseURL: baseURL)
 
-        guard case .master(let variants) = parsed else {
+        guard case let .master(variants) = parsed else {
             return XCTFail("Expected a master playlist")
         }
         XCTAssertEqual(variants.map(\.bandwidth), [3_200_000, 800_000])
         XCTAssertEqual(variants.first?.url.absoluteString, "https://media.knit.bid/play/high/index.m3u8")
     }
 
-    func testHLSPlaylistRejectsEncryptionLiveAndUntrustedSegments() throws {
+    func testHLSPlaylistRejectsUnsupportedEncryptionLiveAndUntrustedSegments() throws {
         let baseURL = try XCTUnwrap(URL(string: "https://media.knit.bid/play/video.m3u8"))
-        let encrypted = """
+        let sampleAES = """
         #EXTM3U
-        #EXT-X-KEY:METHOD=AES-128,URI="key.bin"
+        #EXT-X-KEY:METHOD=SAMPLE-AES,URI="key.bin"
         #EXTINF:4.0,
         segment.ts
         #EXT-X-ENDLIST
@@ -328,7 +329,7 @@ final class KnitGalleryTests: XCTestCase {
         #EXT-X-ENDLIST
         """
 
-        XCTAssertThrowsError(try KnitHLSPlaylist.parse(encrypted, baseURL: baseURL)) { error in
+        XCTAssertThrowsError(try KnitHLSPlaylist.parse(sampleAES, baseURL: baseURL)) { error in
             XCTAssertEqual(error as? KnitVideoDownloadError, .encryptedPlaylist)
         }
         XCTAssertThrowsError(try KnitHLSPlaylist.parse(live, baseURL: baseURL)) { error in
@@ -339,15 +340,100 @@ final class KnitGalleryTests: XCTestCase {
         }
     }
 
-    func testVideoFilenameIsSanitizedAndUsesMP4Extension() {
-        let item = KnitGalleryItem(
+    func testHLSPlaylistParsesAES128KeyAndExplicitIV() throws {
+        let baseURL = try XCTUnwrap(URL(string: "https://hls.piotrt.cn/play/index.m3u8?auth_key=list"))
+        let playlist = """
+        #EXTM3U
+        #EXT-X-VERSION:3
+        #EXT-X-MEDIA-SEQUENCE:0
+        #EXT-X-KEY:METHOD=AES-128,URI="https://ts.syjiaotong.mobi/play/crypt.key?auth_key=key%2Fvalue",IV=0x26cb7f063d34493f3746e85ef2c6bceb
+        #EXTINF:4.0,
+        https://ts.syjiaotong.mobi/play/segment-001.ts?auth_key=seg
+        #EXT-X-ENDLIST
+        """
+
+        let parsed = try KnitHLSPlaylist.parse(playlist, baseURL: baseURL, source: .mrds)
+        guard case let .media(segments) = parsed, let segment = segments.first else {
+            return XCTFail("Expected a media playlist")
+        }
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(
+            segment.url.absoluteString,
+            "https://ts.syjiaotong.mobi/play/segment-001.ts?auth_key=seg"
+        )
+        XCTAssertEqual(
+            segment.encryption?.keyURL.absoluteString,
+            "https://ts.syjiaotong.mobi/play/crypt.key?auth_key=key%2Fvalue"
+        )
+        XCTAssertEqual(segment.encryption?.iv.count, 16)
+        XCTAssertEqual(
+            segment.encryption?.iv,
+            Data([0x26, 0xCB, 0x7F, 0x06, 0x3D, 0x34, 0x49, 0x3F, 0x37, 0x46, 0xE8, 0x5E, 0xF2, 0xC6, 0xBC, 0xEB])
+        )
+    }
+
+    func testHLSPlaylistParsesMrdsRotatedSegmentHosts() throws {
+        let baseURL = try XCTUnwrap(URL(string: "https://hls.piotrt.cn/play/index.m3u8?auth_key=list"))
+        let playlist = """
+        #EXTM3U
+        #EXT-X-VERSION:3
+        #EXT-X-MEDIA-SEQUENCE:0
+        #EXT-X-KEY:METHOD=AES-128,URI="https://tx.doudou520.online/play/crypt.key?auth_key=key",IV=0x26cb7f063d34493f3746e85ef2c6bceb
+        #EXTINF:4.0,
+        https://tx.doudou520.online/play/segment-001.ts?auth_key=seg
+        #EXT-X-KEY:METHOD=AES-128,URI="https://ts.zhixunkeji.xyz/play/crypt.key?auth_key=key2",IV=0x26cb7f063d34493f3746e85ef2c6bceb
+        #EXTINF:4.0,
+        https://ts.zhixunkeji.xyz/play/segment-002.ts?auth_key=seg2
+        #EXT-X-ENDLIST
+        """
+
+        let parsed = try KnitHLSPlaylist.parse(playlist, baseURL: baseURL, source: .mrds)
+        guard case let .media(segments) = parsed else {
+            return XCTFail("Expected a media playlist")
+        }
+        XCTAssertEqual(segments.count, 2)
+        XCTAssertEqual(
+            segments[0].url.absoluteString,
+            "https://tx.doudou520.online/play/segment-001.ts?auth_key=seg"
+        )
+        XCTAssertEqual(
+            segments[1].encryption?.keyURL.absoluteString,
+            "https://ts.zhixunkeji.xyz/play/crypt.key?auth_key=key2"
+        )
+    }
+
+    func testHLSPlaylistRejectedKeyHostIsPolicyError() throws {
+        let baseURL = try XCTUnwrap(URL(string: "https://hls.piotrt.cn/play/index.m3u8"))
+        let playlist = """
+        #EXTM3U
+        #EXT-X-KEY:METHOD=AES-128,URI="https://cdn.evil.example/crypt.key",IV=0x26cb7f063d34493f3746e85ef2c6bceb
+        #EXTINF:4.0,
+        https://ts.syjiaotong.mobi/play/segment.ts
+        #EXT-X-ENDLIST
+        """
+        XCTAssertThrowsError(try KnitHLSPlaylist.parse(playlist, baseURL: baseURL, source: .mrds)) { error in
+            XCTAssertEqual(error as? OnlineSourcePolicy.PolicyError, .rejectedURL)
+        }
+    }
+
+    func testHLSAES128RoundTripDecryptsPKCS7Payload() throws {
+        let key = Data("1234567890abcdef".utf8)
+        let iv = Data("abcdef9876543210".utf8)
+        let plain = Data("mpeg-ts-payload-block!".utf8)
+        let cipher = try KnitHLSAES128.encryptForTesting(plain, key: key, iv: iv)
+        XCTAssertNotEqual(cipher, plain)
+        XCTAssertEqual(try KnitHLSAES128.decrypt(cipher, key: key, iv: iv), plain)
+    }
+
+    func testVideoFilenameIsSanitizedAndUsesMP4Extension() throws {
+        let item = try KnitGalleryItem(
             id: "32463",
             title: "Test / Video: 1V",
             rawTitle: "Test / Video: 1V",
             category: "Video",
             publishedDate: "",
             viewCount: nil,
-            detailURL: URL(string: "https://xx.knit.bid/article/32463/")!,
+            detailURL: XCTUnwrap(URL(string: "https://xx.knit.bid/article/32463/")),
             coverURL: nil,
             coverAspectRatio: 1,
             reportedPhotoCount: 1,
@@ -362,30 +448,30 @@ final class KnitGalleryTests: XCTestCase {
     }
 
     func testVideoTransferMeterEstimatesTotalAndSmoothsSpeed() {
-        let startedAt = Date(timeIntervalSince1970: 1_000)
+        let startedAt = Date(timeIntervalSince1970: 1000)
         var meter = KnitVideoTransferMeter(startedAt: startedAt)
 
         let first = meter.record(
-            segmentBytes: 1_000,
+            segmentBytes: 1000,
             completedSegments: 1,
             totalSegments: 4,
             at: startedAt.addingTimeInterval(1)
         )
-        XCTAssertEqual(first.downloadedBytes, 1_000)
-        XCTAssertEqual(first.estimatedTotalBytes, 4_000)
-        XCTAssertEqual(first.bytesPerSecond, 1_000, accuracy: 0.001)
-        XCTAssertEqual(first.averageBytesPerSecond, 1_000, accuracy: 0.001)
+        XCTAssertEqual(first.downloadedBytes, 1000)
+        XCTAssertEqual(first.estimatedTotalBytes, 4000)
+        XCTAssertEqual(first.bytesPerSecond, 1000, accuracy: 0.001)
+        XCTAssertEqual(first.averageBytesPerSecond, 1000, accuracy: 0.001)
 
         let second = meter.record(
-            segmentBytes: 3_000,
+            segmentBytes: 3000,
             completedSegments: 2,
             totalSegments: 4,
             at: startedAt.addingTimeInterval(2)
         )
-        XCTAssertEqual(second.downloadedBytes, 4_000)
-        XCTAssertEqual(second.estimatedTotalBytes, 8_000)
-        XCTAssertEqual(second.bytesPerSecond, 1_500, accuracy: 0.001)
-        XCTAssertEqual(second.averageBytesPerSecond, 2_000, accuracy: 0.001)
+        XCTAssertEqual(second.downloadedBytes, 4000)
+        XCTAssertEqual(second.estimatedTotalBytes, 8000)
+        XCTAssertEqual(second.bytesPerSecond, 1500, accuracy: 0.001)
+        XCTAssertEqual(second.averageBytesPerSecond, 2000, accuracy: 0.001)
     }
 
     func testVideoProgressCarriesExactInstalledFileSize() {
@@ -393,16 +479,16 @@ final class KnitGalleryTests: XCTestCase {
             stage: .installingFile,
             completedSegments: 4,
             totalSegments: 4,
-            downloadedBytes: 9_876,
-            totalBytes: 9_876,
-            averageBytesPerSecond: 1_234
+            downloadedBytes: 9876,
+            totalBytes: 9876,
+            averageBytesPerSecond: 1234
         )
 
         XCTAssertEqual(progress.fractionCompleted, 1)
-        XCTAssertEqual(progress.downloadedBytes, 9_876)
-        XCTAssertEqual(progress.totalBytes, 9_876)
+        XCTAssertEqual(progress.downloadedBytes, 9876)
+        XCTAssertEqual(progress.totalBytes, 9876)
         XCTAssertEqual(progress.bytesPerSecond, 0)
-        XCTAssertEqual(progress.averageBytesPerSecond, 1_234)
+        XCTAssertEqual(progress.averageBytesPerSecond, 1234)
     }
 
     func testLiveKnitVideoCanBeSavedAsPlayableMP4WhenEnabled() async throws {
@@ -430,7 +516,7 @@ final class KnitGalleryTests: XCTestCase {
     }
 
     @MainActor
-    func testFavoriteSourceUsesKnitDetailHost() throws {
+    func testFavoriteSourceUsesKnitDetailHost() {
         let record = FavoriteRecord(
             id: "knit:32463",
             sourceID: "wrong-source",
@@ -598,7 +684,9 @@ final class KnitGalleryTests: XCTestCase {
             },
             detailResolver: { url in
                 detailStarted.fulfill()
-                for await _ in gate.stream { break }
+                for await _ in gate.stream {
+                    break
+                }
                 return KnitResolvedDetailPage(
                     pageURL: url,
                     imageURLs: [originalURL],
@@ -652,7 +740,9 @@ final class KnitGalleryTests: XCTestCase {
             detailResolver: { url in
                 if url == page2 {
                     page2Started.fulfill()
-                    for await _ in gate.stream { break }
+                    for await _ in gate.stream {
+                        break
+                    }
                     return KnitResolvedDetailPage(
                         pageURL: page2,
                         imageURLs: [image2],
@@ -698,7 +788,7 @@ final class KnitGalleryTests: XCTestCase {
         let fixture = try await Self.makeFavoritesFixture()
         defer { fixture.cleanup() }
         let item = Self.item(id: "old")
-        let remainingPageURLs = try (2...5).map { page in
+        let remainingPageURLs = try (2 ... 5).map { page in
             try XCTUnwrap(URL(string: "https://xx.knit.bid/article/1/page/\(page)/"))
         }
         let pageURLs = [item.detailURL] + remainingPageURLs
@@ -737,12 +827,18 @@ final class KnitGalleryTests: XCTestCase {
                 defer { activeRequests -= 1 }
                 if url == pageURLs[1] {
                     page2Started.fulfill()
-                    for await _ in page2Gate.stream { break }
+                    for await _ in page2Gate.stream {
+                        break
+                    }
                 } else if url == pageURLs[2] {
                     page3Started.fulfill()
-                    for await _ in page3Gate.stream { break }
+                    for await _ in page3Gate.stream {
+                        break
+                    }
                 } else {
-                    for await _ in page4Gate.stream { break }
+                    for await _ in page4Gate.stream {
+                        break
+                    }
                 }
                 return KnitResolvedDetailPage(
                     pageURL: url,
@@ -759,7 +855,7 @@ final class KnitGalleryTests: XCTestCase {
         store.resolveSelectedDetailIfNeeded()
         await fulfillment(of: [page2Started], timeout: 1.0)
 
-        for _ in 0..<8 {
+        for _ in 0 ..< 8 {
             store.ensureNextDetailPageLoaded()
         }
         try await Task.sleep(for: .milliseconds(30))
@@ -771,7 +867,7 @@ final class KnitGalleryTests: XCTestCase {
         await fulfillment(of: [page3Started], timeout: 1.0)
         XCTAssertEqual(requestedPages, [pageURLs[1], pageURLs[2]])
 
-        for _ in 0..<8 {
+        for _ in 0 ..< 8 {
             store.ensureNextDetailPageLoaded()
         }
         try await Task.sleep(for: .milliseconds(30))
@@ -851,7 +947,9 @@ final class KnitGalleryTests: XCTestCase {
             favorites: fixture.favorites,
             listResolver: { _, _ in
                 listStarted.fulfill()
-                for await _ in listGate.stream { break }
+                for await _ in listGate.stream {
+                    break
+                }
                 return KnitListPage(items: [feedItem], currentPage: 1, totalPages: 1, nextPageURL: nil)
             },
             detailResolver: { url in
@@ -954,7 +1052,7 @@ final class KnitGalleryTests: XCTestCase {
         store.stepImage(1)
         XCTAssertEqual(store.detailContentMode, .image)
         XCTAssertEqual(store.selectedSlot?.knownURL, image1)
-        for _ in 0..<4 {
+        for _ in 0 ..< 4 {
             store.ensureNextDetailPageLoaded()
         }
         try await Task.sleep(for: .milliseconds(30))
@@ -1036,7 +1134,7 @@ final class KnitGalleryTests: XCTestCase {
         attempts: Int = 150,
         condition: @escaping @MainActor () -> Bool
     ) async throws {
-        for _ in 0..<attempts {
+        for _ in 0 ..< attempts {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }

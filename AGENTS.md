@@ -35,6 +35,7 @@
     MissKon/     — misskon.com 在线图库模块
     Wallhaven/   — wallhaven.cc 在线壁纸模块
     KnitGallery/ — xx.knit.bid 图片与视频图库模块
+    MrdsGallery/ — www.mrds66.com 每日大赛图库模块
 ```
 
 ### 模块内部结构
@@ -62,8 +63,9 @@
 | 在线图库 | `MissKon` | misskon.com 标签/热门浏览、详情 HTML 解析、渐进式图片加载 |
 | 在线图库 | `Wallhaven` | wallhaven.cc API v1 搜索浏览、分类/排序/比例/分辨率筛选、纯度门控、上传者浏览、本地收藏、详情缓存 |
 | 在线图库 | `KnitGallery` | xx.knit.bid 四分区浏览、分类相关专题/排行筛选、AJAX 分页、渐进式详情、尾页推荐与独立 HLS 视频播放 |
+| 在线图库 | `MrdsGallery` | www.mrds66.com Typecho 分类浏览、详情 `data-xkrkllgl` 图片、尾页相邻推荐与加密 HLS 播放（不保存 MP4） |
 | 本地图片 | `LocalLibrary` | 本地目录导入、扫描、metadata 读取 |
-| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
+| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子/每日大赛），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
 
 ## 4. 共享能力清单
 
@@ -73,12 +75,12 @@
 | `WorkspaceCollectionView` | `Shared/UI/` | 统一 NSCollectionView 基类（hover、tracking area、keyDown） |
 | `WorkspaceZoomableImageView` | `Shared/UI/` | 可缩放图片视图基类（pinch zoom、fit、reset） |
 | `WorkspaceThumbnailWaterfallLayout` | `Shared/UI/` | 瀑布流布局 |
-| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 缩略图卡片视图（图片+文字+高亮+hover） |
+| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 缩略图卡片视图（图片+标题默认显示+高亮+hover 描边缩放） |
 | `WorkspaceThumbnailPrefetchController` | `Shared/UI/` | 缩略图预取调度器（可见区附近智能预取） |
 | `RemoteImageView` | `Shared/UI/` | 共享远程图片视图（Nuke 加载、占位符、aspectFill/Fit、同步缓存命中） |
 | `DetailOverlayChromeView` | `Shared/UI/Detail/` | 详情区覆盖层圆角背景 |
 | `DetailNavigationButton` | `Shared/UI/Detail/` | 详情区导航按钮（圆形毛玻璃） |
-| `DetailRecommendationsView` | `Shared/UI/Detail/` | 4KHD/MissKon/KnitGallery/收藏共用的图集尾页推荐网格 |
+| `DetailRecommendationsView` | `Shared/UI/Detail/` | 4KHD/MissKon/KnitGallery/MrdsGallery/收藏共用的图集尾页推荐网格 |
 | `RemoteImagePipeline` | `Shared/Services/` | Nuke 图片加载管线（含 thumbnailPrefetcher + detailPrefetcher 分离） |
 | `DetailPageImageCache` | `Shared/Services/` | 详情页图片 URL 缓存（7 天过期，500/800 容量限制） |
 | `OnlineGalleryRecommendation` | `Shared/Services/` | 跨在线源通用的推荐图集值模型 |
@@ -109,19 +111,20 @@
 
 ### 统一收藏模块（在线收藏）
 
-- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子，rawValue 作路由 itemID）
+- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛，rawValue 作路由 itemID）
 - 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整
-- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery 的具体类型
-- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery 收藏继续使用原站逐页解析、胶片条和页尾推荐；Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
+- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery/MrdsGallery 的具体类型
+- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery/MrdsGallery 收藏继续使用原站解析、胶片条和页尾推荐；Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
 - **选择身份与空状态**：列表/网格选择以标准化 `detailURL` 为主键，不得只比较可能跨来源冲突的站点 raw ID；切换到空筛选、删除当前或最后一条收藏时必须同步修正选择并清空旧详情、推荐、视频和工具栏状态
 - **KnitGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放，播放按钮及独立播放器的右键菜单均同时提供保存 MP4 与复制影片源 URL，工具栏「保存」菜单也可保存 MP4；播放和保存均经 App 组装层复用 KnitGallery 原生实现，Favorites 不直接依赖播放器或下载器类型。未解析到受信任视频源时必须禁用菜单；不同视频可进入共享下载队列，同一图集的活动任务由 `DownloadStore` 去重
+- **MrdsGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放；播放按钮、独立播放器和工具栏「保存」均提供保存 MP4 与拷贝源 URL。站点清单是 AES-128 MPEG-TS VOD：下载密钥后按 KEY 行 IV 解密每个 TS，再走与爱妹子相同的无损封装。`FavoriteVideoActions.canSaveAsMP4 = true`。未解析到受信任视频源时必须禁用菜单
 - **Wallhaven 一致性**：收藏详情按同来源收藏记录导航，加载原图与完整 metadata，支持等待原图解析完成后设为壁纸；上传者入口必须在应用内路由到 Wallhaven 上传者作品，不得跳到外部网页或退化为封面图
-- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
+- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
 - **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图的防盗链请求配置从对应 `FavoriteSourceAdapter` 获取
 - **历史封面仍需重新门禁**：从磁盘恢复或旧版本迁移的 `coverURL` 在列表、网格、预取和详情首图使用前，都必须重新通过所属来源的媒体 allowlist；不能因记录已经持久化就直接信任 URL
 - 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
-- Gallery/MissKon/KnitGallery 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
-- Gallery/MissKon/KnitGallery 来源的收藏详情在最后一张后继续导航会显示推荐；推荐数据仍经 source adapter 注入，跨模块跳转只由 `WorkspaceAppAssembly` 路由，Favorites 不得直接依赖业务模块
+- Gallery/MissKon/KnitGallery/MrdsGallery 来源的收藏项支持「保存整个图集」和「保存当前图片」；Wallhaven 收藏项无图集下载
+- Gallery/MissKon/KnitGallery/MrdsGallery 来源的收藏详情在最后一张后继续导航会显示推荐；推荐数据仍经 source adapter 注入，跨模块跳转只由 `WorkspaceAppAssembly` 路由，Favorites 不得直接依赖业务模块
 - MissKon 收藏详情通过来源无关的外部动作模型显示 MediaFire 入口；该业务 metadata 仍只由 MissKon 缓存拥有，不得把 URL 字段塞进 Favorites 或 Shared 的通用缓存 schema
 
 ### MissKon 模块
@@ -164,7 +167,7 @@
 - **线程边界**：网络和 Cloudflare 验证 UI 留在 MainActor；验证 waiter 必须响应请求取消，最后一个 waiter 取消时结束验证会话；JSON 解码、HTML 正则与推荐容器扫描必须经 `@concurrent nonisolated` 解析函数执行，纯 Knit 值模型保持显式 `nonisolated + Sendable`
 - **尾页推荐**：详情首页解析 `#recommend-container` 的原站推荐；全部图片页完成后，从最后一张继续向后导航才显示推荐网格，向前返回最后一张。推荐点击进入精确 KnitGallery 图集；在线收藏通过 `FavoriteSourceAdapter` 接收同一推荐数据，再由 `WorkspaceAppAssembly` 路由
 - **视频**：解析 `media.knit.bid` HLS 清单；使用 App 层长期持有的独立 `KnitVideoPlayerWindowController` + `AVPlayerView`，不得把播放器嵌进图片详情或引入 SwiftUI；详情「播放视频」按钮、独立播放器画面及收藏详情的右键菜单必须同时提供「保存视频为 MP4…」和「拷贝影片源 URL」，复制实际 HLS 地址。播放器必须观察当前 `AVPlayerItem.status`，失败时只显示一次原生错误提示，切换视频或关闭窗口时撤销观察、保存动作并释放旧播放器
-- **视频保存**：工具栏「保存」菜单仅在当前详情已解析出受信任的 HLS URL 时启用「保存视频为 MP4…」，不得用列表标题里的 `nV`/播放图标代替真实视频源。用户选定目标后，视频必须作为 `.video` 任务进入与整图集共用的 `DownloadStore` 串行队列和非模态「下载」窗口；进度、失败、取消和完成结果只在任务中心呈现，详情图片上方不得常驻分类或保存状态。下载只接受未加密、带 `ENDLIST`、无 discontinuity 的 MPEG-TS VOD；所有清单/分片与重定向继续经过 Knit media allowlist，逐段下载后由 AVFoundation 无损封装 MP4，安装前验证可播放性、正时长和视频轨；失败或取消必须清理临时文件且不得破坏既有目标文件。主/子清单先下载到临时文件并在映射到内存前执行 5 MB 上限检查。整次保存遇到 403/`cf-mitigated: challenge` 时最多共享一次 WebKit 验证并只重试触发请求一次，验证后的清单与每个分片仍重新经过 Cookie、host 和重定向门禁
+- **视频保存**：工具栏「保存」菜单仅在当前详情已解析出受信任的 HLS URL 时启用「保存视频为 MP4…」，不得用列表标题里的 `nV`/播放图标代替真实视频源。用户选定目标后，视频必须作为 `.video` 任务进入与整图集共用的 `DownloadStore` 串行队列和非模态「下载」窗口；进度、失败、取消和完成结果只在任务中心呈现，详情图片上方不得常驻分类或保存状态。下载只接受带 `ENDLIST`、无 discontinuity 的 MPEG-TS VOD；`METHOD=AES-128` 先下载 16 字节密钥并按 KEY 行 IV 解密每个 TS，再无损封装。SAMPLE-AES 和其他加密仍拒绝。所有清单/分片/密钥与重定向继续经过对应 source 的 media allowlist，逐段下载后由 AVFoundation 无损封装 MP4，安装前验证可播放性、正时长和视频轨；失败或取消必须清理临时文件且不得破坏既有目标文件。主/子清单先下载到临时文件并在映射到内存前执行 5 MB 上限检查。密钥文件上限 64 字节。Knit 保存遇到 403/`cf-mitigated: challenge` 时最多共享一次 WebKit 验证并只重试触发请求一次；Mrds 没有 Cloudflare，403 直接失败。验证后的清单与每个分片仍重新经过 Cookie、host 和重定向门禁
 - **访问验证**：URLSession 普通请求优先；仅收到 403/`cf-mitigated: challenge` 时显示模块专用 WKWebView 验证窗，同步 Cookie 后重试，不做 challenge 绕过。验证 WebView 的初始地址、每次主框架导航请求和主框架响应都必须通过 Knit HTML exact/subdomain allowlist，外域跳转在继续导航前取消
 - **安全门禁**：HTML 与媒体仅允许 HTTPS exact/subdomain `knit.bid`；图片与 HLS 请求必须保留 Safari User-Agent，图片继续携带 `https://xx.knit.bid/` Referer
 - **原图门禁**：列表封面只作详情解析前的过渡图；详情未解析时不得启用或执行「保存当前图片」，在线收藏同样必须确认当前 slot 已由来源页解析
@@ -172,19 +175,32 @@
 - **当前播放边界**：应用能门禁传给 `AVURLAsset` 的入口 HLS URL，但 AVFoundation 自己发起的变体清单和分片子请求不经过 `OnlineSourcePolicy`；若要对播放链每个子请求做与下载链同等级的 host/重定向审计，需要改为自定义资源加载器或本地代理，不得把当前实现宣称为全链门禁
 - 站点分页和入口实测快照见 `docs/knit-site-protocol-2026-08-28.md`
 
+### MrdsGallery 模块
+
+- **侧边栏**：高级模块开关下增加「每日大赛」分组，入口为最近更新 + 原站 20 个分类；分类 rawValue 同时是工作区路由 itemID
+- **列表分页**：普通 HTML，无 AJAX JSON。首页 `/` 与 `/page/{n}/`，分类 `/category/{slug}/` 与 `/category/{slug}/{n}/`，搜索 `/search/{encoded}/` 与 `/search/{encoded}/{n}/`
+- **详情**：单页 `/archives/{id}/`；图片在 `data-xkrkllgl`，占位图 `/usr/plugins/tbxw/zw.png` 不是原图。只有详情栏或沉浸模式真正可见时才启动解析
+- **尾页推荐**：`.post-near` 上一篇/下一篇；最后一张继续向后导航才显示推荐网格。邻篇 HTML 没有封面图，解析详情后并行拉取邻篇档案页，封面优先 `loadBannerDirect`，否则第一张 `data-xkrkllgl`；失败时卡片可以没有封面，不得让整次详情解析失败
+- **视频**：解析 `hls.piotrt.cn` HLS（保留 `auth_key` 查询串）；复用 App 层 `KnitVideoPlayerWindowController`，传入 `source: .mrds`。站点媒体清单是 AES-128 MPEG-TS VOD（`#EXT-X-ENDLIST`），密钥和 TS 分片 host 会在 `ts.syjiaotong.mobi` / `tx.doudou520.online` / `ts.zhixunkeji.xyz` 间轮换。保存 MP4 时下载密钥、按 KEY 行 IV 解密 TS 后再封装；SAMPLE-AES / 无 ENDLIST / 独立音轨等仍拒绝。播放按钮右键同时提供保存 MP4 与拷贝源 URL
+- **列表缓存**：侧边栏切换分类时先恢复该分类的内存列表，再后台刷新；网格封面在 Nuke 内存命中时直接绘制，未命中时也不得先清空已有封面再淡入
+- **安全门禁**：HTML 仅 HTTPS exact/subdomain `mrds66.com`；媒体仅 `pic.sbhioa.cn`、`hls.piotrt.cn`、`ts.syjiaotong.mobi`、`tx.doudou520.online`、`ts.zhixunkeji.xyz`。不要信任镜像域名。图片请求保留 Safari User-Agent 和 `https://www.mrds66.com/` Referer
+- **图片解密**：`pic.sbhioa.cn` 正文是 AES-128-CBC 密文（站点前端同一密钥/IV）。列表、详情、胶片条、保存和整图集下载都必须先解密再解码或落盘；已是 JPEG/GIF/PNG/WebP 魔数的字节原样使用
+- **原图门禁**：列表封面只作详情解析前的过渡图；详情未解析时不得启用「保存当前图片」
+- 站点分页和入口实测快照见 `docs/mrds-site-protocol-2026-08-31.md`
+
 ### 设置面板
 
-- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/本地图库五个模块的列表/网格
+- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/MrdsGallery/本地图库的列表/网格
 - **缓存上限**：在线缓存容量选择（512MB-4GB/无限制）
 - **清除缓存**：一键清除 Nuke 图片缓存、详情页缓存、MissKon/Wallhaven 模块缓存、本地缩略图缓存、临时文件
-- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery 模块显示
-- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
+- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery/MrdsGallery 模块显示
+- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery/MrdsGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
 - 全部中文化
 
 ### 辅助窗口
 
 - **下载窗口**：使用普通、非模态 `NSWindow` 作为图集与视频的统一任务中心；关闭窗口只隐藏界面，不中断队列。窗口标题是唯一标题，内容区顶部只显示任务摘要与批量操作；每个任务在系统进度条下方等宽显示已下载/总大小、整体百分比和当前速度，完成后显示精确落盘大小与平均速度。图集按单图落盘、视频按 HLS 分片完成采样并平滑速度；运行中的图集/视频总大小允许标记为估算值，视频封装完成后必须用最终 MP4 大小校正。活动单文件任务必须预留标准化目标路径，拒绝第二个任务无确认写入同一文件，并在完成、失败或取消时释放预留。空状态、任务类型、目标位置、取消与清理操作均使用系统控件和语义色
-- **信息窗口**：六个模块共用一个 App 层 Inspector；固定来源标题区，下方使用可滚动的动态分组 `NSGridView`，缺失字段整行省略。关闭或最小化后必须停止观察与本地 metadata 读取；未选择项目时信息按钮禁用
+- **信息窗口**：七个模块共用一个 App 层 Inspector；固定来源标题区，下方使用可滚动的动态分组 `NSGridView`，缺失字段整行省略。关闭或最小化后必须停止观察与本地 metadata 读取；未选择项目时信息按钮禁用
 
 ### 已知 UI 边界
 

@@ -36,7 +36,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -104,11 +104,11 @@ final class WorkspaceThumbnailGridCardView: NSView {
         trackingAreaRef = tracking
     }
 
-    override func mouseEntered(with event: NSEvent) {
+    override func mouseEntered(with _: NSEvent) {
         setHovering(true)
     }
 
-    override func mouseExited(with event: NSEvent) {
+    override func mouseExited(with _: NSEvent) {
         setHovering(false)
     }
 
@@ -124,25 +124,32 @@ final class WorkspaceThumbnailGridCardView: NSView {
         }
     }
 
-    func resetForReuse() {
+    func resetForReuse(preservingImage: Bool = false) {
         removeTransientAnimations()
         isHovering = false
         isPressingCard = false
         isSelectedState = false
         currentScale = 1
         imageView.contentMode = .aspectFill
-        imageView.image = placeholderImage
-        placeholderLabel.stringValue = "加载中..."
-        placeholderLabel.isHidden = false
-        titleLabel.stringValue = ""
-        metadataLabel.stringValue = ""
-        setAccessibilityLabel("正在加载图片")
-        metadataLabel.isHidden = false
+        if !preservingImage {
+            imageView.image = placeholderImage
+            placeholderLabel.stringValue = "加载中..."
+            placeholderLabel.isHidden = false
+            titleLabel.stringValue = ""
+            metadataLabel.stringValue = ""
+            setAccessibilityLabel("正在加载图片")
+            metadataLabel.isHidden = false
+        }
         missingOverlay.isHidden = true
-        infoOverlay.alphaValue = 0
+        imageView.alphaValue = 1
+        infoOverlay.alphaValue = 1
         hoverOutline.alphaValue = 0
         layer?.transform = CATransform3DIdentity
         refreshAppearance()
+    }
+
+    var hasImage: Bool {
+        imageView.image != nil && imageView.image !== placeholderImage
     }
 
     func setImageContentMode(_ mode: WorkspaceThumbnailImageMode) {
@@ -236,7 +243,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         CATransaction.setDisableActions(true)
         layer?.transform = CATransform3DIdentity
         hoverOutline.alphaValue = 0
-        infoOverlay.alphaValue = 0
+        infoOverlay.alphaValue = 1
         CATransaction.commit()
     }
 
@@ -263,11 +270,11 @@ final class WorkspaceThumbnailGridCardView: NSView {
         infoOverlay.wantsLayer = true
         infoOverlay.layer?.backgroundColor = NSColor.clear.cgColor
         infoOverlay.layer?.addSublayer(gradientLayer)
-        infoOverlay.alphaValue = 0
+        infoOverlay.alphaValue = 1
         gradientLayer.colors = [
             NSColor.clear.cgColor,
             NSColor.black.withAlphaComponent(0.05).cgColor,
-            NSColor.black.withAlphaComponent(0.72).cgColor
+            NSColor.black.withAlphaComponent(0.72).cgColor,
         ]
         gradientLayer.locations = [0.0, 0.62, 1.0]
         gradientLayer.startPoint = CGPoint(x: 0.5, y: 1.0)
@@ -337,7 +344,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
         switch width {
         case ..<160:
             return (9, 8)
-        case 160..<260:
+        case 160 ..< 260:
             return (11, 10)
         default:
             return (13, 11)
@@ -353,7 +360,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
                 ? WorkspaceThumbnailGridCardAnimation.cardEnterTiming
                 : WorkspaceThumbnailGridCardAnimation.cardExitTiming
             hoverOutline.animator().alphaValue = hovering ? 1 : 0
-            infoOverlay.animator().alphaValue = hovering ? 1 : 0
         }
     }
 
@@ -396,13 +402,13 @@ final class WorkspaceThumbnailGridCardView: NSView {
             gradientLayer.colors = [
                 NSColor.clear.cgColor,
                 NSColor.black.withAlphaComponent(0.05).cgColor,
-                NSColor.black.withAlphaComponent(0.72).cgColor
+                NSColor.black.withAlphaComponent(0.72).cgColor,
             ]
         } else {
             gradientLayer.colors = [
                 NSColor.clear.cgColor,
                 NSColor.black.withAlphaComponent(0.02).cgColor,
-                NSColor.black.withAlphaComponent(0.55).cgColor
+                NSColor.black.withAlphaComponent(0.55).cgColor,
             ]
         }
         CATransaction.commit()
@@ -412,7 +418,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
         super.viewDidChangeEffectiveAppearance()
         refreshAppearance()
     }
-
 }
 
 private extension NSRect {
@@ -437,11 +442,14 @@ private final class WorkspaceAspectFillImageView: NSView {
     var image: NSImage? {
         didSet { needsDisplay = true }
     }
+
     var contentMode: WorkspaceThumbnailImageMode = .aspectFill {
         didSet { needsDisplay = true }
     }
 
-    override var isFlipped: Bool { true }
+    override var isFlipped: Bool {
+        true
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)

@@ -20,7 +20,9 @@ final class DetailRecommendationsView: NSView, NSCollectionViewDataSource, NSCol
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     func update(
         recommendations: [OnlineGalleryRecommendation],
@@ -68,9 +70,11 @@ final class DetailRecommendationsView: NSView, NSCollectionViewDataSource, NSCol
         flowLayout.invalidateLayout()
     }
 
-    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    func numberOfSections(in _: NSCollectionView) -> Int {
+        1
+    }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+    func collectionView(_: NSCollectionView, numberOfItemsInSection _: Int) -> Int {
         recommendations.count
     }
 
@@ -150,7 +154,7 @@ final class DetailRecommendationsView: NSView, NSCollectionViewDataSource, NSCol
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 12),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 }
@@ -174,7 +178,7 @@ private final class DetailRecommendationCollectionItem: NSCollectionViewItem {
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             cardView.topAnchor.constraint(equalTo: view.topAnchor),
-            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
     }
 
@@ -203,8 +207,8 @@ private final class DetailRecommendationCollectionItem: NSCollectionViewItem {
 
         imageTask?.cancel()
         imageTask = nil
-        cardView.setImage(nil)
         guard let coverURL = recommendation.coverURL else {
+            cardView.setImage(nil)
             cardView.setPlaceholder("暂无缩略图", isVisible: true)
             return
         }
@@ -219,6 +223,7 @@ private final class DetailRecommendationCollectionItem: NSCollectionViewItem {
             cardView.setImage(cached, animated: false)
             return
         }
+        cardView.setImage(nil)
 
         cardView.setPlaceholder("加载中...", isVisible: true)
         imageTask = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in

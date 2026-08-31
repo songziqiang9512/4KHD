@@ -8,6 +8,7 @@ enum WorkspaceToolbarSnapshot {
     case wallhaven(WallhavenSnapshot)
     case favorites(FavoritesSnapshot)
     case knit(KnitSnapshot)
+    case mrds(MrdsSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -63,6 +64,24 @@ enum WorkspaceToolbarSnapshot {
         let layout: KnitContentLayout
         let filter: KnitBrowseFilter
         let pageStatusText: String
+        let isRefreshing: Bool
+        let canFavorite: Bool
+        let isFavorite: Bool
+        let canIncreaseGridColumns: Bool
+        let canDecreaseGridColumns: Bool
+        let canSelectPreviousImage: Bool
+        let canSelectNextImage: Bool
+        let canSaveImage: Bool
+        let canSaveAlbum: Bool
+        let canSaveVideo: Bool
+        let canResetZoom: Bool
+        let canShare: Bool
+        let isFilmstripPresented: Bool
+    }
+
+    struct MrdsSnapshot {
+        let searchText: String
+        let layout: MrdsContentLayout
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -138,7 +157,7 @@ enum WorkspaceToolbarSnapshot {
 
     var fields: CommonFields {
         switch self {
-        case .gallery(let s):
+        case let .gallery(s):
             CommonFields(
                 moduleName: "4KHD", searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
@@ -153,7 +172,7 @@ enum WorkspaceToolbarSnapshot {
                 isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
-        case .local(let s):
+        case let .local(s):
             CommonFields(
                 moduleName: "本地图片", searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
@@ -168,7 +187,7 @@ enum WorkspaceToolbarSnapshot {
                 isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.hasSelection
             )
-        case .missKon(let s):
+        case let .missKon(s):
             CommonFields(
                 moduleName: "MissKon", searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
@@ -183,7 +202,7 @@ enum WorkspaceToolbarSnapshot {
                 isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
-        case .wallhaven(let s):
+        case let .wallhaven(s):
             CommonFields(
                 moduleName: "Wallhaven", searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
@@ -197,7 +216,7 @@ enum WorkspaceToolbarSnapshot {
                 canShare: s.canShare, canUseFilmstrip: false, isFilmstripPresented: false,
                 hasSelection: s.canShare
             )
-        case .favorites(let s):
+        case let .favorites(s):
             CommonFields(
                 moduleName: "在线收藏", searchText: s.searchText,
                 isRefreshing: false,
@@ -212,9 +231,24 @@ enum WorkspaceToolbarSnapshot {
                 isFilmstripPresented: s.isFilmstripPresented,
                 hasSelection: s.canShare
             )
-        case .knit(let s):
+        case let .knit(s):
             CommonFields(
                 moduleName: "爱妹子", searchText: s.searchText,
+                isRefreshing: s.isRefreshing,
+                canFavorite: s.canFavorite, isFavorite: s.isFavorite,
+                canIncreaseGridColumns: s.canIncreaseGridColumns,
+                canDecreaseGridColumns: s.canDecreaseGridColumns,
+                canSelectPreviousImage: s.canSelectPreviousImage,
+                canSelectNextImage: s.canSelectNextImage,
+                canSaveImage: s.canSaveImage, canSaveAlbum: s.canSaveAlbum, canSaveVideo: s.canSaveVideo,
+                canResetZoom: s.canResetZoom,
+                canShare: s.canShare, canUseFilmstrip: true,
+                isFilmstripPresented: s.isFilmstripPresented,
+                hasSelection: s.canShare
+            )
+        case let .mrds(s):
+            CommonFields(
+                moduleName: "每日大赛", searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -232,17 +266,19 @@ enum WorkspaceToolbarSnapshot {
 
     var isListLayout: Bool {
         switch self {
-        case .gallery(let snapshot):
+        case let .gallery(snapshot):
             snapshot.layout == .list
-        case .local(let snapshot):
+        case let .local(snapshot):
             snapshot.layout == .list
-        case .missKon(let snapshot):
+        case let .missKon(snapshot):
             snapshot.layout == .list
-        case .wallhaven(let snapshot):
+        case let .wallhaven(snapshot):
             snapshot.layout == .list
-        case .favorites(let snapshot):
+        case let .favorites(snapshot):
             snapshot.layout == .list
-        case .knit(let snapshot):
+        case let .knit(snapshot):
+            snapshot.layout == .list
+        case let .mrds(snapshot):
             snapshot.layout == .list
         }
     }
@@ -254,7 +290,7 @@ enum WorkspaceCurrentReference {
 
     var url: URL {
         switch self {
-        case .web(let url), .file(let url):
+        case let .web(url), let .file(url):
             return url
         }
     }
@@ -263,7 +299,7 @@ enum WorkspaceCurrentReference {
         switch self {
         case .web:
             return nil
-        case .file(let url):
+        case let .file(url):
             return url
         }
     }
@@ -280,11 +316,11 @@ enum WorkspaceCurrentReference {
     func writeToPasteboard(_ pasteboard: NSPasteboard = .general) {
         pasteboard.clearContents()
         switch self {
-        case .web(let url):
+        case let .web(url):
             let urlString = url.absoluteString
             pasteboard.setString(urlString, forType: .URL)
             pasteboard.setString(urlString, forType: .string)
-        case .file(let url):
+        case let .file(url):
             pasteboard.setString(url.path, forType: .string)
         }
     }
@@ -304,6 +340,9 @@ final class WorkspaceToolbarContext {
     private let knitStore: KnitGalleryStore
     private let knitPreferences: KnitContentPreferences
     private let knitDetailInteraction: KnitDetailInteractionController
+    private let mrdsStore: MrdsGalleryStore
+    private let mrdsPreferences: MrdsContentPreferences
+    private let mrdsDetailInteraction: MrdsDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -329,6 +368,9 @@ final class WorkspaceToolbarContext {
         knitStore: KnitGalleryStore,
         knitPreferences: KnitContentPreferences,
         knitDetailInteraction: KnitDetailInteractionController,
+        mrdsStore: MrdsGalleryStore,
+        mrdsPreferences: MrdsContentPreferences,
+        mrdsDetailInteraction: MrdsDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -353,6 +395,9 @@ final class WorkspaceToolbarContext {
         self.knitStore = knitStore
         self.knitPreferences = knitPreferences
         self.knitDetailInteraction = knitDetailInteraction
+        self.mrdsStore = mrdsStore
+        self.mrdsPreferences = mrdsPreferences
+        self.mrdsDetailInteraction = mrdsDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -476,7 +521,7 @@ final class WorkspaceToolbarContext {
         case .favorites:
             let selectedRecord = favoritesModuleStore.selectedRecord
             let source = selectedRecord.flatMap(FavoriteSource.source(for:))
-            let canSaveAlbum = source == .gallery || source == .missKon || source == .knit
+            let canSaveAlbum = source == .gallery || source == .missKon || source == .knit || source == .mrds
             let detailMatchesSelection = selectedRecord != nil
                 && favoritesDetailStore.currentRecord == selectedRecord
             let canAdjustGridColumns = favoritesPreferences.layout == .grid
@@ -485,7 +530,8 @@ final class WorkspaceToolbarContext {
             let canSelectNext: Bool
             if detailMatchesSelection,
                let selectedRecord,
-               favoritesDetailStore.navigationMode == .sourceRecords {
+               favoritesDetailStore.navigationMode == .sourceRecords
+            {
                 canSelectPrevious = favoritesModuleStore.canStepSourceRecord(from: selectedRecord, delta: -1)
                 canSelectNext = favoritesModuleStore.canStepSourceRecord(from: selectedRecord, delta: 1)
             } else {
@@ -546,6 +592,31 @@ final class WorkspaceToolbarContext {
                     isFilmstripPresented: filmstripVisibility.isPresented
                 )
             )
+        case .mrdsGallery:
+            let item = mrdsStore.selectedItem
+            let canAdjust = mrdsPreferences.layout == .grid && !detailPaneController.isPresented
+            return .mrds(
+                .init(
+                    searchText: mrdsStore.searchText,
+                    layout: mrdsPreferences.layout,
+                    isRefreshing: mrdsStore.isRefreshingList,
+                    canFavorite: item != nil,
+                    isFavorite: item.map { mrdsStore.isFavorite($0) } ?? false,
+                    canIncreaseGridColumns: canAdjust && mrdsPreferences.canIncreaseGridColumns,
+                    canDecreaseGridColumns: canAdjust && mrdsPreferences.canDecreaseGridColumns,
+                    canSelectPreviousImage: mrdsStore.canStepDetailBackward,
+                    canSelectNextImage: mrdsStore.canStepDetailForward,
+                    canSaveImage: mrdsStore.detailContentMode == .image
+                        && item != nil
+                        && mrdsStore.hasResolvedSelectedImage,
+                    canSaveAlbum: item != nil,
+                    canSaveVideo: item != nil && mrdsStore.videoURL != nil,
+                    canResetZoom: mrdsStore.detailContentMode == .image
+                        && mrdsStore.selectedSlot != nil,
+                    canShare: item != nil,
+                    isFilmstripPresented: filmstripVisibility.isPresented
+                )
+            )
         }
     }
 
@@ -554,7 +625,8 @@ final class WorkspaceToolbarContext {
         case .fourKHDGallery:
             galleryStore.searchText = text
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               galleryStore.activeSearchQuery != nil {
+               galleryStore.activeSearchQuery != nil
+            {
                 galleryStore.clearSearch()
             }
         case .localLibrary:
@@ -562,26 +634,37 @@ final class WorkspaceToolbarContext {
         case .missKon:
             missKonStore.feed.searchText = text
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               missKonStore.activeSearchQuery != nil {
+               missKonStore.activeSearchQuery != nil
+            {
                 missKonStore.clearSearch()
             }
         case .wallhaven:
             wallhavenStore.setSearchText(text)
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               wallhavenStore.activeSearchQuery != nil {
+               wallhavenStore.activeSearchQuery != nil
+            {
                 wallhavenStore.clearSearch()
             }
         case .favorites:
             favoritesModuleStore.searchText = text
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               favoritesModuleStore.activeSearchQuery != nil {
+               favoritesModuleStore.activeSearchQuery != nil
+            {
                 favoritesModuleStore.clearSearch()
             }
         case .knitGallery:
             knitStore.searchText = text
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               knitStore.activeSearchQuery != nil {
+               knitStore.activeSearchQuery != nil
+            {
                 knitStore.clearSearch()
+            }
+        case .mrdsGallery:
+            mrdsStore.searchText = text
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               mrdsStore.activeSearchQuery != nil
+            {
+                mrdsStore.clearSearch()
             }
         }
     }
@@ -600,6 +683,8 @@ final class WorkspaceToolbarContext {
             favoritesPreferences.layout = isList ? .list : .grid
         case .knitGallery:
             knitPreferences.layout = isList ? .list : .grid
+        case .mrdsGallery:
+            mrdsPreferences.layout = isList ? .list : .grid
         }
     }
 
@@ -620,6 +705,9 @@ final class WorkspaceToolbarContext {
         case .knitGallery:
             guard knitPreferences.layout == .grid, !detailPaneController.isPresented else { return }
             knitPreferences.adjustGridColumns(delta: delta)
+        case .mrdsGallery:
+            guard mrdsPreferences.layout == .grid, !detailPaneController.isPresented else { return }
+            mrdsPreferences.adjustGridColumns(delta: delta)
         }
     }
 
@@ -637,6 +725,8 @@ final class WorkspaceToolbarContext {
             favoritesModuleStore.submitSearch()
         case .knitGallery:
             knitStore.submitSearch()
+        case .mrdsGallery:
+            mrdsStore.submitSearch()
         }
     }
 
@@ -697,6 +787,8 @@ final class WorkspaceToolbarContext {
             }
         case .knitGallery:
             knitStore.refreshFromNetwork()
+        case .mrdsGallery:
+            mrdsStore.refreshFromNetwork()
         }
     }
 
@@ -726,6 +818,8 @@ final class WorkspaceToolbarContext {
                 .map { [$0] } ?? []
         case .knitGallery:
             return knitStore.selectedItem.map { [$0.detailURL] } ?? []
+        case .mrdsGallery:
+            return mrdsStore.selectedItem.map { [$0.detailURL] } ?? []
         }
     }
 
@@ -745,6 +839,8 @@ final class WorkspaceToolbarContext {
                 .map { .web($0) }
         case .knitGallery:
             return knitStore.selectedItem.map { .web($0.detailURL) }
+        case .mrdsGallery:
+            return mrdsStore.selectedItem.map { .web($0.detailURL) }
         }
     }
 
@@ -774,6 +870,9 @@ final class WorkspaceToolbarContext {
                 case .knitGallery:
                     guard let item = knitStore.selectedItem else { return }
                     try await knitStore.toggleFavorite(for: item)
+                case .mrdsGallery:
+                    guard let item = mrdsStore.selectedItem else { return }
+                    try await mrdsStore.toggleFavorite(for: item)
                 }
             } catch {
                 let alert = makeAppAlert(
@@ -813,6 +912,8 @@ final class WorkspaceToolbarContext {
             }
         case .knitGallery:
             knitStore.stepImage(delta)
+        case .mrdsGallery:
+            mrdsStore.stepImage(delta)
         }
     }
 
@@ -849,6 +950,12 @@ final class WorkspaceToolbarContext {
                   let item = knitStore.selectedItem,
                   let slot = knitStore.selectedSlot else { return }
             knitDetailInteraction.save(item: item, slot: slot)
+        case .mrdsGallery:
+            guard mrdsStore.detailContentMode == .image,
+                  mrdsStore.hasResolvedSelectedImage,
+                  let item = mrdsStore.selectedItem,
+                  let slot = mrdsStore.selectedSlot else { return }
+            mrdsDetailInteraction.save(item: item, slot: slot)
         }
     }
 
@@ -864,6 +971,9 @@ final class WorkspaceToolbarContext {
         case .knitGallery:
             guard let item = knitStore.selectedItem else { return }
             result = downloadStore.enqueueAlbumChoosingFolder(source: .knit(item))
+        case .mrdsGallery:
+            guard let item = mrdsStore.selectedItem else { return }
+            result = downloadStore.enqueueAlbumChoosingFolder(source: .mrds(item))
         case .favorites:
             guard let record = favoritesModuleStore.selectedRecord else { return }
             switch FavoriteSource.source(for: record) {
@@ -878,6 +988,9 @@ final class WorkspaceToolbarContext {
             case .knit:
                 guard let item = KnitFavoritesBridge.item(from: record) else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .knit(item))
+            case .mrds:
+                guard let item = MrdsFavoritesBridge.item(from: record) else { return }
+                result = downloadStore.enqueueAlbumChoosingFolder(source: .mrds(item))
             }
         case .localLibrary, .wallhaven:
             return
@@ -907,6 +1020,10 @@ final class WorkspaceToolbarContext {
         case .favorites:
             guard favoritesModuleStore.selectedRecord == favoritesDetailStore.currentRecord else { return }
             favoritesDetailStore.saveVideoAsMP4()
+        case .mrdsGallery:
+            guard let item = mrdsStore.selectedItem,
+                  let videoURL = mrdsStore.videoURL else { return }
+            mrdsDetailInteraction.saveVideo(item: item, sourceURL: videoURL)
         case .fourKHDGallery, .localLibrary, .missKon, .wallhaven:
             return
         }
@@ -926,6 +1043,8 @@ final class WorkspaceToolbarContext {
             favoritesDetailInteraction.resetZoom()
         case .knitGallery:
             knitDetailInteraction.resetZoom()
+        case .mrdsGallery:
+            mrdsDetailInteraction.resetZoom()
         }
     }
 

@@ -6,25 +6,28 @@ enum WorkspaceSidebarNode: Hashable {
     case missKon(MissKonSection)
     case wallhaven(WallhavenSection)
     case knit(KnitSidebarSection)
+    case mrds(MrdsSection)
     case localAllImages(count: Int)
     case localFolder(LocalFolderNode)
     case favoritesModule
 
     var title: String {
         switch self {
-        case .group(let title):
+        case let .group(title):
             title
-        case .gallery(let section):
+        case let .gallery(section):
             section.title
-        case .missKon(let section):
+        case let .missKon(section):
             section.title
-        case .wallhaven(let section):
+        case let .wallhaven(section):
             section.title
-        case .knit(let section):
+        case let .knit(section):
+            section.title
+        case let .mrds(section):
             section.title
         case .localAllImages:
             "我的图片"
-        case .localFolder(let folder):
+        case let .localFolder(folder):
             folder.title
         case .favoritesModule:
             "在线收藏"
@@ -33,19 +36,21 @@ enum WorkspaceSidebarNode: Hashable {
 
     var stateIdentifier: String {
         switch self {
-        case .group(let title):
+        case let .group(title):
             "group:\(title)"
-        case .gallery(let section):
+        case let .gallery(section):
             "gallery:\(section.rawValue)"
-        case .missKon(let section):
+        case let .missKon(section):
             "missKon:\(section.rawValue)"
-        case .wallhaven(let section):
+        case let .wallhaven(section):
             "wallhaven:\(section.rawValue)"
-        case .knit(let section):
+        case let .knit(section):
             "knit:\(section.rawValue)"
+        case let .mrds(section):
+            "mrds:\(section.rawValue)"
         case .localAllImages:
             "local:allImages"
-        case .localFolder(let folder):
+        case let .localFolder(folder):
             "localFolder:\(folder.id)"
         case .favoritesModule:
             "favorites:all"
@@ -54,9 +59,9 @@ enum WorkspaceSidebarNode: Hashable {
 
     var count: Int? {
         switch self {
-        case .localAllImages(let count):
+        case let .localAllImages(count):
             count
-        case .localFolder(let folder):
+        case let .localFolder(folder):
             folder.imageCount
         default:
             nil
