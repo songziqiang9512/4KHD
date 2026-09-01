@@ -652,6 +652,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case let .mrds(s): _ = s.layout
         case let .quanji(s): _ = s.layout
         case let .porny(s): _ = s.layout
+        case let .tangxin(s): _ = s.layout
         }
     }
 

@@ -78,13 +78,14 @@ nonisolated struct KnitVideoTransferMetrics: Equatable {
 nonisolated struct KnitVideoTransferMeter {
     private let startedAt: Date
     private var lastSampleAt: Date
-    private(set) var downloadedBytes: Int64 = 0
+    private(set) var downloadedBytes: Int64
     private(set) var bytesPerSecond: Double = 0
     private(set) var averageBytesPerSecond: Double = 0
 
-    init(startedAt: Date = Date()) {
+    init(startedAt: Date = Date(), downloadedBytes: Int64 = 0) {
         self.startedAt = startedAt
         lastSampleAt = startedAt
+        self.downloadedBytes = max(downloadedBytes, 0)
     }
 
     mutating func record(
@@ -435,6 +436,46 @@ nonisolated enum KnitHLSPlaylist: Equatable {
         }
         return Data(bytes)
     }
+
+    /// AES-128 info for playback. Prefers the download parser; if the playlist
+    /// is too strict to parse, falls back to the first KEY tag's URI and IV.
+    static func playbackAES128(
+        _ text: String,
+        baseURL: URL,
+        source: OnlineSourcePolicy.Source
+    ) -> (keyURL: URL, defaultIV: Data, ivByURL: [URL: Data])? {
+        if case let .media(segments) = try? parse(text, baseURL: baseURL, source: source),
+           let first = segments.first(where: { $0.encryption != nil })?.encryption
+        {
+            var ivByURL: [URL: Data] = [:]
+            for segment in segments {
+                if let encryption = segment.encryption {
+                    ivByURL[segment.url] = encryption.iv
+                }
+            }
+            return (first.keyURL, first.iv, ivByURL)
+        }
+        return aes128FromFirstKeyLine(text, baseURL: baseURL, source: source)
+    }
+
+    private static func aes128FromFirstKeyLine(
+        _ text: String,
+        baseURL: URL,
+        source: OnlineSourcePolicy.Source
+    ) -> (keyURL: URL, defaultIV: Data, ivByURL: [URL: Data])? {
+        for line in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.uppercased().hasPrefix("#EXT-X-KEY:") else { continue }
+            let attributes = hlsAttributeMap(trimmed)
+            guard attributes["METHOD"]?.uppercased() == "AES-128",
+                  let uri = attributes["URI"],
+                  let keyURL = validatedMediaURL(uri, relativeTo: baseURL, source: source)
+            else { return nil }
+            let iv = attributes["IV"].flatMap(dataFromHexIV) ?? ivFromMediaSequence(0)
+            return (keyURL, iv, [:])
+        }
+        return nil
+    }
 }
 
 nonisolated enum KnitVideoDownloadService {
@@ -495,6 +536,12 @@ nonisolated enum KnitVideoDownloadService {
         suggestedFilename(title: item.title, id: item.id)
     }
 
+    static func discardCheckpoint(playlistURL: URL, destinationURL: URL) {
+        try? FileManager.default.removeItem(
+            at: workDirectory(playlistURL: playlistURL, destinationURL: destinationURL)
+        )
+    }
+
     static func saveMP4(
         from playlistURL: URL,
         to destinationURL: URL,
@@ -521,53 +568,102 @@ nonisolated enum KnitVideoDownloadService {
 
         let fileManager = FileManager.default
         cleanupStaleTemporaryDirectories(fileManager: fileManager)
-        let temporaryDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("4KHD-KnitVideo-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: temporaryDirectory) }
+        let accessedDestination = destinationURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessedDestination {
+                destinationURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        let workDirectory = workDirectory(playlistURL: playlistURL, destinationURL: destinationURL)
+        try fileManager.createDirectory(at: workDirectory, withIntermediateDirectories: true)
+        var didInstall = false
+        defer {
+            if didInstall {
+                try? fileManager.removeItem(at: workDirectory)
+            }
+        }
 
-        let transportStreamURL = temporaryDirectory.appendingPathComponent("video.ts")
-        guard fileManager.createFile(atPath: transportStreamURL.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown)
+        let transportStreamURL = workDirectory.appendingPathComponent("video.ts")
+        let checkpointURL = workDirectory.appendingPathComponent("checkpoint.json")
+        let restored = loadCheckpoint(
+            at: checkpointURL,
+            playlistURL: playlistURL,
+            totalSegments: segments.count,
+            transportStreamURL: transportStreamURL,
+            fileManager: fileManager
+        )
+        let startIndex = restored.completedSegments
+        if startIndex == 0 || !fileManager.fileExists(atPath: transportStreamURL.path) {
+            guard fileManager.createFile(atPath: transportStreamURL.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
         }
         let outputHandle = try FileHandle(forWritingTo: transportStreamURL)
-        var transferMeter = KnitVideoTransferMeter()
+        if startIndex > 0 {
+            try outputHandle.truncate(atOffset: restored.fileOffset)
+            try outputHandle.seek(toOffset: restored.fileOffset)
+        }
+        var transferMeter = KnitVideoTransferMeter(downloadedBytes: restored.downloadedBytes)
+        if startIndex > 0 {
+            progress(.init(
+                stage: .downloadingSegments,
+                completedSegments: startIndex,
+                totalSegments: segments.count,
+                downloadedBytes: restored.downloadedBytes,
+                totalBytes: restored.downloadedBytes
+            ))
+        }
         var keyCache: [URL: Data] = [:]
         do {
-            for (index, segment) in segments.enumerated() {
-                try Task.checkCancellation()
-                let request = try makeMediaRequest(url: segment.url, kind: .segment, context: context)
-                let temporarySegmentURL = try await downloadMediaFile(
-                    for: request,
-                    context: context,
-                    fileManager: fileManager
-                )
-                defer { try? fileManager.removeItem(at: temporarySegmentURL) }
-                let segmentBytes: Int64
-                if let encryption = segment.encryption {
-                    let key = try await cachedKey(encryption.keyURL, cache: &keyCache, context: context)
-                    let cipher = try Data(contentsOf: temporarySegmentURL)
-                    segmentBytes = Int64(cipher.count)
-                    let plain = try KnitHLSAES128.decrypt(cipher, key: key, iv: encryption.iv)
-                    try outputHandle.write(contentsOf: plain)
-                } else {
-                    segmentBytes = try fileSize(at: temporarySegmentURL)
-                    try appendFile(at: temporarySegmentURL, to: outputHandle)
+            if startIndex < segments.count {
+                for index in startIndex ..< segments.count {
+                    try Task.checkCancellation()
+                    let segment = segments[index]
+                    let request = try makeMediaRequest(url: segment.url, kind: .segment, context: context)
+                    let temporarySegmentURL = try await downloadMediaFile(
+                        for: request,
+                        context: context,
+                        fileManager: fileManager
+                    )
+                    defer { try? fileManager.removeItem(at: temporarySegmentURL) }
+                    let segmentBytes: Int64
+                    if let encryption = segment.encryption {
+                        let key = try await cachedKey(encryption.keyURL, cache: &keyCache, context: context)
+                        let cipher = try Data(contentsOf: temporarySegmentURL)
+                        segmentBytes = Int64(cipher.count)
+                        let plain = try KnitHLSAES128.decrypt(cipher, key: key, iv: encryption.iv)
+                        try outputHandle.write(contentsOf: plain)
+                    } else {
+                        segmentBytes = try fileSize(at: temporarySegmentURL)
+                        try appendFile(at: temporarySegmentURL, to: outputHandle)
+                    }
+                    try outputHandle.synchronize()
+                    let fileOffset = try outputHandle.offset()
+                    let transferMetrics = transferMeter.record(
+                        segmentBytes: segmentBytes,
+                        completedSegments: index + 1,
+                        totalSegments: segments.count
+                    )
+                    try writeCheckpoint(
+                        Checkpoint(
+                            playlistURL: playlistURL.absoluteString,
+                            completedSegments: index + 1,
+                            totalSegments: segments.count,
+                            downloadedBytes: transferMetrics.downloadedBytes,
+                            fileOffset: fileOffset
+                        ),
+                        to: checkpointURL
+                    )
+                    progress(.init(
+                        stage: .downloadingSegments,
+                        completedSegments: index + 1,
+                        totalSegments: segments.count,
+                        downloadedBytes: transferMetrics.downloadedBytes,
+                        totalBytes: transferMetrics.estimatedTotalBytes,
+                        bytesPerSecond: transferMetrics.bytesPerSecond,
+                        averageBytesPerSecond: transferMetrics.averageBytesPerSecond
+                    ))
                 }
-                let transferMetrics = transferMeter.record(
-                    segmentBytes: segmentBytes,
-                    completedSegments: index + 1,
-                    totalSegments: segments.count
-                )
-                progress(.init(
-                    stage: .downloadingSegments,
-                    completedSegments: index + 1,
-                    totalSegments: segments.count,
-                    downloadedBytes: transferMetrics.downloadedBytes,
-                    totalBytes: transferMetrics.estimatedTotalBytes,
-                    bytesPerSecond: transferMetrics.bytesPerSecond,
-                    averageBytesPerSecond: transferMetrics.averageBytesPerSecond
-                ))
             }
             try outputHandle.close()
         } catch {
@@ -584,35 +680,29 @@ nonisolated enum KnitVideoDownloadService {
             totalBytes: transferMeter.downloadedBytes,
             averageBytesPerSecond: transferMeter.averageBytesPerSecond
         ))
-        let exportedURL = temporaryDirectory.appendingPathComponent("video.mp4")
-        let asset = AVURLAsset(url: transportStreamURL)
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-            throw KnitVideoDownloadError.exportUnavailable
-        }
         do {
-            try await exporter.export(to: exportedURL, as: .mp4)
+            let exportedURL = try await exportPassthroughMP4(from: transportStreamURL)
+            defer { try? fileManager.removeItem(at: exportedURL.deletingLastPathComponent()) }
+            try Task.checkCancellation()
+            let exportedBytes = try fileSize(at: exportedURL)
+            guard exportedBytes > 0 else { throw KnitVideoDownloadError.unsupportedTransportStream }
+
+            progress(.init(
+                stage: .installingFile,
+                completedSegments: segments.count,
+                totalSegments: segments.count,
+                downloadedBytes: exportedBytes,
+                totalBytes: exportedBytes,
+                averageBytesPerSecond: transferMeter.averageBytesPerSecond
+            ))
+            try installAtomically(exportedURL, at: destinationURL)
+            didInstall = true
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            throw KnitVideoDownloadError.exportFailed(error.localizedDescription)
+            try? fileManager.removeItem(at: workDirectory)
+            throw error
         }
-        try Task.checkCancellation()
-        guard fileManager.fileExists(atPath: exportedURL.path) else {
-            throw KnitVideoDownloadError.unsupportedTransportStream
-        }
-        let exportedBytes = try fileSize(at: exportedURL)
-        guard exportedBytes > 0 else { throw KnitVideoDownloadError.unsupportedTransportStream }
-        try await validateExportedMP4(at: exportedURL)
-
-        progress(.init(
-            stage: .installingFile,
-            completedSegments: segments.count,
-            totalSegments: segments.count,
-            downloadedBytes: exportedBytes,
-            totalBytes: exportedBytes,
-            averageBytesPerSecond: transferMeter.averageBytesPerSecond
-        ))
-        try installAtomically(exportedURL, at: destinationURL)
     }
 
     private static func defaultReferer(for source: OnlineSourcePolicy.Source) -> String {
@@ -620,6 +710,7 @@ nonisolated enum KnitVideoDownloadService {
         case .mrds: "https://www.mrds66.com/"
         case .quanji: "https://91quanji.com/"
         case .porny: "https://91porny.com/"
+        case .tangxin: "https://tangxinvlog.app/"
         case .knit, .gallery, .missKon, .wallhaven: "https://xx.knit.bid/"
         }
     }
@@ -683,6 +774,9 @@ nonisolated enum KnitVideoDownloadService {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 90)
         request.setValue(context.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(context.referer, forHTTPHeaderField: "Referer")
+        if let origin = OnlineSourcePolicy.originHeader(fromReferer: context.referer) {
+            request.setValue(origin, forHTTPHeaderField: "Origin")
+        }
         switch kind {
         case .playlist:
             request.setValue(
@@ -827,11 +921,80 @@ nonisolated enum KnitVideoDownloadService {
         try Int64(url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
     }
 
+    /// Same working set as 1.8.9: unique `temporaryDirectory` folder, Passthrough
+    /// export next to the concatenated TS, then system playability checks.
+    private static func exportPassthroughMP4(from transportStreamURL: URL) async throws -> URL {
+        let fileManager = FileManager.default
+        let exportDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("4KHD-KnitVideo-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: exportDirectory, withIntermediateDirectories: true)
+        let exportSource = exportDirectory.appendingPathComponent("video.ts")
+        let exportedURL = exportDirectory.appendingPathComponent("video.mp4")
+        do {
+            try fileManager.linkItem(at: transportStreamURL, to: exportSource)
+        } catch {
+            try fileManager.copyItem(at: transportStreamURL, to: exportSource)
+        }
+        let asset = AVURLAsset(url: exportSource)
+        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            try? fileManager.removeItem(at: exportDirectory)
+            throw KnitVideoDownloadError.exportUnavailable
+        }
+        do {
+            try await exporter.export(to: exportedURL, as: .mp4)
+        } catch is CancellationError {
+            try? fileManager.removeItem(at: exportDirectory)
+            throw CancellationError()
+        } catch {
+            try? fileManager.removeItem(at: exportDirectory)
+            throw KnitVideoDownloadError.exportFailed(error.localizedDescription)
+        }
+        try Task.checkCancellation()
+        guard fileManager.fileExists(atPath: exportedURL.path) else {
+            try? fileManager.removeItem(at: exportDirectory)
+            throw KnitVideoDownloadError.unsupportedTransportStream
+        }
+        let exportedBytes = try fileSize(at: exportedURL)
+        guard exportedBytes > 0 else {
+            try? fileManager.removeItem(at: exportDirectory)
+            throw KnitVideoDownloadError.unsupportedTransportStream
+        }
+        do {
+            try await validateExportedMP4(at: exportedURL)
+        } catch {
+            try? fileManager.removeItem(at: exportDirectory)
+            throw error
+        }
+        return exportedURL
+    }
+
+    private static func validateExportedMP4(at url: URL) async throws {
+        let asset = AVURLAsset(url: url)
+        do {
+            let isPlayable = try await asset.load(.isPlayable)
+            let duration = try await asset.load(.duration)
+            let videoTracks = try await asset.loadTracks(withMediaType: .video)
+            guard isPlayable,
+                  duration.seconds.isFinite,
+                  duration.seconds > 0,
+                  !videoTracks.isEmpty
+            else {
+                throw KnitVideoDownloadError.invalidExportedFile
+            }
+        } catch let error as KnitVideoDownloadError {
+            throw error
+        } catch {
+            throw KnitVideoDownloadError.invalidExportedFile
+        }
+    }
+
     private static func installAtomically(_ sourceURL: URL, at destinationURL: URL) throws {
         let fileManager = FileManager.default
-        let destinationFolder = destinationURL.deletingLastPathComponent()
-        let stagingURL = destinationFolder.appendingPathComponent(
-            ".\(destinationURL.lastPathComponent).4khd-\(UUID().uuidString).tmp"
+        // Stage inside the app container. A sibling temp next to the user-chosen
+        // file is outside the NSSavePanel grant and fails anywhere except
+        // Downloads / Pictures.
+        let stagingURL = fileManager.temporaryDirectory.appendingPathComponent(
+            "4KHD-install-\(UUID().uuidString).mp4"
         )
         defer { try? fileManager.removeItem(at: stagingURL) }
         try copyFileCancellable(from: sourceURL, to: stagingURL, fileManager: fileManager)
@@ -867,41 +1030,95 @@ nonisolated enum KnitVideoDownloadService {
         }
     }
 
+    private struct Checkpoint: Codable {
+        var playlistURL: String
+        var completedSegments: Int
+        var totalSegments: Int
+        var downloadedBytes: Int64
+        var fileOffset: UInt64
+    }
+
+    private static func workDirectory(playlistURL: URL, destinationURL: URL) -> URL {
+        let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return root
+            .appendingPathComponent("4KHD-KnitVideo", isDirectory: true)
+            .appendingPathComponent(
+                sha256Hex(playlistURL.absoluteString + "\n" + destinationURL.path),
+                isDirectory: true
+            )
+    }
+
+    private static func sha256Hex(_ string: String) -> String {
+        let data = Data(string.utf8)
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { bytes in
+            _ = CC_SHA256(bytes.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func loadCheckpoint(
+        at url: URL,
+        playlistURL: URL,
+        totalSegments: Int,
+        transportStreamURL: URL,
+        fileManager: FileManager
+    ) -> (completedSegments: Int, downloadedBytes: Int64, fileOffset: UInt64) {
+        let empty = (0, Int64(0), UInt64(0))
+        guard fileManager.fileExists(atPath: url.path),
+              fileManager.fileExists(atPath: transportStreamURL.path),
+              let data = try? Data(contentsOf: url),
+              let checkpoint = try? JSONDecoder().decode(Checkpoint.self, from: data),
+              checkpoint.playlistURL == playlistURL.absoluteString,
+              checkpoint.totalSegments == totalSegments,
+              checkpoint.completedSegments > 0,
+              checkpoint.completedSegments <= totalSegments
+        else { return empty }
+        let fileSize = (try? fileSize(at: transportStreamURL)).map { UInt64(max($0, 0)) } ?? 0
+        guard checkpoint.fileOffset > 0, fileSize >= checkpoint.fileOffset else { return empty }
+        return (checkpoint.completedSegments, checkpoint.downloadedBytes, checkpoint.fileOffset)
+    }
+
+    private static func writeCheckpoint(_ checkpoint: Checkpoint, to url: URL) throws {
+        let data = try JSONEncoder().encode(checkpoint)
+        try data.write(to: url, options: .atomic)
+    }
+
     private static func cleanupStaleTemporaryDirectories(fileManager: FileManager) {
         let root = fileManager.temporaryDirectory
         let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .contentModificationDateKey]
-        guard let candidates = try? fileManager.contentsOfDirectory(
+        if let candidates = try? fileManager.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: Array(keys),
             options: [.skipsHiddenFiles]
-        ) else { return }
-        for candidate in candidates where candidate.lastPathComponent.hasPrefix("4KHD-KnitVideo-") {
-            guard let values = try? candidate.resourceValues(forKeys: keys),
-                  values.isDirectory == true,
-                  let modifiedAt = values.contentModificationDate,
-                  modifiedAt < cutoff else { continue }
-            try? fileManager.removeItem(at: candidate)
-        }
-    }
-
-    private static func validateExportedMP4(at url: URL) async throws {
-        let asset = AVURLAsset(url: url)
-        do {
-            let isPlayable = try await asset.load(.isPlayable)
-            let duration = try await asset.load(.duration)
-            let videoTracks = try await asset.loadTracks(withMediaType: .video)
-            guard isPlayable,
-                  duration.seconds.isFinite,
-                  duration.seconds > 0,
-                  !videoTracks.isEmpty
-            else {
-                throw KnitVideoDownloadError.invalidExportedFile
+        ) {
+            for candidate in candidates where candidate.lastPathComponent.hasPrefix("4KHD-KnitVideo-") {
+                guard let values = try? candidate.resourceValues(forKeys: keys),
+                      values.isDirectory == true,
+                      let modifiedAt = values.contentModificationDate,
+                      modifiedAt < cutoff else { continue }
+                try? fileManager.removeItem(at: candidate)
             }
-        } catch let error as KnitVideoDownloadError {
-            throw error
-        } catch {
-            throw KnitVideoDownloadError.invalidExportedFile
+        }
+        let cacheRoot = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("4KHD-KnitVideo", isDirectory: true)
+        let cacheCutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+        if let cacheRoot,
+           let workspaces = try? fileManager.contentsOfDirectory(
+               at: cacheRoot,
+               includingPropertiesForKeys: Array(keys),
+               options: [.skipsHiddenFiles]
+           )
+        {
+            for candidate in workspaces {
+                guard let values = try? candidate.resourceValues(forKeys: keys),
+                      values.isDirectory == true,
+                      let modifiedAt = values.contentModificationDate,
+                      modifiedAt < cacheCutoff else { continue }
+                try? fileManager.removeItem(at: candidate)
+            }
         }
     }
 }

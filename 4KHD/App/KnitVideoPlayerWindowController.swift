@@ -9,6 +9,8 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
     private var currentSourceURL: URL?
     private var currentPolicySource: OnlineSourcePolicy.Source = .knit
     private var currentSaveAction: (() -> Void)?
+    private var playbackProxySessionID: UUID?
+    private var playbackGeneration = UUID()
     private var playerItemStatusObservation: NSKeyValueObservation?
     private var playbackFailureAlert: NSAlert?
     private lazy var saveVideoMenuItem: NSMenuItem = {
@@ -36,22 +38,22 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
     }()
 
     init() {
-        let panel = NSPanel(
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        panel.title = "视频播放"
-        panel.contentView = playerView
-        panel.contentMinSize = NSSize(width: 560, height: 360)
-        panel.isReleasedWhenClosed = false
-        panel.tabbingMode = .disallowed
-        panel.collectionBehavior = [.fullScreenAuxiliary]
+        window.title = "视频播放"
+        window.contentView = playerView
+        window.contentMinSize = NSSize(width: 560, height: 360)
+        window.isReleasedWhenClosed = false
+        window.tabbingMode = .disallowed
+        window.collectionBehavior = [.fullScreenAuxiliary]
         playerView.controlsStyle = .floating
         playerView.showsFullScreenToggleButton = true
-        super.init(window: panel)
-        panel.delegate = self
+        super.init(window: window)
+        window.delegate = self
 
         let contextMenu = NSMenu()
         contextMenu.autoenablesItems = false
@@ -71,6 +73,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         title: String,
         source: OnlineSourcePolicy.Source = .knit,
         userAgent: String = KnitRequestFactory.userAgent,
+        referer: String? = nil,
         onSave: (() -> Void)? = nil
     ) {
         guard OnlineSourcePolicy.allows(url, source: source, resource: .media),
@@ -80,13 +83,8 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
             return
         }
         clearPlayback()
-        let asset = AVURLAsset(
-            url: url,
-            options: [AVURLAssetHTTPUserAgentKey: userAgent]
-        )
-        let playerItem = AVPlayerItem(asset: asset)
-        playerView.player = AVPlayer(playerItem: playerItem)
-        observeStatus(of: playerItem)
+        let generation = UUID()
+        playbackGeneration = generation
         currentPolicySource = source
         updateCurrentVideoContext(url: url, saveAction: onSave)
         window?.title = title.isEmpty ? Self.defaultTitle(for: source) : title
@@ -96,7 +94,46 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        if let referer, !referer.isEmpty {
+            Task { @MainActor in
+                do {
+                    let prepared = try await OnlineHLSLocalProxy.shared.preparePlayback(
+                        mediaURL: url,
+                        source: source,
+                        userAgent: userAgent,
+                        referer: referer
+                    )
+                    guard self.playbackGeneration == generation else {
+                        OnlineHLSLocalProxy.shared.endSession(prepared.sessionID)
+                        return
+                    }
+                    self.playbackProxySessionID = prepared.sessionID
+                    self.startPlaying(assetURL: prepared.url, userAgent: userAgent)
+                } catch {
+                    guard self.playbackGeneration == generation else { return }
+                    self.presentPlaybackFailure(message: error.localizedDescription)
+                }
+            }
+            return
+        }
+        startPlaying(assetURL: url, userAgent: userAgent)
+    }
+
+    private func startPlaying(assetURL: URL, userAgent: String) {
+        let asset = AVURLAsset(
+            url: assetURL,
+            options: [AVURLAssetHTTPUserAgentKey: userAgent]
+        )
+        let playerItem = AVPlayerItem(asset: asset)
+        playerView.player = AVPlayer(playerItem: playerItem)
+        observeStatus(of: playerItem)
         playerView.player?.play()
+    }
+
+    override func close() {
+        clearPlayback()
+        super.close()
     }
 
     func windowWillClose(_: Notification) {
@@ -104,11 +141,22 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
     }
 
     private func clearPlayback() {
+        playbackGeneration = UUID()
         playerItemStatusObservation?.invalidate()
         playerItemStatusObservation = nil
         dismissPlaybackFailureAlert()
-        playerView.player?.pause()
+        if let player = playerView.player {
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+        }
         playerView.player = nil
+        if let window, window.styleMask.contains(.fullScreen) {
+            window.toggleFullScreen(nil)
+        }
+        if let sessionID = playbackProxySessionID {
+            OnlineHLSLocalProxy.shared.endSession(sessionID)
+            playbackProxySessionID = nil
+        }
         currentPolicySource = .knit
         updateCurrentVideoContext(url: nil, saveAction: nil)
     }
@@ -133,8 +181,12 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         playerItemStatusObservation?.invalidate()
         playerItemStatusObservation = nil
         playerView.player?.pause()
+        presentPlaybackFailure(
+            message: playerItem.error?.localizedDescription ?? "影片资源无法加载，请稍后重试。"
+        )
+    }
 
-        let message = playerItem.error?.localizedDescription ?? "影片资源无法加载，请稍后重试。"
+    private func presentPlaybackFailure(message: String) {
         let alert = makeAppAlert(
             title: "视频播放失败",
             message: message,
@@ -193,6 +245,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         case .mrds: "每日大赛视频"
         case .quanji: "木瓜视频"
         case .porny: "91PORNY 视频"
+        case .tangxin: "糖心Vlog"
         case .gallery, .missKon, .wallhaven: "视频播放"
         }
     }

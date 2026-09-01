@@ -21,11 +21,16 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     private let configureImageRequest: (inout URLRequest) -> Void
     private let onPlayVideo: (OnlineVideoItem, URL) -> Void
     private let onSaveVideo: (OnlineVideoItem, URL) -> Void
+    private let onOpenFilter: ((String) -> Void)?
     private let tableView = WorkspaceTableView()
     private let tableScrollView = NSScrollView()
     private let collectionView = OnlineVideoGridCollectionView()
     private let gridScrollView = NSScrollView()
     private let gridLayout = WorkspaceThumbnailWaterfallLayout()
+    private let directoryChipLayout = OnlineVideoDirectoryChipLayout()
+    private let directoryHeader = OnlineVideoDirectoryHeaderView()
+    private let contentContainer = NSView()
+    private var directoryHeaderHeight: NSLayoutConstraint?
     private var activeView: NSView?
     private var rows: [Row] = []
     private var isApplyingSelection = false
@@ -51,19 +56,42 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         name: "Online Video Grid Thumbnail Resolution", interval: 0.03, maxInterval: 0.1
     )
     private let reloadQueue = WorkspaceCoalescingQueue(name: "Online Video Content Reload", interval: 0.05, maxInterval: 0.12)
+    private var lastUsedDirectoryChips = false
+
+    private var usesDirectoryChipGrid: Bool {
+        if !store.items.isEmpty {
+            return store.items.allSatisfy(\.isDirectoryEntry)
+        }
+        return lastUsedDirectoryChips || store.showsDirectoryListing
+    }
+
+    private var directoryNavigation: (parentFilter: String, parentTitle: String, title: String)? {
+        if store.filter.hasPrefix("tag:") {
+            return ("tags", "分类", store.displayFilterTitle)
+        }
+        if store.filter.hasPrefix("author:") {
+            return ("authors", "作者", store.displayFilterTitle)
+        }
+        if store.filter.hasPrefix("related:") {
+            return ("latest", "最近更新", store.displayFilterTitle)
+        }
+        return nil
+    }
 
     init(
         store: OnlineVideoGalleryStore,
         preferences: OnlineVideoContentPreferences,
         configureImageRequest: @escaping (inout URLRequest) -> Void,
         onPlayVideo: @escaping (OnlineVideoItem, URL) -> Void,
-        onSaveVideo: @escaping (OnlineVideoItem, URL) -> Void
+        onSaveVideo: @escaping (OnlineVideoItem, URL) -> Void,
+        onOpenFilter: ((String) -> Void)? = nil
     ) {
         self.store = store
         self.preferences = preferences
         self.configureImageRequest = configureImageRequest
         self.onPlayVideo = onPlayVideo
         self.onSaveVideo = onSaveVideo
+        self.onOpenFilter = onOpenFilter
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -74,6 +102,25 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
 
     override func loadView() {
         view = NSView()
+        directoryHeader.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        directoryHeader.onBack = { [weak self] filter in
+            self?.onOpenFilter?(filter)
+        }
+        view.addSubview(directoryHeader)
+        view.addSubview(contentContainer)
+        let headerHeight = directoryHeader.heightAnchor.constraint(equalToConstant: 0)
+        directoryHeaderHeight = headerHeight
+        NSLayoutConstraint.activate([
+            directoryHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            directoryHeader.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            directoryHeader.topAnchor.constraint(equalTo: view.topAnchor),
+            headerHeight,
+            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            contentContainer.topAnchor.constraint(equalTo: directoryHeader.bottomAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
         setupTable()
         setupGrid()
     }
@@ -86,13 +133,13 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        guard preferences.layout == .grid else { return }
+        guard preferences.layout == .grid || usesDirectoryChipGrid else { return }
         updateGridLayoutIfNeeded()
         scheduleThumbnailPrefetch()
     }
 
     func focus() {
-        if preferences.layout == .list {
+        if preferences.layout == .list, !usesDirectoryChipGrid {
             tableView.window?.makeFirstResponder(tableView)
         } else {
             collectionView.window?.makeFirstResponder(collectionView)
@@ -148,7 +195,16 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         doubleClick.numberOfClicksRequired = 2
         collectionView.addGestureRecognizer(doubleClick)
         collectionView.register(OnlineVideoGridItem.self, forItemWithIdentifier: OnlineVideoGridItem.identifier)
+        collectionView.register(OnlineVideoDirectoryChipItem.self, forItemWithIdentifier: OnlineVideoDirectoryChipItem.identifier)
         collectionView.register(OnlineVideoGridFooterItem.self, forItemWithIdentifier: OnlineVideoGridFooterItem.identifier)
+        directoryChipLayout.treatsLastItemAsFooter = true
+        directoryChipLayout.itemSizeProvider = { [weak self] index in
+            guard let self, store.items.indices.contains(index) else {
+                return NSSize(width: 80, height: 32)
+            }
+            let item = store.items[index]
+            return OnlineVideoDirectoryChipMetrics.size(title: item.title, subtitle: item.subtitle)
+        }
         collectionView.keyboardContext = WorkspaceKeyboardContext(
             stepSelection: { [weak self] delta in self?.stepGridSelection(delta) ?? false },
             onEscape: { [weak self] in self?.clearSearch() ?? false },
@@ -179,6 +235,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         isObserving = true
         withObservationTracking {
             _ = store.items
+            _ = store.filter
             _ = store.selectedItemID
             _ = store.isRefreshingList
             _ = store.listErrorMessage
@@ -198,8 +255,22 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     }
 
     private func reloadContent() {
+        updateDirectoryHeader()
         rows = store.items.map { .item($0.id) }
         if shouldShowFooter { rows.append(.footer) }
+        let directoryChips = usesDirectoryChipGrid
+        if directoryChips != lastUsedDirectoryChips {
+            lastUsedDirectoryChips = directoryChips
+            lastAppliedGridItemIDs = []
+            lastAppliedListItemIDs = []
+        }
+        if directoryChips {
+            applyCollectionLayoutForCurrentFeed()
+            setActiveView(gridScrollView)
+            reloadGridContent()
+            return
+        }
+        applyCollectionLayoutForCurrentFeed()
         switch preferences.layout {
         case .list:
             setActiveView(tableScrollView)
@@ -211,11 +282,62 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     }
 
     private var shouldShowFooter: Bool {
-        store.listErrorMessage != nil || store.isRefreshingList || store.canLoadMoreList || !store.items.isEmpty
+        if usesDirectoryChipGrid {
+            return store.listErrorMessage != nil
+                || (store.items.isEmpty && (store.activeSearchQuery != nil || store.isRefreshingList))
+        }
+        return store.listErrorMessage != nil
+            || store.isRefreshingList
+            || store.canLoadMoreList
+            || !store.items.isEmpty
+            || store.activeSearchQuery != nil
+    }
+
+    private func updateDirectoryHeader() {
+        if let navigation = directoryNavigation {
+            directoryHeader.configure(
+                parentFilter: navigation.parentFilter,
+                parentTitle: navigation.parentTitle,
+                title: navigation.title
+            )
+            directoryHeader.isHidden = false
+            directoryHeaderHeight?.constant = 36
+        } else {
+            directoryHeader.isHidden = true
+            directoryHeaderHeight?.constant = 0
+        }
+    }
+
+    private func applyCollectionLayoutForCurrentFeed() {
+        let nextLayout: NSCollectionViewLayout = usesDirectoryChipGrid ? directoryChipLayout : gridLayout
+        guard collectionView.collectionViewLayout !== nextLayout else { return }
+        collectionView.collectionViewLayout = nextLayout
     }
 
     private func setActiveView(_ nextView: NSView) {
-        animateViewTransition(to: nextView, activeView: &activeView)
+        guard activeView !== nextView else { return }
+        let previousView = activeView
+        activeView = nextView
+        nextView.translatesAutoresizingMaskIntoConstraints = false
+        nextView.alphaValue = previousView != nil ? 0 : 1
+        contentContainer.addSubview(nextView)
+        NSLayoutConstraint.activate([
+            nextView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            nextView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            nextView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            nextView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+        ])
+        guard let previousView else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            previousView.animator().alphaValue = 0
+            nextView.animator().alphaValue = 1
+        } completionHandler: {
+            Task { @MainActor in
+                previousView.removeFromSuperview()
+            }
+        }
     }
 
     private func syncTableSelection() {
@@ -375,6 +497,10 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     }
 
     private func play(_ item: OnlineVideoItem) {
+        if let filter = item.opensFilter {
+            onOpenFilter?(filter)
+            return
+        }
         Task { [weak self] in
             await self?.performVideoAction(item, title: "无法播放") { item, url in
                 self?.onPlayVideo(item, url)
@@ -433,43 +559,117 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
 
     private func makeContextMenu(for item: OnlineVideoItem) -> NSMenu {
         let menu = NSMenu(title: "OnlineVideoItemMenu")
-        let playItem = NSMenuItem(
-            title: "播放",
-            action: #selector(playFromMenu(_:)),
-            keyEquivalent: ""
-        )
-        playItem.target = self
-        playItem.representedObject = item
-        playItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "播放")
-        menu.addItem(playItem)
+        if item.isDirectoryEntry {
+            let openFilterItem = NSMenuItem(
+                title: "打开",
+                action: #selector(openFilterFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            openFilterItem.target = self
+            openFilterItem.representedObject = item.opensFilter
+            openFilterItem.image = NSImage(systemSymbolName: "arrow.right.circle", accessibilityDescription: "打开")
+            menu.addItem(openFilterItem)
+            menu.addItem(.separator())
+        } else {
+            let playItem = NSMenuItem(
+                title: "播放",
+                action: #selector(playFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            playItem.target = self
+            playItem.representedObject = item
+            playItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "播放")
+            menu.addItem(playItem)
 
-        let downloadItem = NSMenuItem(
-            title: "下载视频",
-            action: #selector(saveFromMenu(_:)),
-            keyEquivalent: ""
-        )
-        downloadItem.target = self
-        downloadItem.representedObject = item
-        downloadItem.image = NSImage(
-            systemSymbolName: "arrow.down.circle",
-            accessibilityDescription: "下载视频"
-        )
-        menu.addItem(downloadItem)
-        menu.addItem(.separator())
+            let downloadItem = NSMenuItem(
+                title: "下载视频",
+                action: #selector(saveFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            downloadItem.target = self
+            downloadItem.representedObject = item
+            downloadItem.image = NSImage(
+                systemSymbolName: "arrow.down.circle",
+                accessibilityDescription: "下载视频"
+            )
+            menu.addItem(downloadItem)
+            menu.addItem(.separator())
 
-        let favoriteItem = NSMenuItem(
-            title: store.isFavorite(item) ? "取消收藏" : "收藏",
-            action: #selector(toggleFavoriteFromMenu(_:)),
-            keyEquivalent: ""
-        )
-        favoriteItem.target = self
-        favoriteItem.representedObject = item
-        favoriteItem.image = NSImage(
-            systemSymbolName: store.isFavorite(item) ? "bookmark.slash" : "bookmark",
-            accessibilityDescription: favoriteItem.title
-        )
-        menu.addItem(favoriteItem)
-        menu.addItem(.separator())
+            let favoriteItem = NSMenuItem(
+                title: store.isFavorite(item) ? "取消收藏" : "收藏",
+                action: #selector(toggleFavoriteFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            favoriteItem.target = self
+            favoriteItem.representedObject = item
+            favoriteItem.image = NSImage(
+                systemSymbolName: store.isFavorite(item) ? "bookmark.slash" : "bookmark",
+                accessibilityDescription: favoriteItem.title
+            )
+            menu.addItem(favoriteItem)
+            if item.authorFilter != nil || !item.tagFilters.isEmpty || item.id.allSatisfy(\.isNumber) {
+                menu.addItem(.separator())
+            }
+            if let authorFilter = item.authorFilter {
+                let authorItem = NSMenuItem(
+                    title: item.authorName.map { "打开作者主页（\($0)）" } ?? "打开作者主页",
+                    action: #selector(openFilterFromMenu(_:)),
+                    keyEquivalent: ""
+                )
+                authorItem.target = self
+                authorItem.representedObject = authorFilter
+                authorItem.image = NSImage(systemSymbolName: "person", accessibilityDescription: authorItem.title)
+                menu.addItem(authorItem)
+            }
+            if !item.tagFilters.isEmpty {
+                if item.tagFilters.count == 1, let tag = item.tagFilters.first {
+                    let tagItem = NSMenuItem(
+                        title: "打开分类（\(tag.title)）",
+                        action: #selector(openFilterFromMenu(_:)),
+                        keyEquivalent: ""
+                    )
+                    tagItem.target = self
+                    tagItem.representedObject = tag.filter
+                    tagItem.image = NSImage(systemSymbolName: "tag", accessibilityDescription: tagItem.title)
+                    menu.addItem(tagItem)
+                } else {
+                    let tagMenu = NSMenu(title: "打开分类")
+                    for tag in item.tagFilters {
+                        let tagItem = NSMenuItem(
+                            title: tag.title,
+                            action: #selector(openFilterFromMenu(_:)),
+                            keyEquivalent: ""
+                        )
+                        tagItem.target = self
+                        tagItem.representedObject = tag.filter
+                        tagMenu.addItem(tagItem)
+                    }
+                    let tagRoot = NSMenuItem(
+                        title: "打开分类",
+                        action: nil,
+                        keyEquivalent: ""
+                    )
+                    tagRoot.image = NSImage(systemSymbolName: "tag", accessibilityDescription: tagRoot.title)
+                    tagRoot.submenu = tagMenu
+                    menu.addItem(tagRoot)
+                }
+            }
+            if item.id.allSatisfy(\.isNumber) {
+                let relatedItem = NSMenuItem(
+                    title: "相关推荐",
+                    action: #selector(openFilterFromMenu(_:)),
+                    keyEquivalent: ""
+                )
+                relatedItem.target = self
+                relatedItem.representedObject = "related:\(item.id)"
+                relatedItem.image = NSImage(
+                    systemSymbolName: "rectangle.stack",
+                    accessibilityDescription: relatedItem.title
+                )
+                menu.addItem(relatedItem)
+            }
+            menu.addItem(.separator())
+        }
 
         let openItem = NSMenuItem(
             title: "在浏览器中打开",
@@ -501,6 +701,11 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         shareItem.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: shareItem.title)
         menu.addItem(shareItem)
         return menu
+    }
+
+    @objc private func openFilterFromMenu(_ sender: NSMenuItem) {
+        guard let filter = sender.representedObject as? String, !filter.isEmpty else { return }
+        onOpenFilter?(filter)
     }
 
     @objc private func playFromMenu(_ sender: NSMenuItem) {
@@ -593,7 +798,11 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
 
         let canAppend = canApplyAppendUpdate(from: lastAppliedGridItemIDs, to: itemIDs)
             && footerState.showsFooter == lastGridFooterState.showsFooter
+            && !usesDirectoryChipGrid
         updateGridLayoutIfNeeded()
+        if usesDirectoryChipGrid, contentChanged {
+            directoryChipLayout.invalidateLayout()
+        }
         if contentChanged {
             if canAppend {
                 let insertedRange = lastAppliedGridItemIDs.count ..< itemIDs.count
@@ -636,6 +845,16 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
 
     @discardableResult
     private func updateGridLayoutIfNeeded() -> Bool {
+        if usesDirectoryChipGrid {
+            let visibleWidth = gridScrollView.contentView.bounds.width > 0
+                ? gridScrollView.contentView.bounds.width
+                : view.bounds.width
+            let widthChanged = abs(visibleWidth - lastGridLayoutWidth) > 0.5
+            guard widthChanged else { return false }
+            lastGridLayoutWidth = visibleWidth
+            NSView.performWithoutAnimation { directoryChipLayout.invalidateLayout() }
+            return true
+        }
         let visibleWidth = gridScrollView.contentView.bounds.width > 0
             ? gridScrollView.contentView.bounds.width
             : view.bounds.width
@@ -651,7 +870,6 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         NSView.performWithoutAnimation { gridLayout.invalidateLayout() }
         thumbnailResolutionQueue.add(id: "refresh-visible-items") { [weak self] in
             guard let self,
-                  self.preferences.layout == .grid,
                   self.activeView === self.gridScrollView else { return }
             self.collectionView.layoutSubtreeIfNeeded()
             self.refreshVisibleGridItems()
@@ -662,17 +880,30 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
 
     private func refreshVisibleGridItems() {
         for indexPath in collectionView.indexPathsForVisibleItems() {
-            guard store.items.indices.contains(indexPath.item),
-                  let itemView = collectionView.item(at: indexPath) as? OnlineVideoGridItem else { continue }
+            guard store.items.indices.contains(indexPath.item) else { continue }
+            if let chipView = collectionView.item(at: indexPath) as? OnlineVideoDirectoryChipItem {
+                chipView.configure(
+                    item: store.items[indexPath.item],
+                    isSelected: store.items[indexPath.item].id == store.selectedItemID,
+                    searchQuery: store.activeSearchQuery
+                )
+                continue
+            }
+            guard let itemView = collectionView.item(at: indexPath) as? OnlineVideoGridItem else { continue }
             configure(itemView, with: store.items[indexPath.item])
         }
     }
 
     private func refreshVisibleGridSelection() {
         for indexPath in collectionView.indexPathsForVisibleItems() {
-            guard store.items.indices.contains(indexPath.item),
-                  let itemView = collectionView.item(at: indexPath) as? OnlineVideoGridItem else { continue }
-            itemView.applySelectionState(store.items[indexPath.item].id == store.selectedItemID)
+            guard store.items.indices.contains(indexPath.item) else { continue }
+            let selected = store.items[indexPath.item].id == store.selectedItemID
+            if let chipView = collectionView.item(at: indexPath) as? OnlineVideoDirectoryChipItem {
+                chipView.applySelectionState(selected)
+                continue
+            }
+            guard let itemView = collectionView.item(at: indexPath) as? OnlineVideoGridItem else { continue }
+            itemView.applySelectionState(selected)
         }
     }
 
@@ -718,6 +949,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     }
 
     private func prefetchInitialThumbnails() {
+        guard !usesDirectoryChipGrid else { return }
         thumbnailPrefetchController.prefetchInitial(
             itemCount: store.items.count,
             itemID: { [weak self] index in self?.itemID(at: index) },
@@ -726,6 +958,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     }
 
     private func scheduleThumbnailPrefetch() {
+        guard !usesDirectoryChipGrid else { return }
         thumbnailPrefetchController.schedule(
             scrollView: gridScrollView,
             layout: gridLayout,
@@ -766,12 +999,14 @@ private final class OnlineVideoGridCollectionView: WorkspaceCollectionView {
         lastHoveredIndexPath = nil
         for item in visibleItems() {
             (item as? OnlineVideoGridItem)?.clearHoverState()
+            (item as? OnlineVideoDirectoryChipItem)?.clearHoverState()
         }
     }
 
     override func syncHoverOnVisibleItems(windowLocation: NSPoint?) {
         for item in visibleItems() {
             (item as? OnlineVideoGridItem)?.syncHoverState(windowLocation: windowLocation)
+            (item as? OnlineVideoDirectoryChipItem)?.syncHoverState(windowLocation: windowLocation)
         }
     }
 }
@@ -783,7 +1018,8 @@ extension OnlineVideoFeedViewController: NSTableViewDataSource, NSTableViewDeleg
 
     func tableView(_: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard rows.indices.contains(row) else { return 96 }
-        return rows[row] == .footer ? 42 : 96
+        if rows[row] == .footer { return 42 }
+        return 96
     }
 
     func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
@@ -794,7 +1030,12 @@ extension OnlineVideoFeedViewController: NSTableViewDataSource, NSTableViewDeleg
             let cell = tableView.makeView(withIdentifier: OnlineVideoListRowView.identifier, owner: self) as? OnlineVideoListRowView
                 ?? OnlineVideoListRowView()
             cell.configureImageRequest = configureImageRequest
-            cell.configure(item: item, isFavorite: store.isFavorite(item), searchQuery: store.activeSearchQuery)
+            cell.configure(
+                item: item,
+                isFavorite: store.isFavorite(item),
+                searchQuery: store.activeSearchQuery,
+                compact: false
+            )
             if item.id == store.items.last?.id { store.loadMoreListIfNeeded() }
             return cell
         case .footer:
@@ -842,8 +1083,18 @@ extension OnlineVideoFeedViewController: NSCollectionViewDataSource, NSCollectio
             if store.canLoadMoreList { store.loadMoreListIfNeeded() }
             return item
         }
-        let item = collectionView.makeItem(withIdentifier: OnlineVideoGridItem.identifier, for: indexPath) as! OnlineVideoGridItem
         let model = store.items[indexPath.item]
+        if usesDirectoryChipGrid {
+            let item = collectionView.makeItem(withIdentifier: OnlineVideoDirectoryChipItem.identifier, for: indexPath) as! OnlineVideoDirectoryChipItem
+            item.configure(
+                item: model,
+                isSelected: model.id == store.selectedItemID,
+                searchQuery: store.activeSearchQuery
+            )
+            if model.id == store.items.last?.id { store.loadMoreListIfNeeded() }
+            return item
+        }
+        let item = collectionView.makeItem(withIdentifier: OnlineVideoGridItem.identifier, for: indexPath) as! OnlineVideoGridItem
         configure(item, with: model)
         return item
     }
@@ -864,8 +1115,14 @@ private final class OnlineVideoListRowView: NSTableCellView {
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let favoriteIcon = NSImageView()
     private let videoIcon = NSImageView()
+    private let iconsStack = NSStackView()
+    private let rootStack = NSStackView()
+    private let coverWidth: NSLayoutConstraint
+    private let coverHeight: NSLayoutConstraint
 
     override init(frame frameRect: NSRect) {
+        coverWidth = cover.widthAnchor.constraint(equalToConstant: 64)
+        coverHeight = cover.heightAnchor.constraint(equalToConstant: 86)
         super.init(frame: frameRect)
         identifier = Self.identifier
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
@@ -877,44 +1134,69 @@ private final class OnlineVideoListRowView: NSTableCellView {
         favoriteIcon.contentTintColor = .systemRed
         videoIcon.image = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: "视频")
         videoIcon.contentTintColor = .systemBlue
-        let icons = NSStackView(views: [videoIcon, favoriteIcon])
-        icons.orientation = .horizontal
-        icons.spacing = 8
-        let text = NSStackView(views: [titleLabel, subtitleLabel, icons])
+        iconsStack.setViews([videoIcon, favoriteIcon], in: .leading)
+        iconsStack.orientation = .horizontal
+        iconsStack.spacing = 8
+        let text = NSStackView(views: [titleLabel, subtitleLabel, iconsStack])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 5
-        let root = NSStackView(views: [cover, text])
-        root.orientation = .horizontal
-        root.alignment = .top
-        root.spacing = 10
-        addSubview(root)
-        root.translatesAutoresizingMaskIntoConstraints = false
+        rootStack.setViews([cover, text], in: .leading)
+        rootStack.orientation = .horizontal
+        rootStack.alignment = .centerY
+        rootStack.spacing = 10
+        addSubview(rootStack)
+        rootStack.translatesAutoresizingMaskIntoConstraints = false
         cover.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            cover.widthAnchor.constraint(equalToConstant: 64),
-            cover.heightAnchor.constraint(equalToConstant: 86),
-            root.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            root.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            root.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            coverWidth,
+            coverHeight,
+            rootStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            rootStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            rootStack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            rootStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
     }
 
-    required init?(coder _: NSCoder) {
-        nil
+    required init?(coder: NSCoder) {
+        coverWidth = cover.widthAnchor.constraint(equalToConstant: 64)
+        coverHeight = cover.heightAnchor.constraint(equalToConstant: 86)
+        super.init(coder: coder)
+        return nil
     }
 
-    func configure(item: OnlineVideoItem, isFavorite: Bool, searchQuery: String?) {
+    func configure(item: OnlineVideoItem, isFavorite: Bool, searchQuery: String?, compact: Bool) {
         cover.configureImageRequest = configureImageRequest
-        cover.setImage(url: item.coverURL)
-        if let searchQuery, !searchQuery.isEmpty {
+        cover.setImage(url: compact ? nil : item.coverURL)
+        cover.isHidden = compact
+        coverWidth.constant = compact ? 0 : 64
+        coverHeight.constant = compact ? 0 : 86
+        rootStack.spacing = compact ? 0 : 10
+        titleLabel.maximumNumberOfLines = compact ? 1 : 2
+        titleLabel.font = compact
+            ? .systemFont(ofSize: NSFont.systemFontSize)
+            : .systemFont(ofSize: 13, weight: .semibold)
+        if compact {
+            let line = [item.title, item.subtitle].filter { !$0.isEmpty }.joined(separator: "    ")
+            if let searchQuery, !searchQuery.isEmpty {
+                titleLabel.attributedStringValue = highlightedAttributedString(line, query: searchQuery)
+            } else {
+                titleLabel.stringValue = line
+            }
+            subtitleLabel.stringValue = ""
+            subtitleLabel.isHidden = true
+        } else if let searchQuery, !searchQuery.isEmpty {
             titleLabel.attributedStringValue = highlightedAttributedString(item.title, query: searchQuery)
+            subtitleLabel.stringValue = item.listSecondaryLine
+            subtitleLabel.isHidden = subtitleLabel.stringValue.isEmpty
         } else {
             titleLabel.stringValue = item.title
+            subtitleLabel.stringValue = item.listSecondaryLine
+            subtitleLabel.isHidden = subtitleLabel.stringValue.isEmpty
         }
-        subtitleLabel.stringValue = [item.subtitle, item.durationText].filter { !$0.isEmpty }.joined(separator: " · ")
-        favoriteIcon.isHidden = !isFavorite
-        videoIcon.isHidden = false
+        favoriteIcon.isHidden = compact || !isFavorite
+        videoIcon.isHidden = compact
+        iconsStack.isHidden = compact
     }
 }
 
@@ -1028,8 +1310,11 @@ private final class OnlineVideoGridItem: NSCollectionViewItem {
             coverLoadAttemptCount = 0
         }
         representedID = item.id
-        let metadata = [item.durationText, isFavorite ? "已收藏" : ""].filter { !$0.isEmpty }.joined(separator: " · ")
-        card.setText(title: item.title, metadata: metadata, highlightQuery: searchQuery)
+        card.setText(
+            title: item.title,
+            metadata: item.gridCardMetadata(isFavorite: isFavorite),
+            highlightQuery: searchQuery
+        )
         applySelectionState(isSelected)
         videoBadge.isHidden = false
         guard imageSourceChanged

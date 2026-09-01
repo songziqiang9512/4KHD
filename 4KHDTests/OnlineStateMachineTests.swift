@@ -1189,7 +1189,7 @@ final class OnlineStateMachineTests: XCTestCase {
         case .missKon:
             detailURL = try XCTUnwrap(URL(string: "https://misskon.com/related/"))
             coverURL = try XCTUnwrap(URL(string: "https://misskon.com/media/related.jpg"))
-        case .wallhaven, .knit, .mrds, .quanji, .porny:
+        case .wallhaven, .knit, .mrds, .quanji, .porny, .tangxin:
             throw XCTSkip("Source is not part of related gallery navigation")
         }
         return OnlineGalleryRecommendation(

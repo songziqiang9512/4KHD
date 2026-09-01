@@ -33,6 +33,8 @@ final class OnlineVideoGalleryStore {
     @ObservationIgnored private let listURL: ListURLBuilder
     @ObservationIgnored private let filterTitle: FilterTitle
     @ObservationIgnored private let makeFavoriteRecord: FavoriteFactory
+    @ObservationIgnored private let directoryFilters: Set<String>
+    @ObservationIgnored private var directoryTitles: [String: String] = [:]
     @ObservationIgnored private var selectedItemSnapshot: OnlineVideoItem?
     @ObservationIgnored private var listTask: Task<Void, Never>?
     @ObservationIgnored private var listRequestToken = UUID()
@@ -57,7 +59,8 @@ final class OnlineVideoGalleryStore {
         filterTitle: @escaping FilterTitle,
         listResolver: @escaping ListResolver,
         detailResolver: @escaping DetailResolver,
-        makeFavoriteRecord: @escaping FavoriteFactory
+        makeFavoriteRecord: @escaping FavoriteFactory,
+        directoryFilters: Set<String> = []
     ) {
         self.policySource = policySource
         self.sourceTitle = sourceTitle
@@ -68,6 +71,7 @@ final class OnlineVideoGalleryStore {
         self.listResolver = listResolver
         self.detailResolver = detailResolver
         self.makeFavoriteRecord = makeFavoriteRecord
+        self.directoryFilters = directoryFilters
     }
 
     deinit {
@@ -99,14 +103,25 @@ final class OnlineVideoGalleryStore {
         return index + 1 < items.count
     }
 
+    var displayFilterTitle: String {
+        directoryTitles[filter] ?? filterTitle(filter)
+    }
+
+    var showsDirectoryListing: Bool {
+        if !items.isEmpty {
+            return items.allSatisfy(\.isDirectoryEntry)
+        }
+        return directoryFilters.contains(filter)
+    }
+
     var pageStatusText: String {
-        let title = filterTitle(filter)
+        let title = displayFilterTitle
         guard totalPages > 0 else { return title }
         return "\(title) · 第 \(max(currentPage, 1))/\(totalPages) 页"
     }
 
     var favoriteItemIDs: Set<OnlineVideoItem.ID> {
-        Set(items.lazy.filter { self.favorites.contains(detailURL: $0.detailURL) }.map(\.id))
+        Set(items.lazy.filter { !$0.isDirectoryEntry && self.favorites.contains(detailURL: $0.detailURL) }.map(\.id))
     }
 
     func bootstrapIfNeeded() {
@@ -119,7 +134,13 @@ final class OnlineVideoGalleryStore {
         self.filter = filter
         searchText = ""
         activeSearchQuery = nil
-        restoreCachedListIfAvailable()
+        if restoreCachedListIfAvailable() {
+            if items.allSatisfy(\.isDirectoryEntry) {
+                return
+            }
+        } else {
+            resetVisibleList()
+        }
         refreshFromNetwork()
     }
 
@@ -130,8 +151,13 @@ final class OnlineVideoGalleryStore {
             return
         }
         guard query != activeSearchQuery else { return }
+        if applyLocalDirectorySearch(query) {
+            return
+        }
         activeSearchQuery = query
-        restoreCachedListIfAvailable()
+        if !restoreCachedListIfAvailable() {
+            resetVisibleList()
+        }
         refreshFromNetwork()
     }
 
@@ -139,7 +165,13 @@ final class OnlineVideoGalleryStore {
         guard activeSearchQuery != nil || !searchText.isEmpty else { return }
         searchText = ""
         activeSearchQuery = nil
-        restoreCachedListIfAvailable()
+        if restoreCachedListIfAvailable() {
+            if items.allSatisfy(\.isDirectoryEntry) {
+                return
+            }
+        } else {
+            resetVisibleList()
+        }
         refreshFromNetwork()
     }
 
@@ -200,6 +232,9 @@ final class OnlineVideoGalleryStore {
     }
 
     func resolveVideoURL(for item: OnlineVideoItem) async throws -> URL {
+        if item.isDirectoryEntry {
+            throw OnlineVideoPlaybackError.notAVideo
+        }
         if selectedItemID != item.id {
             select(item)
         }
@@ -236,10 +271,12 @@ final class OnlineVideoGalleryStore {
     }
 
     func isFavorite(_ item: OnlineVideoItem) -> Bool {
-        favorites.contains(detailURL: item.detailURL)
+        guard !item.isDirectoryEntry else { return false }
+        return favorites.contains(detailURL: item.detailURL)
     }
 
     func toggleFavorite(for item: OnlineVideoItem) async throws {
+        guard !item.isDirectoryEntry else { return }
         try await favorites.toggle(makeFavoriteRecord(item))
     }
 
@@ -268,20 +305,23 @@ final class OnlineVideoGalleryStore {
     }
 
     private func applyListPage(_ page: OnlineVideoListPage, replacing: Bool) {
+        rememberDirectoryTitles(from: page.items)
         if replacing {
-            items = page.items
-            if let selectedItemID,
-               let refreshedSelection = items.first(where: { $0.id == selectedItemID })
-            {
-                selectedItemSnapshot = refreshedSelection
-            } else {
-                selectedItemSnapshot = items.first
-                selectedItemID = items.first?.id
-            }
-            if let selectedItem {
-                prepareDetail(for: selectedItem)
-            } else {
-                clearDetail()
+            if items != page.items {
+                let previousID = selectedItemID
+                items = page.items
+                if let previousID, let refreshedSelection = items.first(where: { $0.id == previousID }) {
+                    selectedItemSnapshot = refreshedSelection
+                    selectedItemID = previousID
+                } else {
+                    selectedItemSnapshot = items.first
+                    selectedItemID = items.first?.id
+                    if let selectedItem {
+                        prepareDetail(for: selectedItem)
+                    } else {
+                        clearDetail()
+                    }
+                }
             }
         } else {
             var existing = Set(items.map(\.id))
@@ -304,12 +344,14 @@ final class OnlineVideoGalleryStore {
         finishListRequest(token: listRequestToken)
     }
 
-    private func restoreCachedListIfAvailable() {
-        guard let cached = listCache[currentCacheKey], !cached.items.isEmpty else { return }
+    @discardableResult
+    private func restoreCachedListIfAvailable() -> Bool {
+        guard let cached = listCache[currentCacheKey], !cached.items.isEmpty else { return false }
         items = cached.items
         currentPage = cached.currentPage
         totalPages = cached.totalPages
         nextPageURL = cached.nextPageURL
+        rememberDirectoryTitles(from: items)
         if let selectedItemID,
            let refreshedSelection = items.first(where: { $0.id == selectedItemID })
         {
@@ -322,6 +364,58 @@ final class OnlineVideoGalleryStore {
             prepareDetail(for: selectedItem)
         } else {
             clearDetail()
+        }
+        return true
+    }
+
+    private func resetVisibleList() {
+        items = []
+        currentPage = 0
+        totalPages = 0
+        nextPageURL = nil
+        selectedItemID = nil
+        selectedItemSnapshot = nil
+        listErrorMessage = nil
+        clearDetail()
+    }
+
+    private func applyLocalDirectorySearch(_ query: String) -> Bool {
+        let source = listCache["filter:\(filter)"]?.items
+            ?? (items.allSatisfy(\.isDirectoryEntry) ? items : nil)
+        guard let source, !source.isEmpty, source.allSatisfy(\.isDirectoryEntry) else { return false }
+        activeSearchQuery = query
+        items = source.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || $0.subtitle.localizedCaseInsensitiveContains(query)
+        }
+        currentPage = 1
+        totalPages = 1
+        nextPageURL = nil
+        rememberDirectoryTitles(from: source)
+        selectedItemSnapshot = items.first
+        selectedItemID = items.first?.id
+        if let selectedItem {
+            prepareDetail(for: selectedItem)
+        } else {
+            clearDetail()
+        }
+        return true
+    }
+
+    private func rememberDirectoryTitles(from items: [OnlineVideoItem]) {
+        for item in items {
+            if let filter = item.opensFilter, !item.title.isEmpty {
+                directoryTitles[filter] = item.title
+            }
+            if let authorFilter = item.authorFilter,
+               let name = item.authorName?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !name.isEmpty
+            {
+                directoryTitles[authorFilter] = name
+            }
+            for tag in item.tagFilters where !tag.title.isEmpty {
+                directoryTitles[tag.filter] = tag.title
+            }
         }
     }
 

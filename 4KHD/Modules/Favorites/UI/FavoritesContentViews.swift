@@ -30,7 +30,15 @@ final class FavoritesListRowView: NSTableCellView {
             titleLabel.stringValue = record.title
         }
         let sourceTitle = source?.title ?? "未知来源"
-        subtitleLabel.stringValue = record.imageCount > 0 ? "\(sourceTitle) · \(record.imageCount) 张图片" : "\(sourceTitle) · 多张图片"
+        switch source {
+        case .quanji, .porny, .tangxin:
+            let extra = record.subtitle.isEmpty ? "视频" : record.subtitle
+            subtitleLabel.stringValue = "\(sourceTitle) · \(extra)"
+        default:
+            subtitleLabel.stringValue = record.imageCount > 0
+                ? "\(sourceTitle) · \(record.imageCount) 张图片"
+                : "\(sourceTitle) · 多张图片"
+        }
     }
 
     private func setupView() {
@@ -116,9 +124,16 @@ final class FavoritesGridItemView: NSCollectionViewItem {
         let identityChanged = representedIdentity != identity
         let urlChanged = currentCoverURL != coverURL
         representedIdentity = identity
+        let metadata: String
+        switch source {
+        case .quanji, .porny, .tangxin:
+            metadata = record.subtitle.isEmpty ? "视频" : record.subtitle
+        default:
+            metadata = record.imageCount > 0 ? "\(record.imageCount) 张图片" : "多张图片"
+        }
         cardView.setText(
             title: record.title,
-            metadata: record.imageCount > 0 ? "\(record.imageCount) 张图片" : "多张图片",
+            metadata: metadata,
             highlightQuery: searchQuery
         )
         cardView.applySelectionState(isSelected)
@@ -565,7 +580,8 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         guard let selectedRecordIdentity,
               let index = records.firstIndex(where: {
                   FavoritesModuleStore.selectionIdentity(for: $0) == selectedRecordIdentity
-              }) else {
+              })
+        else {
             isApplyingSelection = true
             collectionView.selectionIndexPaths = []
             isApplyingSelection = false

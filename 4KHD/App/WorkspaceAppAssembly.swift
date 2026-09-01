@@ -51,6 +51,18 @@ enum WorkspaceAppAssembly {
             userAgent: PornyRequestFactory.userAgent,
             referer: PornyRequestFactory.htmlOrigin
         )
+        let tangxinStore = TangxinGalleryFactory.makeStore(favorites: favoritesStore)
+        let tangxinPreferences = OnlineVideoContentPreferences(
+            layoutKey: "com.songziqiang.4khd.tangxin.layout",
+            gridColumnsKey: "com.songziqiang.4khd.tangxin.gridColumns"
+        )
+        let tangxinDetailInteraction = OnlineVideoDetailInteractionController(
+            downloadStore: downloadStore,
+            policySource: .tangxin,
+            sourceTitle: "糖心Vlog",
+            userAgent: TangxinRequestFactory.userAgent,
+            referer: TangxinRequestFactory.htmlOrigin
+        )
         configureFavoriteSourceAdapters(
             wallhavenPageResolver: { detailPageURL in
                 let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
@@ -122,6 +134,24 @@ enum WorkspaceAppAssembly {
                     guard let item = PornyFavoritesBridge.item(from: record) else { return }
                     pornyDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
                 }
+            ),
+            tangxinVideoActions: FavoriteVideoActions(
+                play: { record, sourceURL in
+                    guard let item = TangxinFavoritesBridge.item(from: record) else { return }
+                    knitVideoPlayer.play(
+                        url: sourceURL,
+                        title: record.title,
+                        source: .tangxin,
+                        userAgent: TangxinRequestFactory.userAgent,
+                        referer: TangxinRequestFactory.htmlOrigin
+                    ) {
+                        tangxinDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                    }
+                },
+                saveAsMP4: { record, sourceURL in
+                    guard let item = TangxinFavoritesBridge.item(from: record) else { return }
+                    tangxinDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                }
             )
         )
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
@@ -158,6 +188,9 @@ enum WorkspaceAppAssembly {
             pornyStore: pornyStore,
             pornyPreferences: pornyPreferences,
             pornyDetailInteraction: pornyDetailInteraction,
+            tangxinStore: tangxinStore,
+            tangxinPreferences: tangxinPreferences,
+            tangxinDetailInteraction: tangxinDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -190,6 +223,9 @@ enum WorkspaceAppAssembly {
             pornyStore: pornyStore,
             pornyPreferences: pornyPreferences,
             pornyDetailInteraction: pornyDetailInteraction,
+            tangxinStore: tangxinStore,
+            tangxinPreferences: tangxinPreferences,
+            tangxinDetailInteraction: tangxinDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -219,6 +255,7 @@ enum WorkspaceAppAssembly {
             mrdsStore: mrdsStore,
             quanjiStore: quanjiStore,
             pornyStore: pornyStore,
+            tangxinStore: tangxinStore,
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
             favoritesModuleStore: favoritesModuleStore,
@@ -236,7 +273,8 @@ enum WorkspaceAppAssembly {
         knitVideoActions: FavoriteVideoActions? = nil,
         mrdsVideoActions: FavoriteVideoActions? = nil,
         quanjiVideoActions: FavoriteVideoActions? = nil,
-        pornyVideoActions: FavoriteVideoActions? = nil
+        pornyVideoActions: FavoriteVideoActions? = nil,
+        tangxinVideoActions: FavoriteVideoActions? = nil
     ) {
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
             FavoriteSourceAdapter(
@@ -397,6 +435,14 @@ enum WorkspaceAppAssembly {
                 configureImageRequest: PornyRequestFactory.configureImageRequest,
                 sourceTitle: "91PORNY",
                 videoActions: pornyVideoActions
+            ),
+            makeVideoFavoriteAdapter(
+                source: .tangxin,
+                itemFromRecord: TangxinFavoritesBridge.item(from:),
+                resolve: TangxinDetailResolver.resolve,
+                configureImageRequest: TangxinRequestFactory.configureImageRequest,
+                sourceTitle: "糖心Vlog",
+                videoActions: tangxinVideoActions
             ),
         ])
     }
@@ -663,6 +709,9 @@ enum WorkspaceAppAssembly {
         pornyStore: OnlineVideoGalleryStore,
         pornyPreferences: OnlineVideoContentPreferences,
         pornyDetailInteraction: OnlineVideoDetailInteractionController,
+        tangxinStore: OnlineVideoGalleryStore,
+        tangxinPreferences: OnlineVideoContentPreferences,
+        tangxinDetailInteraction: OnlineVideoDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -932,7 +981,7 @@ enum WorkspaceAppAssembly {
                                         )
                                     )
                                     mrdsStore.openRecommendation(recommendation)
-                                case .quanji, .porny:
+                                case .quanji, .porny, .tangxin:
                                     break
                                 }
                             }
@@ -1144,6 +1193,61 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: { pornyStore.bootstrapIfNeeded() }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .tangxinGallery,
+                    displayName: "TangxinGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, showsKnitFilters: false, showsVideoSave: true,
+                        showsDetailPane: false,
+                        filmstripAvailability: .none,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .tangxinGallery, itemID: TangxinSection.latest.rawValue)
+                    },
+                    makeContentController: { context in
+                        OnlineVideoFeedViewController(
+                            store: tangxinStore,
+                            preferences: tangxinPreferences,
+                            configureImageRequest: TangxinRequestFactory.configureImageRequest,
+                            onPlayVideo: { item, url in
+                                knitVideoPlayer.play(
+                                    url: url,
+                                    title: item.title,
+                                    source: .tangxin,
+                                    userAgent: TangxinRequestFactory.userAgent,
+                                    referer: TangxinRequestFactory.htmlOrigin
+                                ) {
+                                    tangxinDetailInteraction.saveVideo(item: item, sourceURL: url)
+                                }
+                            },
+                            onSaveVideo: { item, url in
+                                tangxinDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            },
+                            onOpenFilter: { filter in
+                                context.appContext.routeController.select(
+                                    WorkspaceRoute(moduleID: .tangxinGallery, itemID: filter)
+                                )
+                            }
+                        )
+                    },
+                    makeDetailController: { _ in
+                        NSViewController()
+                    },
+                    normalizeRoute: { route in
+                        let parsed = TangxinRoute.parse(route.itemID) ?? .latest
+                        return WorkspaceRoute(moduleID: .tangxinGallery, itemID: parsed.itemID)
+                    },
+                    applyRoute: { route in
+                        guard let parsed = TangxinRoute.parse(route.itemID) else { return }
+                        if tangxinStore.filter != parsed.itemID {
+                            tangxinStore.setFilter(parsed.itemID)
+                        }
+                    },
+                    bootstrap: { tangxinStore.bootstrapIfNeeded() }
                 ),
             ]
         )

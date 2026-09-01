@@ -10,6 +10,7 @@ enum OnlineSourcePolicy {
         case mrds
         case quanji
         case porny
+        case tangxin
     }
 
     enum Resource {
@@ -113,6 +114,12 @@ enum OnlineSourcePolicy {
                 || isExactOrSubdomain(host, of: "jiuse3.cloud")
         case (.porny, .api):
             return false
+        case (.tangxin, .html):
+            return isExactOrSubdomain(host, of: "tangxinvlog.app")
+        case (.tangxin, .media):
+            return host == "t.5gcdn.xyz"
+        case (.tangxin, .api):
+            return false
         }
     }
 
@@ -121,7 +128,7 @@ enum OnlineSourcePolicy {
     /// delegates because some image loaders do not retain custom Referer
     /// headers on `task.originalRequest`.
     nonisolated static func source(forMediaURL url: URL) -> Source? {
-        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds, .quanji, .porny].filter {
+        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds, .quanji, .porny, .tangxin].filter {
             allows(url, source: $0, resource: .media)
         }
         return matches.count == 1 ? matches[0] : nil
@@ -141,6 +148,17 @@ enum OnlineSourcePolicy {
     private nonisolated static func isExactOrSubdomain(_ host: String, of domain: String) -> Bool {
         host == domain || host.hasSuffix(".\(domain)")
     }
+
+    nonisolated static func originHeader(fromReferer referer: String) -> String? {
+        guard let url = URL(string: referer),
+              let scheme = url.scheme,
+              let host = url.host
+        else { return nil }
+        if let port = url.port {
+            return "\(scheme)://\(host):\(port)"
+        }
+        return "\(scheme)://\(host)"
+    }
 }
 
 /// Nuke owns its URLSession, so redirect validation is installed on its data
@@ -154,7 +172,7 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         category: "OnlineRedirectGuard"
     )
 
-    func urlSession(
+    nonisolated func urlSession(
         _: URLSession,
         task: URLSessionTask,
         willPerformHTTPRedirection _: HTTPURLResponse,
@@ -177,10 +195,10 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
             completionHandler(nil)
             return
         }
-        completionHandler(request)
+        completionHandler(Self.requestByPreservingMediaHeaders(from: task.originalRequest, onto: request))
     }
 
-    private func source(for task: URLSessionTask) -> OnlineSourcePolicy.Source? {
+    private nonisolated func source(for task: URLSessionTask) -> OnlineSourcePolicy.Source? {
         let requests = [task.originalRequest, task.currentRequest].compactMap { $0 }
         for request in requests {
             if let source = source(fromRefererOf: request) {
@@ -195,7 +213,7 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         return nil
     }
 
-    private func source(fromRefererOf request: URLRequest) -> OnlineSourcePolicy.Source? {
+    private nonisolated func source(fromRefererOf request: URLRequest) -> OnlineSourcePolicy.Source? {
         guard let referer = request.value(forHTTPHeaderField: "Referer"),
               let url = URL(string: referer),
               let host = url.host?.lowercased() else { return nil }
@@ -206,7 +224,24 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         if host == "mrds66.com" || host.hasSuffix(".mrds66.com") { return .mrds }
         if host == "91quanji.com" || host.hasSuffix(".91quanji.com") { return .quanji }
         if host == "91porny.com" || host.hasSuffix(".91porny.com") { return .porny }
+        if host == "tangxinvlog.app" || host.hasSuffix(".tangxinvlog.app") { return .tangxin }
         return nil
+    }
+
+    /// URLSession rewrites Referer on cross-path redirects. Media CDNs that
+    /// gate on the HTML origin would then 403, so keep the original UA/Referer/Origin.
+    nonisolated static func requestByPreservingMediaHeaders(
+        from original: URLRequest?,
+        onto redirected: URLRequest
+    ) -> URLRequest {
+        guard let original else { return redirected }
+        var request = redirected
+        for header in ["User-Agent", "Referer", "Origin"] {
+            if let value = original.value(forHTTPHeaderField: header) {
+                request.setValue(value, forHTTPHeaderField: header)
+            }
+        }
+        return request
     }
 }
 
@@ -224,6 +259,7 @@ final class OnlineSourceSession: NSObject, URLSessionTaskDelegate, @unchecked Se
     static let mrdsHTML = OnlineSourceSession(source: .mrds, resource: .html)
     static let quanjiHTML = OnlineSourceSession(source: .quanji, resource: .html)
     static let pornyHTML = OnlineSourceSession(source: .porny, resource: .html)
+    static let tangxinHTML = OnlineSourceSession(source: .tangxin, resource: .html)
 
     private let source: OnlineSourcePolicy.Source
     private let resource: OnlineSourcePolicy.Resource

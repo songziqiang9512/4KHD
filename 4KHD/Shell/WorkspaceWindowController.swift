@@ -128,6 +128,11 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         case .pornyGallery:
             let section = PornySection(rawValue: route.itemID) ?? .latest
             return "\(section.title) - 91PORNY"
+        case .tangxinGallery:
+            let title = appContext.tangxinStore.filter == route.itemID
+                ? appContext.tangxinStore.displayFilterTitle
+                : (TangxinRoute.parse(route.itemID)?.title ?? "糖心Vlog")
+            return "\(title) - 糖心Vlog"
         }
     }
 }

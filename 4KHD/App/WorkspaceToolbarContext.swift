@@ -11,6 +11,7 @@ enum WorkspaceToolbarSnapshot {
     case mrds(MrdsSnapshot)
     case quanji(VideoFeedSnapshot)
     case porny(VideoFeedSnapshot)
+    case tangxin(VideoFeedSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -281,6 +282,8 @@ enum WorkspaceToolbarSnapshot {
             Self.videoFields(s, moduleName: "木瓜视频")
         case let .porny(s):
             Self.videoFields(s, moduleName: "91PORNY")
+        case let .tangxin(s):
+            Self.videoFields(s, moduleName: "糖心Vlog")
         }
     }
 
@@ -317,7 +320,7 @@ enum WorkspaceToolbarSnapshot {
             snapshot.layout == .list
         case let .mrds(snapshot):
             snapshot.layout == .list
-        case let .quanji(snapshot), let .porny(snapshot):
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
             snapshot.layout == .list
         }
     }
@@ -388,6 +391,9 @@ final class WorkspaceToolbarContext {
     private let pornyStore: OnlineVideoGalleryStore
     private let pornyPreferences: OnlineVideoContentPreferences
     private let pornyDetailInteraction: OnlineVideoDetailInteractionController
+    private let tangxinStore: OnlineVideoGalleryStore
+    private let tangxinPreferences: OnlineVideoContentPreferences
+    private let tangxinDetailInteraction: OnlineVideoDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -422,6 +428,9 @@ final class WorkspaceToolbarContext {
         pornyStore: OnlineVideoGalleryStore,
         pornyPreferences: OnlineVideoContentPreferences,
         pornyDetailInteraction: OnlineVideoDetailInteractionController,
+        tangxinStore: OnlineVideoGalleryStore,
+        tangxinPreferences: OnlineVideoContentPreferences,
+        tangxinDetailInteraction: OnlineVideoDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -455,6 +464,9 @@ final class WorkspaceToolbarContext {
         self.pornyStore = pornyStore
         self.pornyPreferences = pornyPreferences
         self.pornyDetailInteraction = pornyDetailInteraction
+        self.tangxinStore = tangxinStore
+        self.tangxinPreferences = tangxinPreferences
+        self.tangxinDetailInteraction = tangxinDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -685,6 +697,8 @@ final class WorkspaceToolbarContext {
             return .quanji(videoFeedSnapshot(store: quanjiStore, preferences: quanjiPreferences))
         case .pornyGallery:
             return .porny(videoFeedSnapshot(store: pornyStore, preferences: pornyPreferences))
+        case .tangxinGallery:
+            return .tangxin(videoFeedSnapshot(store: tangxinStore, preferences: tangxinPreferences))
         }
     }
 
@@ -693,18 +707,21 @@ final class WorkspaceToolbarContext {
         preferences: OnlineVideoContentPreferences
     ) -> WorkspaceToolbarSnapshot.VideoFeedSnapshot {
         let item = store.selectedItem
-        let canAdjust = preferences.layout == .grid && !detailPaneController.isPresented
+        let isPlayable = item.map { !$0.isDirectoryEntry } ?? false
+        let canAdjust = preferences.layout == .grid
+            && !detailPaneController.isPresented
+            && !store.showsDirectoryListing
         return .init(
             searchText: store.searchText,
             layout: preferences.layout,
             isRefreshing: store.isRefreshingList,
-            canFavorite: item != nil,
+            canFavorite: isPlayable,
             isFavorite: item.map { store.isFavorite($0) } ?? false,
             canIncreaseGridColumns: canAdjust && preferences.canIncreaseGridColumns,
             canDecreaseGridColumns: canAdjust && preferences.canDecreaseGridColumns,
             canSelectPreviousImage: store.canStepSelectionBackward,
             canSelectNextImage: store.canStepSelectionForward,
-            canSaveVideo: item != nil,
+            canSaveVideo: isPlayable,
             canShare: item != nil
         )
     }
@@ -713,6 +730,7 @@ final class WorkspaceToolbarContext {
         switch moduleID {
         case .quanjiGallery: quanjiStore
         case .pornyGallery: pornyStore
+        case .tangxinGallery: tangxinStore
         default: nil
         }
     }
@@ -721,6 +739,7 @@ final class WorkspaceToolbarContext {
         switch moduleID {
         case .quanjiGallery: quanjiPreferences
         case .pornyGallery: pornyPreferences
+        case .tangxinGallery: tangxinPreferences
         default: nil
         }
     }
@@ -729,6 +748,7 @@ final class WorkspaceToolbarContext {
         switch moduleID {
         case .quanjiGallery: quanjiDetailInteraction
         case .pornyGallery: pornyDetailInteraction
+        case .tangxinGallery: tangxinDetailInteraction
         default: nil
         }
     }
@@ -779,7 +799,7 @@ final class WorkspaceToolbarContext {
             {
                 mrdsStore.clearSearch()
             }
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             guard let store = videoStore(for: moduleID) else { return }
             store.searchText = text
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -806,7 +826,7 @@ final class WorkspaceToolbarContext {
             knitPreferences.layout = isList ? .list : .grid
         case .mrdsGallery:
             mrdsPreferences.layout = isList ? .list : .grid
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             videoPreferences(for: moduleID)?.layout = isList ? .list : .grid
         }
     }
@@ -831,7 +851,7 @@ final class WorkspaceToolbarContext {
         case .mrdsGallery:
             guard mrdsPreferences.layout == .grid, !detailPaneController.isPresented else { return }
             mrdsPreferences.adjustGridColumns(delta: delta)
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             guard let preferences = videoPreferences(for: moduleID),
                   preferences.layout == .grid,
                   !detailPaneController.isPresented else { return }
@@ -855,7 +875,7 @@ final class WorkspaceToolbarContext {
             knitStore.submitSearch()
         case .mrdsGallery:
             mrdsStore.submitSearch()
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             videoStore(for: moduleID)?.submitSearch()
         }
     }
@@ -919,7 +939,7 @@ final class WorkspaceToolbarContext {
             knitStore.refreshFromNetwork()
         case .mrdsGallery:
             mrdsStore.refreshFromNetwork()
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             videoStore(for: moduleID)?.refreshFromNetwork()
         }
     }
@@ -952,7 +972,7 @@ final class WorkspaceToolbarContext {
             return knitStore.selectedItem.map { [$0.detailURL] } ?? []
         case .mrdsGallery:
             return mrdsStore.selectedItem.map { [$0.detailURL] } ?? []
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             return videoStore(for: moduleID)?.selectedItem.map { [$0.detailURL] } ?? []
         }
     }
@@ -975,7 +995,7 @@ final class WorkspaceToolbarContext {
             return knitStore.selectedItem.map { .web($0.detailURL) }
         case .mrdsGallery:
             return mrdsStore.selectedItem.map { .web($0.detailURL) }
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             return videoStore(for: moduleID)?.selectedItem.map { .web($0.detailURL) }
         }
     }
@@ -1009,7 +1029,7 @@ final class WorkspaceToolbarContext {
                 case .mrdsGallery:
                     guard let item = mrdsStore.selectedItem else { return }
                     try await mrdsStore.toggleFavorite(for: item)
-                case .quanjiGallery, .pornyGallery:
+                case .quanjiGallery, .pornyGallery, .tangxinGallery:
                     guard let store = videoStore(for: moduleID),
                           let item = store.selectedItem else { return }
                     try await store.toggleFavorite(for: item)
@@ -1054,7 +1074,7 @@ final class WorkspaceToolbarContext {
             knitStore.stepImage(delta)
         case .mrdsGallery:
             mrdsStore.stepImage(delta)
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             videoStore(for: moduleID)?.stepSelection(delta)
         }
     }
@@ -1098,7 +1118,7 @@ final class WorkspaceToolbarContext {
                   let item = mrdsStore.selectedItem,
                   let slot = mrdsStore.selectedSlot else { return }
             mrdsDetailInteraction.save(item: item, slot: slot)
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             return
         }
     }
@@ -1127,7 +1147,7 @@ final class WorkspaceToolbarContext {
             case .missKon:
                 guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
-            case .wallhaven, .quanji, .porny, nil:
+            case .wallhaven, .quanji, .porny, .tangxin, nil:
                 return
             case .knit:
                 guard let item = KnitFavoritesBridge.item(from: record) else { return }
@@ -1136,7 +1156,7 @@ final class WorkspaceToolbarContext {
                 guard let item = MrdsFavoritesBridge.item(from: record) else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .mrds(item))
             }
-        case .localLibrary, .wallhaven, .quanjiGallery, .pornyGallery:
+        case .localLibrary, .wallhaven, .quanjiGallery, .pornyGallery, .tangxinGallery:
             return
         }
         switch result {
@@ -1191,7 +1211,7 @@ final class WorkspaceToolbarContext {
             guard let item = mrdsStore.selectedItem,
                   let videoURL = mrdsStore.videoURL else { return }
             mrdsDetailInteraction.saveVideo(item: item, sourceURL: videoURL)
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             guard let store = videoStore(for: moduleID),
                   let interaction = videoInteraction(for: moduleID),
                   let item = store.selectedItem else { return }
@@ -1232,7 +1252,7 @@ final class WorkspaceToolbarContext {
             knitDetailInteraction.resetZoom()
         case .mrdsGallery:
             mrdsDetailInteraction.resetZoom()
-        case .quanjiGallery, .pornyGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery:
             return
         }
     }

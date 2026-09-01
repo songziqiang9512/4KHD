@@ -127,7 +127,7 @@ struct FavoriteSourceAdapter {
         self.cachedExternalAction = cachedExternalAction
     }
 
-    /// 木瓜视频 / 91PORNY 这类纯视频收藏：列表双击播放，不打开详情栏。
+    /// 木瓜视频 / 91PORNY / 糖心Vlog 这类纯视频收藏：列表双击播放，不打开详情栏。
     var playsFromFeed: Bool {
         videoActions != nil && navigationMode == .sourceRecords
     }

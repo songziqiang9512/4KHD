@@ -343,6 +343,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             systemName = section.sidebarSystemImage
         case let .porny(section):
             systemName = section.sidebarSystemImage
+        case let .tangxin(section):
+            systemName = section.sidebarSystemImage
         case .favoritesModule:
             systemName = "heart"
         }
@@ -382,6 +384,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .quanjiGallery, itemID: section.rawValue)
         case let .porny(section):
             selectedRoute = WorkspaceRoute(moduleID: .pornyGallery, itemID: section.rawValue)
+        case let .tangxin(section):
+            selectedRoute = WorkspaceRoute(moduleID: .tangxinGallery, itemID: section.rawValue)
         case .favoritesModule:
             selectedRoute = WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
         case .group:
@@ -532,6 +536,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             route.itemID == section.rawValue
         case let (.pornyGallery, .porny(section)):
             route.itemID == section.rawValue
+        case let (.tangxinGallery, .tangxin(section)):
+            TangxinRoute.parse(route.itemID)?.sidebarSection == section
         case let (.localLibrary, .localFolder(folder)):
             route.itemID == folder.id
         case (.localLibrary, .localAllImages):

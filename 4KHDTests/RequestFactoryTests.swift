@@ -22,6 +22,7 @@ final class RequestFactoryTests: XCTestCase {
         var mrdsRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://pic.sbhioa.cn/image.jpg")))
         var quanjiRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://pics.mugua01.cfd/cover.jpg")))
         var pornyRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://int.ucloud161.xyz/thumb/1.jpg")))
+        var tangxinRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://t.5gcdn.xyz/videos/36005/cover.jpg")))
 
         GalleryRequestFactory.configureImageRequest(&galleryRequest)
         MissKonRequestFactory.configureImageRequest(&missKonRequest)
@@ -30,6 +31,7 @@ final class RequestFactoryTests: XCTestCase {
         MrdsRequestFactory.configureImageRequest(&mrdsRequest)
         QuanjiRequestFactory.configureImageRequest(&quanjiRequest)
         PornyRequestFactory.configureImageRequest(&pornyRequest)
+        TangxinRequestFactory.configureImageRequest(&tangxinRequest)
 
         XCTAssertEqual(galleryRequest.value(forHTTPHeaderField: "Referer"), "https://www.4khd.com/")
         XCTAssertEqual(missKonRequest.value(forHTTPHeaderField: "Referer"), "https://misskon.com/")
@@ -38,6 +40,7 @@ final class RequestFactoryTests: XCTestCase {
         XCTAssertEqual(mrdsRequest.value(forHTTPHeaderField: "Referer"), "https://www.mrds66.com/")
         XCTAssertEqual(quanjiRequest.value(forHTTPHeaderField: "Referer"), "https://91quanji.com/")
         XCTAssertEqual(pornyRequest.value(forHTTPHeaderField: "Referer"), "https://91porny.com/")
+        XCTAssertEqual(tangxinRequest.value(forHTTPHeaderField: "Referer"), "https://tangxinvlog.app/")
     }
 
     func testOnlineSourcePolicyRejectsHTTPAndLookalikeHosts() throws {
@@ -76,6 +79,10 @@ final class RequestFactoryTests: XCTestCase {
         request = URLRequest(url: evil)
         PornyRequestFactory.configureImageRequest(&request)
         XCTAssertNil(request.url)
+
+        request = URLRequest(url: evil)
+        TangxinRequestFactory.configureImageRequest(&request)
+        XCTAssertNil(request.url)
     }
 
     func testGalleryMediaPolicyAllowsCurrentExactRedirectCDNOnly() throws {
@@ -106,6 +113,7 @@ final class RequestFactoryTests: XCTestCase {
         let mrdsOrigin = try XCTUnwrap(URL(string: "https://pic.sbhioa.cn/path/image.jpg"))
         let quanjiOrigin = try XCTUnwrap(URL(string: "https://pics.mugua01.cfd/cover.jpg"))
         let pornyOrigin = try XCTUnwrap(URL(string: "https://cdn2.jiuse3.cloud/hls/1/index.m3u8"))
+        let tangxinOrigin = try XCTUnwrap(URL(string: "https://t.5gcdn.xyz/videos/36005/index.m3u8"))
 
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: galleryOrigin), .gallery)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: galleryRedirect), .gallery)
@@ -115,6 +123,7 @@ final class RequestFactoryTests: XCTestCase {
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: mrdsOrigin), .mrds)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: quanjiOrigin), .quanji)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: pornyOrigin), .porny)
+        XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: tangxinOrigin), .tangxin)
         XCTAssertNil(OnlineSourcePolicy.source(forMediaURL: lookalike))
     }
 
@@ -237,5 +246,22 @@ final class RequestFactoryTests: XCTestCase {
         XCTAssertNil(FavoriteSource.gallery.validatedCoverURL(for: crossSource))
         XCTAssertNil(FavoriteSource.gallery.validatedCoverURL(for: untrusted))
         XCTAssertNil(FavoriteSource.missKon.validatedCoverURL(for: trusted))
+    }
+
+    func testRedirectPreservesOriginalMediaHeaders() throws {
+        var original = try URLRequest(url: XCTUnwrap(URL(string: "https://t.5gcdn.xyz/videos/36005/seg0.ts")))
+        original.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        original.setValue("https://tangxinvlog.app/", forHTTPHeaderField: "Referer")
+        original.setValue("https://tangxinvlog.app", forHTTPHeaderField: "Origin")
+        var redirected = try URLRequest(url: XCTUnwrap(URL(string: "https://t.5gcdn.xyz/videos/36005/seg0.ts")))
+        redirected.setValue("https://t.5gcdn.xyz/videos/36005/index.m3u8", forHTTPHeaderField: "Referer")
+
+        let preserved = OnlineRedirectGuard.requestByPreservingMediaHeaders(
+            from: original,
+            onto: redirected
+        )
+        XCTAssertEqual(preserved.value(forHTTPHeaderField: "User-Agent"), "Mozilla/5.0")
+        XCTAssertEqual(preserved.value(forHTTPHeaderField: "Referer"), "https://tangxinvlog.app/")
+        XCTAssertEqual(preserved.value(forHTTPHeaderField: "Origin"), "https://tangxinvlog.app")
     }
 }

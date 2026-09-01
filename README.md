@@ -35,7 +35,7 @@
 - 列表/瀑布流双布局，搜索与各入口支持真实分页；详情只在可见时逐页解析，HTML/JSON 解析不占用 UI 主线程
 - 详情区提供缩放、导航、计数、底部胶片条和沉浸模式；最后一张继续向后翻页显示原站推荐图集
 - 自动识别含视频图集；HLS 视频使用独立原生 `AVPlayerView` 窗口播放，详情播放按钮和播放器画面的右键菜单都可直接保存 MP4 或拷贝影片源 URL
-- 详情解析到真实视频源后，工具栏「保存」菜单可将 MPEG-TS HLS（含 AES-128 VOD）解密后无损封装并保存为 MP4；视频进入与整图集共用的非模态下载任务中心，显示已下载/总大小、整体百分比和速度并支持取消，完成前不会覆盖目标文件
+- 详情解析到真实视频源后，工具栏「保存」菜单可将 MPEG-TS HLS（含 AES-128 VOD）解密后无损封装并保存为 MP4；视频进入与整图集共用的非模态下载任务中心，最多同时进行 2 个任务，显示已下载/总大小、整体百分比和速度，支持取消与失败/取消后重试，完成前不会覆盖目标文件
 - 普通请求遇到站点验证时才显示 WebKit 验证窗口，并同步站点 Cookie 后重试；验证窗口的主框架跳转始终限制在受信任站点，视频保存流程整次最多恢复一次验证，不会无限重试
 - 收藏、整图集下载、Inspector 与沉浸式图片详情已接入统一工作区
 
@@ -53,6 +53,10 @@
 - 侧边栏分类入口；列表收录 `/video/view/` 与 `/video/viewhd/` 卡片，跳过外域广告
 - 无右侧详情栏。只播放公开观看页中的 `data-src`；`viewhd` 卡片改解析同一 id 的 `/video/view/`。不伪造登录态
 
+### 在线视频 — TangxinGallery
+- 侧边栏固定最近更新、分类目录、作者目录；标签和作者名称运行时从 `/tag/`、`/a/` 解析。分类/作者目录用随文字宽高变化的密集小卡片
+- 无右侧详情栏。双击目录卡片进入子信息流；视频卡片双击或右键播放公开观看页中的当前片 HLS（媒体请求带站点 Referer），并可打开作者、分类与相关推荐
+
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
 - 上/下张键盘/浮层按钮导航，Escape/Tab/Enter 键盘支持
@@ -69,7 +73,7 @@
 - 搜索匹配文件名和文件夹名，结果高亮
 
 ### 收藏（在线收藏）
-- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven / KnitGallery / MrdsGallery / QuanjiGallery / PornyGallery 的收藏
+- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven / KnitGallery / MrdsGallery / QuanjiGallery / PornyGallery / TangxinGallery 的收藏
 - 工具栏按来源筛选（全部及各在线模块）与搜索
 - 列表 / 瀑布流网格双布局（与 MissKon/4KHD 相同的卡片、hover、双击交互）；图集来源的详情区为大图查看区（缩放、胶片条、沉浸模式）
 - 持久保存于 FavoritesStore（favorites.json）；旧版本收藏数据按 detailURL host 自动兼容
@@ -79,7 +83,7 @@
 - 收藏筛选为空或删除当前项目时会清空旧详情；历史封面会按所属来源重新校验，分页失败可从原位置重试且不会提前显示推荐
 - 爱妹子含视频收藏在详情中提供播放、空格键播放、影片源 URL 复制及工具栏 MP4 保存，启用状态来自当前已解析视频而不是列表提示
 - 每日大赛含视频收藏可播放、拷贝影片源 URL，并保存为 MP4（AES-128 HLS 先解密再封装）
-- QuanjiGallery / PornyGallery 收藏不打开详情栏：双击播放，右键「播放」「下载视频」
+- QuanjiGallery / PornyGallery / TangxinGallery 收藏不打开详情栏：双击播放，右键「播放」「下载视频」
 - MissKon 收藏详情保留 MediaFire 资源入口
 - Wallhaven 收藏详情加载原图和完整元数据，可设为壁纸、浏览同来源收藏的上一张/下一张，并从上传者入口在应用内进入 Wallhaven 对应作品列表
 
@@ -110,6 +114,7 @@
     MrdsGallery/ — www.mrds66.com 每日大赛图库
     QuanjiGallery/ — 在线视频列表与公开 HLS
     PornyGallery/ — 在线视频列表与公开 HLS
+    TangxinGallery/ — tangxinvlog.app 视频列表与公开 HLS
     LocalLibrary/ — 本地图片
     Favorites/  — 收藏记录
 4KHDTests/      — XCTest 回归测试

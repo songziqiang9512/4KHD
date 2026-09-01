@@ -13,6 +13,7 @@ final class WorkspaceAppContext {
     let mrdsStore: MrdsGalleryStore
     let quanjiStore: OnlineVideoGalleryStore
     let pornyStore: OnlineVideoGalleryStore
+    let tangxinStore: OnlineVideoGalleryStore
     let localLibraryStore: LocalLibraryStore
     let favoritesStore: FavoritesStore
     let favoritesModuleStore: FavoritesModuleStore
@@ -33,6 +34,7 @@ final class WorkspaceAppContext {
         mrdsStore: MrdsGalleryStore,
         quanjiStore: OnlineVideoGalleryStore,
         pornyStore: OnlineVideoGalleryStore,
+        tangxinStore: OnlineVideoGalleryStore,
         localLibraryStore: LocalLibraryStore,
         favoritesStore: FavoritesStore,
         favoritesModuleStore: FavoritesModuleStore,
@@ -52,6 +54,7 @@ final class WorkspaceAppContext {
         self.mrdsStore = mrdsStore
         self.quanjiStore = quanjiStore
         self.pornyStore = pornyStore
+        self.tangxinStore = tangxinStore
         self.localLibraryStore = localLibraryStore
         self.favoritesStore = favoritesStore
         self.favoritesModuleStore = favoritesModuleStore

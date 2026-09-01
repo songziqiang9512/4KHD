@@ -240,6 +240,13 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             render(snapshot(for: item, moduleTitle: "91PORNY", store: appContext.pornyStore))
+        case .tangxinGallery:
+            cancelLocalMetadata()
+            guard let item = appContext.tangxinStore.selectedItem else {
+                renderEmpty(module: "糖心Vlog", symbolName: "play.rectangle.on.rectangle")
+                return
+            }
+            render(snapshot(for: item, moduleTitle: "糖心Vlog", store: appContext.tangxinStore))
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 cancelLocalMetadata()
@@ -707,7 +714,9 @@ private final class WorkspaceInspectorViewController: NSViewController {
         moduleTitle: String,
         store: OnlineVideoGalleryStore
     ) -> InspectorSnapshot {
-        let videoStatus: String? = if store.videoURL != nil {
+        let videoStatus: String? = if item.isDirectoryEntry {
+            nil
+        } else if store.videoURL != nil {
             "可播放"
         } else if store.isResolvingDetail {
             "解析中"
@@ -716,15 +725,23 @@ private final class WorkspaceInspectorViewController: NSViewController {
         } else {
             nil
         }
+        let symbolName = switch store.policySource {
+        case .quanji: "play.rectangle"
+        case .tangxin: "play.rectangle.on.rectangle"
+        default: "play.tv"
+        }
+        let tagText = item.tagFilters.map(\.title).filter { !$0.isEmpty }.joined(separator: "、").nilIfEmpty
         return InspectorSnapshot(
-            symbolName: store.policySource == .quanji ? "play.rectangle" : "play.tv",
+            symbolName: symbolName,
             title: item.title,
             moduleTitle: moduleTitle,
             summary: [item.durationText, item.subtitle].filter { !$0.isEmpty }.joined(separator: " · ").nilIfEmpty,
             sections: compactSections([
                 section("概览", rows: [
-                    row("时长", item.durationText.nilIfEmpty),
-                    row("收藏", store.isFavorite(item) ? "已收藏" : "未收藏"),
+                    row("作者", item.authorName?.nilIfEmpty),
+                    row("分类", tagText),
+                    row("时长", item.isDirectoryEntry ? nil : item.durationText.nilIfEmpty),
+                    row("收藏", item.isDirectoryEntry ? nil : (store.isFavorite(item) ? "已收藏" : "未收藏")),
                     row("视频状态", videoStatus),
                 ]),
                 section("来源", rows: [
@@ -858,6 +875,12 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 _ = appContext.pornyStore.selectedItem
                 _ = appContext.pornyStore.videoURL
                 _ = appContext.pornyStore.isResolvingDetail
+                _ = appContext.favoritesStore.favorites
+            case .tangxinGallery:
+                _ = appContext.tangxinStore.selectedItemID
+                _ = appContext.tangxinStore.selectedItem
+                _ = appContext.tangxinStore.videoURL
+                _ = appContext.tangxinStore.isResolvingDetail
                 _ = appContext.favoritesStore.favorites
             case .localLibrary:
                 _ = appContext.localLibraryStore.roots

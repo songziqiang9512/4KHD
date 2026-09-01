@@ -31,7 +31,7 @@
 
 - DPlayer `data-config` JSON：`"video":{"url":"...m3u8...","type":"hls"}`。
 - 清单 host：`hls.piotrt.cn`。分片与 AES-128 key host 会轮换：`ts.syjiaotong.mobi`、`tx.doudou520.online`、`ts.zhixunkeji.xyz`（均带 `auth_key`）。
-- 清单含 `#EXT-X-KEY:METHOD=AES-128`，带显式 IV，分片是 MPEG-TS，且有 `#EXT-X-ENDLIST`（VOD）。保存 MP4 时下载 16 字节密钥、按 KEY 行 IV 做 AES-128-CBC 解密，再 concat TS 并 `AVAssetExportPresetPassthrough`。`auth_key` 必须随 URL 保留。SAMPLE-AES、直播清单、独立音轨仍不能保存。
+- 清单含 `#EXT-X-KEY:METHOD=AES-128`，带显式 IV，分片是 MPEG-TS，且有 `#EXT-X-ENDLIST`（VOD）。保存 MP4 时下载 16 字节密钥、按 KEY 行 IV 做 AES-128-CBC 解密，再 concat TS，由共享 `KnitVideoRemux` 按容器无损封装。`auth_key` 必须随 URL 保留。SAMPLE-AES、直播清单、独立音轨仍不能保存。
 - AVFoundation 自己发起的变体清单、key 和 TS 子请求不经过 `OnlineSourcePolicy`。这与 Knit 播放链相同，不得宣称全链门禁。
 
 ## 安全门禁

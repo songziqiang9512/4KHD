@@ -3,7 +3,7 @@ import Observation
 
 /// 统一收藏列表:列表 / 瀑布流网格双布局,交互与 MissKon/4KHD 一致
 /// (单击选中、双击打开详情、hover 高亮、方向键、右键菜单、搜索高亮)。
-/// 木瓜视频 / 91PORNY 收藏双击直接播放，不打开详情栏。
+/// 木瓜视频 / 91PORNY / 糖心Vlog 收藏双击直接播放，不打开详情栏。
 @MainActor
 final class FavoritesContentViewController: NSViewController, WorkspaceFocusable {
     let moduleStore: FavoritesModuleStore

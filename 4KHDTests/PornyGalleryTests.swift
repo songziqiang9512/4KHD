@@ -55,6 +55,7 @@ final class PornyGalleryTests: XCTestCase {
         XCTAssertEqual(page.items.map(\.id), ["3b01932c8964c074999a"])
         XCTAssertEqual(page.items.first?.title, "英语实习老师")
         XCTAssertEqual(page.items.first?.durationText, "00:04:03")
+        XCTAssertEqual(page.items.first?.gridCardMetadata(isFavorite: false), "00:04:03")
         XCTAssertEqual(
             page.items.first?.coverURL?.absoluteString,
             "https://int.ucloud161.xyz/thumb/1238534.jpg"

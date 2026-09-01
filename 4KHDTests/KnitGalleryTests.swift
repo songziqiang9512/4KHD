@@ -425,6 +425,58 @@ final class KnitGalleryTests: XCTestCase {
         XCTAssertEqual(try KnitHLSAES128.decrypt(cipher, key: key, iv: iv), plain)
     }
 
+    func testMPEGTransportStreamAlignmentKeepsPacketsAndDropsTrailingPadding() throws {
+        var packets = Data()
+        for index in 0 ..< 3 {
+            var packet = Data([0x47])
+            packet.append(Data(repeating: UInt8(index), count: 187))
+            packets.append(packet)
+        }
+        XCTAssertEqual(try KnitVideoRemux.mpegTransportStreamAligned(packets), packets)
+
+        var padded = Data([0x00, 0x01])
+        padded.append(packets)
+        padded.append(Data(repeating: 0xFF, count: 7))
+        XCTAssertEqual(try KnitVideoRemux.mpegTransportStreamAligned(padded), packets)
+
+        XCTAssertThrowsError(try KnitVideoRemux.mpegTransportStreamAligned(Data(repeating: 0x00, count: 32)))
+    }
+
+    func testSniffRecognizesMPEG4FtypPrefix() throws {
+        var header = Data(repeating: 0, count: 4)
+        header.append(Data("ftypisom".utf8))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("4KHD-Sniff-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try header.write(to: url)
+        XCTAssertEqual(try KnitVideoRemux.sniff(url), .mpeg4)
+    }
+
+    func testMPEGTransportStreamRemuxesToPlayableMP4() async throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/sample-mpegts.ts")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try KnitVideoRemux.sniff(source), .mpegTransportStream)
+
+        let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent("4KHD-Remux-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: target) }
+
+        try await KnitVideoRemux.remux(from: source, to: target)
+
+        let values = try target.resourceValues(forKeys: [.fileSizeKey])
+        XCTAssertGreaterThan(values.fileSize ?? 0, 1000)
+        let asset = AVURLAsset(url: target)
+        let isPlayable = try await asset.load(.isPlayable)
+        let duration = try await asset.load(.duration)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        XCTAssertTrue(isPlayable)
+        XCTAssertGreaterThan(duration.seconds, 1)
+        XCTAssertFalse(videoTracks.isEmpty)
+        XCTAssertFalse(audioTracks.isEmpty)
+    }
+
     func testVideoFilenameIsSanitizedAndUsesMP4Extension() throws {
         let item = try KnitGalleryItem(
             id: "32463",

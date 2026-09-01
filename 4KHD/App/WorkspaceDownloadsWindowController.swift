@@ -71,7 +71,9 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
     )
     private var isObserving = false
 
-    private var tasks: [DownloadStore.DownloadTask] { downloadStore.tasks }
+    private var tasks: [DownloadStore.DownloadTask] {
+        downloadStore.tasks
+    }
 
     init(downloadStore: DownloadStore) {
         self.downloadStore = downloadStore
@@ -100,8 +102,10 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
         emptyIconView.isHidden = hasTasks
         emptyLabel.isHidden = hasTasks
         emptyHintLabel.isHidden = hasTasks
-        cancelAllButton.isEnabled = tasks.contains { $0.status == .queued || $0.status == .running }
-        clearFinishedButton.isEnabled = tasks.contains { $0.status.isTerminal }
+        cancelAllButton.isEnabled = tasks.contains {
+            $0.status == .queued || $0.status == .running || $0.status == .paused
+        }
+        clearFinishedButton.isEnabled = tasks.contains { $0.status == .completed }
         summaryLabel.stringValue = summaryText()
         tableView.reloadData()
     }
@@ -209,17 +213,21 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
         guard !tasks.isEmpty else { return "暂无任务" }
         let running = tasks.filter { $0.status == .running }.count
         let queued = tasks.filter { $0.status == .queued }.count
+        let paused = tasks.filter { $0.status == .paused }.count
         let completed = tasks.filter { $0.status == .completed }.count
         var parts = ["共 \(tasks.count) 个任务"]
         if running > 0 { parts.append("\(running) 个进行中") }
+        if paused > 0 { parts.append("\(paused) 个已暂停") }
         if queued > 0 { parts.append("\(queued) 个等待") }
         if completed > 0 { parts.append("\(completed) 个已完成") }
-        let other = tasks.count - running - queued - completed
+        let other = tasks.count - running - queued - paused - completed
         if other > 0 { parts.append("\(other) 个已停止") }
         return parts.joined(separator: " · ")
     }
 
-    func numberOfRows(in _: NSTableView) -> Int { tasks.count }
+    func numberOfRows(in _: NSTableView) -> Int {
+        tasks.count
+    }
 
     func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         guard tasks.indices.contains(row) else { return nil }
@@ -227,15 +235,74 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
             ?? DownloadTaskRowView()
         cell.identifier = CellID.row
         let task = tasks[row]
-        let isActive = task.status == .queued || task.status == .running
+        let primary: DownloadRowAction
+        let secondary: DownloadRowAction?
+        switch task.status {
+        case .queued:
+            primary = DownloadRowAction(
+                symbolName: "xmark",
+                toolTip: "取消下载",
+                selector: #selector(cancelFromRow(_:))
+            )
+            secondary = nil
+        case .running:
+            if task.kind == .video {
+                primary = DownloadRowAction(
+                    symbolName: "pause.fill",
+                    toolTip: "暂停下载",
+                    selector: #selector(pauseFromRow(_:))
+                )
+                secondary = DownloadRowAction(
+                    symbolName: "xmark",
+                    toolTip: "取消下载",
+                    selector: #selector(cancelFromRow(_:))
+                )
+            } else {
+                primary = DownloadRowAction(
+                    symbolName: "xmark",
+                    toolTip: "取消下载",
+                    selector: #selector(cancelFromRow(_:))
+                )
+                secondary = nil
+            }
+        case .paused:
+            primary = DownloadRowAction(
+                symbolName: "play.fill",
+                toolTip: "继续下载",
+                selector: #selector(retryFromRow(_:))
+            )
+            secondary = DownloadRowAction(
+                symbolName: "xmark",
+                toolTip: "取消下载",
+                selector: #selector(cancelFromRow(_:))
+            )
+        case .failed, .cancelled:
+            primary = DownloadRowAction(
+                symbolName: "arrow.clockwise",
+                toolTip: "重试",
+                selector: #selector(retryFromRow(_:))
+            )
+            secondary = DownloadRowAction(
+                symbolName: "xmark",
+                toolTip: "从列表移除",
+                selector: #selector(removeFromRow(_:))
+            )
+        case .completed:
+            primary = DownloadRowAction(
+                symbolName: "folder",
+                toolTip: "在 Finder 中显示",
+                selector: #selector(revealFromRow(_:))
+            )
+            secondary = nil
+        }
         cell.configure(
             with: task,
             metadata: metadataText(for: task),
             statusText: statusText(for: task),
-            actionTitle: isActive ? "取消" : "显示",
             actionID: task.id.uuidString,
-            target: self,
-            action: #selector(rowAction(_:))
+            primary: primary,
+            secondary: secondary,
+            target: self
         )
         return cell
     }
@@ -255,6 +322,8 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
             return "排队中"
         case .running:
             return task.progressText.isEmpty ? "正在下载" : task.progressText
+        case .paused:
+            return task.progressText.isEmpty ? "已暂停" : "已暂停 · \(task.progressText)"
         case .completed:
             guard task.kind == .album else { return "MP4 已保存" }
             let failures = task.failedCount + task.failedPageCount
@@ -285,20 +354,50 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
         downloadStore.clearFinishedTasks()
     }
 
-    @objc private func rowAction(_ sender: NSButton) {
-        guard let idString = sender.identifier?.rawValue,
-              let id = UUID(uuidString: idString),
+    @objc private func pauseFromRow(_ sender: NSButton) {
+        guard let id = taskID(from: sender) else { return }
+        downloadStore.pauseTask(id: id)
+    }
+
+    @objc private func cancelFromRow(_ sender: NSButton) {
+        guard let id = taskID(from: sender) else { return }
+        downloadStore.cancelTask(id: id)
+    }
+
+    @objc private func retryFromRow(_ sender: NSButton) {
+        guard let id = taskID(from: sender) else { return }
+        downloadStore.retryTask(id: id)
+    }
+
+    @objc private func removeFromRow(_ sender: NSButton) {
+        guard let id = taskID(from: sender) else { return }
+        downloadStore.removeTask(id: id)
+    }
+
+    @objc private func revealFromRow(_ sender: NSButton) {
+        guard let id = taskID(from: sender),
               let task = downloadStore.tasks.first(where: { $0.id == id }) else { return }
-        if task.status == .queued || task.status == .running {
-            downloadStore.cancelTask(id: id)
-        } else {
-            reveal(task)
-        }
+        reveal(task)
+    }
+
+    private func taskID(from sender: NSButton) -> UUID? {
+        guard let idString = sender.identifier?.rawValue else { return nil }
+        return UUID(uuidString: idString)
+    }
+
+    @objc private func pauseFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        downloadStore.pauseTask(id: id)
     }
 
     @objc private func cancelFromMenu(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? UUID else { return }
         downloadStore.cancelTask(id: id)
+    }
+
+    @objc private func retryFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        downloadStore.retryTask(id: id)
     }
 
     @objc private func revealInFinder(_ sender: NSMenuItem) {
@@ -324,12 +423,33 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
         guard tasks.indices.contains(row) else { return nil }
         let task = tasks[row]
         let menu = NSMenu()
-        if task.status == .queued || task.status == .running {
+        if task.status == .running, task.kind == .video {
+            let pause = NSMenuItem(title: "暂停下载", action: #selector(pauseFromMenu(_:)), keyEquivalent: "")
+            pause.target = self
+            pause.representedObject = task.id
+            pause.image = NSImage(systemSymbolName: "pause.circle", accessibilityDescription: "暂停下载")
+            menu.addItem(pause)
+        }
+        if task.status == .queued || task.status == .running || task.status == .paused {
             let cancel = NSMenuItem(title: "取消下载", action: #selector(cancelFromMenu(_:)), keyEquivalent: "")
             cancel.target = self
             cancel.representedObject = task.id
             cancel.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "取消下载")
             menu.addItem(cancel)
+        }
+        if task.status == .failed || task.status == .cancelled || task.status == .paused {
+            let retry = NSMenuItem(
+                title: task.status == .paused ? "继续下载" : "重试",
+                action: #selector(retryFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            retry.target = self
+            retry.representedObject = task.id
+            retry.image = NSImage(
+                systemSymbolName: task.status == .paused ? "play.circle" : "arrow.clockwise",
+                accessibilityDescription: task.status == .paused ? "继续下载" : "重试"
+            )
+            menu.addItem(retry)
         }
         let reveal = NSMenuItem(title: "在 Finder 中显示", action: #selector(revealInFinder(_:)), keyEquivalent: "")
         reveal.target = self
@@ -341,6 +461,7 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
             let remove = NSMenuItem(title: "从列表移除", action: #selector(removeFromMenu(_:)), keyEquivalent: "")
             remove.target = self
             remove.representedObject = task.id
+            remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "从列表移除")
             menu.addItem(remove)
         }
         return menu
@@ -368,6 +489,12 @@ private final class DownloadsViewController: NSViewController, NSTableViewDataSo
     }
 }
 
+private struct DownloadRowAction {
+    var symbolName: String
+    var toolTip: String
+    var selector: Selector
+}
+
 @MainActor
 private final class DownloadTaskRowView: NSTableCellView {
     private static let byteCountFormatter: ByteCountFormatter = {
@@ -387,7 +514,9 @@ private final class DownloadTaskRowView: NSTableCellView {
     private let sizeLabel = NSTextField(labelWithString: "")
     private let percentageLabel = NSTextField(labelWithString: "")
     private let speedLabel = NSTextField(labelWithString: "")
-    private let actionButton = NSButton(title: "", target: nil, action: nil)
+    private let primaryActionButton = NSButton(image: NSImage(), target: nil, action: nil)
+    private let secondaryActionButton = NSButton(image: NSImage(), target: nil, action: nil)
+    private let actionStack = NSStackView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -429,18 +558,23 @@ private final class DownloadTaskRowView: NSTableCellView {
         progressIndicator.isDisplayedWhenStopped = true
         progressIndicator.translatesAutoresizingMaskIntoConstraints = false
 
-        [sizeLabel, percentageLabel, speedLabel].forEach {
-            $0.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
-            $0.textColor = .secondaryLabelColor
-            $0.lineBreakMode = .byTruncatingTail
+        for item in [sizeLabel, percentageLabel, speedLabel] {
+            item.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
+            item.textColor = .secondaryLabelColor
+            item.lineBreakMode = .byTruncatingTail
         }
         sizeLabel.alignment = .left
         percentageLabel.alignment = .center
         speedLabel.alignment = .right
 
-        actionButton.bezelStyle = .rounded
-        actionButton.controlSize = .small
-        actionButton.translatesAutoresizingMaskIntoConstraints = false
+        configureIconButton(primaryActionButton)
+        configureIconButton(secondaryActionButton)
+        actionStack.orientation = .horizontal
+        actionStack.alignment = .centerY
+        actionStack.spacing = 4
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+        actionStack.addArrangedSubview(primaryActionButton)
+        actionStack.addArrangedSubview(secondaryActionButton)
 
         let titleRow = NSStackView(views: [titleLabel, statusLabel])
         titleRow.orientation = .horizontal
@@ -464,7 +598,7 @@ private final class DownloadTaskRowView: NSTableCellView {
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
 
-        [statusIconView, content, actionButton, separator].forEach { addSubview($0) }
+        [statusIconView, content, actionStack, separator].forEach { addSubview($0) }
         NSLayoutConstraint.activate([
             statusIconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             statusIconView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -472,7 +606,7 @@ private final class DownloadTaskRowView: NSTableCellView {
             statusIconView.heightAnchor.constraint(equalToConstant: 28),
 
             content.leadingAnchor.constraint(equalTo: statusIconView.trailingAnchor, constant: 12),
-            content.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -14),
+            content.trailingAnchor.constraint(equalTo: actionStack.leadingAnchor, constant: -12),
             content.centerYAnchor.constraint(equalTo: centerYAnchor),
             content.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 10),
             content.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -10),
@@ -483,9 +617,8 @@ private final class DownloadTaskRowView: NSTableCellView {
             progressIndicator.widthAnchor.constraint(equalTo: content.widthAnchor),
             metricsRow.widthAnchor.constraint(equalTo: content.widthAnchor),
 
-            actionButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            actionButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            actionButton.widthAnchor.constraint(equalToConstant: 54),
+            actionStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            actionStack.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             separator.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
@@ -493,14 +626,26 @@ private final class DownloadTaskRowView: NSTableCellView {
         ])
     }
 
+    private func configureIconButton(_ button: NSButton) {
+        button.bezelStyle = .flexiblePush
+        button.controlSize = .small
+        button.imagePosition = .imageOnly
+        button.setButtonType(.momentaryPushIn)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 28),
+            button.heightAnchor.constraint(equalToConstant: 24),
+        ])
+    }
+
     func configure(
         with task: DownloadStore.DownloadTask,
         metadata: String,
         statusText: String,
-        actionTitle: String,
         actionID: String,
-        target: AnyObject?,
-        action: Selector
+        primary: DownloadRowAction,
+        secondary: DownloadRowAction?,
+        target: AnyObject?
     ) {
         statusIconView.image = statusImage(for: task)
         titleLabel.stringValue = task.title
@@ -525,10 +670,30 @@ private final class DownloadTaskRowView: NSTableCellView {
             progressIndicator.doubleValue = fraction ?? 0
         }
 
-        actionButton.title = actionTitle
-        actionButton.identifier = NSUserInterfaceItemIdentifier(actionID)
-        actionButton.target = target
-        actionButton.action = action
+        apply(primary, to: primaryActionButton, actionID: actionID, target: target)
+        if let secondary {
+            secondaryActionButton.isHidden = false
+            apply(secondary, to: secondaryActionButton, actionID: actionID, target: target)
+        } else {
+            secondaryActionButton.isHidden = true
+            secondaryActionButton.target = nil
+            secondaryActionButton.action = nil
+        }
+    }
+
+    private func apply(
+        _ action: DownloadRowAction,
+        to button: NSButton,
+        actionID: String,
+        target: AnyObject?
+    ) {
+        button.title = ""
+        button.image = NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.toolTip)
+        button.imagePosition = .imageOnly
+        button.toolTip = action.toolTip
+        button.identifier = NSUserInterfaceItemIdentifier(actionID)
+        button.target = target
+        button.action = action.selector
     }
 
     private func sizeText(for task: DownloadStore.DownloadTask) -> String {
@@ -560,6 +725,8 @@ private final class DownloadTaskRowView: NSTableCellView {
         case .running:
             guard let rate = formattedRate(task.bytesPerSecond) else { return "速度 —" }
             return "速度 \(rate)"
+        case .paused:
+            return "已暂停"
         case .completed:
             guard let rate = formattedRate(task.averageBytesPerSecond) else { return "已完成" }
             return "平均 \(rate)"
@@ -585,7 +752,7 @@ private final class DownloadTaskRowView: NSTableCellView {
         case .running:
             let reportedFraction = clampedFraction(task.progressFraction)
             return reportedFraction > 0 ? reportedFraction : nil
-        case .failed, .cancelled:
+        case .paused, .failed, .cancelled:
             return clampedFraction(task.progressFraction)
         }
     }
@@ -601,6 +768,8 @@ private final class DownloadTaskRowView: NSTableCellView {
             return .secondaryLabelColor
         case .running:
             return .controlAccentColor
+        case .paused:
+            return .systemOrange
         case .completed:
             return .systemGreen
         case .failed:
@@ -620,6 +789,8 @@ private final class DownloadTaskRowView: NSTableCellView {
             return .tertiaryLabelColor
         case .queued, .running:
             return .secondaryLabelColor
+        case .paused:
+            return .systemOrange
         }
     }
 
@@ -631,6 +802,8 @@ private final class DownloadTaskRowView: NSTableCellView {
             color = .secondaryLabelColor
         case .running:
             color = .controlAccentColor
+        case .paused:
+            color = .systemOrange
         case .completed:
             color = .systemGreen
         case .failed:
