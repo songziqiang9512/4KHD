@@ -8,6 +8,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     var onNeedsMore: (() -> Void)?
     var onEscape: (() -> Bool)?
     var onRetry: (() -> Void)?
+    var onRefresh: (() -> Void)?
     var contextMenuProvider: ((GalleryItem) -> NSMenu?)?
 
     private let scrollView = NSScrollView()
@@ -37,14 +38,14 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         interval: 0.03,
         maxInterval: 0.1
     )
-    nonisolated(unsafe) private var scrollObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupView()
     }
 
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -112,6 +113,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.canLoadMore = canLoadMore
         self.isFavorite = isFavorite
         self.isCached = isCached
+        WorkspacePullToRefresh.sync(scrollView, isRefreshing: isRefreshing)
         aspectRatiosByItemID = aspectRatiosByItemID.filter { nextItemIDSet.contains($0.key) }
 
         let itemSizeChanged = updateItemSize()
@@ -164,6 +166,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
         self.showsFooter = showsFooter
+        WorkspacePullToRefresh.sync(scrollView, isRefreshing: isRefreshing)
 
         let badgeChanged = previousBadgeSignature != visibleBadgeSignature()
         let footerChanged = previousFooterState != (isRefreshing, errorMessage, canLoadMore)
@@ -179,11 +182,11 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         syncSelection()
     }
 
-    func numberOfSections(in collectionView: NSCollectionView) -> Int {
+    func numberOfSections(in _: NSCollectionView) -> Int {
         1
     }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+    func collectionView(_: NSCollectionView, numberOfItemsInSection _: Int) -> Int {
         items.count + (showsFooter ? 1 : 0)
     }
 
@@ -232,14 +235,14 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     }
 
     func collectionView(
-        _ collectionView: NSCollectionView,
+        _: NSCollectionView,
         pasteboardWriterForItemAt indexPath: IndexPath
     ) -> NSPasteboardWriting? {
         guard items.indices.contains(indexPath.item) else { return nil }
         return items[indexPath.item].detailURL as NSURL
     }
 
-    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+    func collectionView(_: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection,
               let indexPath = indexPaths.first,
               items.indices.contains(indexPath.item) else { return }
@@ -251,8 +254,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     }
 
     func collectionView(
-        _ collectionView: NSCollectionView,
-        willDisplay item: NSCollectionViewItem,
+        _: NSCollectionView,
+        willDisplay _: NSCollectionViewItem,
         forRepresentedObjectAt indexPath: IndexPath
     ) {
         guard indexPath.item >= max(items.count - 3, 0) else { return }
@@ -267,6 +270,7 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scrollView.hasHorizontalScroller = false
         scrollView.contentView.drawsBackground = false
         scrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(on: scrollView, target: self, action: #selector(handlePullToRefresh))
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
@@ -331,8 +335,12 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+    }
+
+    @objc private func handlePullToRefresh() {
+        onRefresh?()
     }
 
     @discardableResult
@@ -491,7 +499,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
 
     private func syncSelection() {
         guard let selectedItemID,
-              let index = items.firstIndex(where: { $0.id == selectedItemID }) else {
+              let index = items.firstIndex(where: { $0.id == selectedItemID })
+        else {
             isApplyingSelection = true
             collectionView.selectionIndexPaths = []
             isApplyingSelection = false
@@ -528,7 +537,8 @@ final class GalleryGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let visible = scrollView.contentView.bounds
         guard frame.isValidScrollRect,
               visible.isValidScrollRect,
-              gridLayout.collectionViewContentSize.isValidScrollSize else {
+              gridLayout.collectionViewContentSize.isValidScrollSize
+        else {
             return
         }
         guard !visible.contains(frame) else { return }
@@ -711,7 +721,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             cardView.topAnchor.constraint(equalTo: view.topAnchor),
-            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
     }
 
@@ -756,7 +766,7 @@ final class GalleryGridItemView: NSCollectionViewItem {
         }
     }
 
-    private func metadataText(for item: GalleryItem, isFavorite: Bool, isCached: Bool) -> String {
+    private func metadataText(for _: GalleryItem, isFavorite: Bool, isCached: Bool) -> String {
         var parts: [String] = []
         if isFavorite {
             parts.append("已收藏")
@@ -819,7 +829,7 @@ final class GalleryGridFooterItem: NSCollectionViewItem {
             progress.widthAnchor.constraint(equalToConstant: 16),
             progress.heightAnchor.constraint(equalToConstant: 16),
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
 
         let click = NSClickGestureRecognizer(target: self, action: #selector(didClick))

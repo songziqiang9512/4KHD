@@ -42,7 +42,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -74,6 +74,11 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         tableScrollView.hasVerticalScroller = true
         tableScrollView.contentView.drawsBackground = false
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("GalleryItem"))
         tableView.addTableColumn(column)
@@ -115,12 +120,14 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
         gridView.onRetry = { [weak self] in self?.library.retryLastFailure() }
+        gridView.onRefresh = { [weak self] in self?.library.refreshFromNetwork() }
         gridView.contextMenuProvider = { [weak self] item in
             self?.makeContextMenu(for: item)
         }
     }
 
     func reloadContent() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: library.isRefreshingList)
         rebuildRows()
         capturePendingScrollItemIfSwitchingLayout()
 
@@ -139,7 +146,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
             syncTableSelection()
             lastVisibleListSignature = visibleListSignature()
             if let pendingScrollItemID,
-               let row = rows.firstIndex(of: .item(pendingScrollItemID)) {
+               let row = rows.firstIndex(of: .item(pendingScrollItemID))
+            {
                 tableView.scrollRowToVisible(row)
             }
         case .grid:
@@ -201,8 +209,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         guard visibleRows.length > 0 else { return nil }
         let upperBound = min(visibleRows.location + visibleRows.length, rows.count)
         guard visibleRows.location < upperBound else { return nil }
-        for row in visibleRows.location..<upperBound {
-            if case .item(let id) = rows[row] {
+        for row in visibleRows.location ..< upperBound {
+            if case let .item(id) = rows[row] {
                 return id
             }
         }
@@ -258,7 +266,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private func loadMoreIfNeeded(for row: Int) {
         guard rows.indices.contains(row) else { return }
         switch rows[row] {
-        case .item(let id):
+        case let .item(id):
             if id == library.visibleItems.last?.id {
                 library.loadMoreListIfNeeded()
             }
@@ -272,7 +280,8 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private func syncTableSelection() {
         guard preferences.layout == .list else { return }
         guard let selectedID = library.selectedItemID,
-              let row = rows.firstIndex(of: .item(selectedID)) else {
+              let row = rows.firstIndex(of: .item(selectedID))
+        else {
             isApplyingSelection = true
             tableView.deselectAll(nil)
             isApplyingSelection = false
@@ -289,9 +298,9 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         let visibleRows = tableView.rows(in: tableView.visibleRect)
         guard visibleRows.length > 0 else { return [:] }
         var signature: [Int: GalleryVisibleListRowSignature] = [:]
-        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) where rows.indices.contains(row) {
+        for row in visibleRows.location ..< (visibleRows.location + visibleRows.length) where rows.indices.contains(row) {
             switch rows[row] {
-            case .item(let id):
+            case let .item(id):
                 guard let item = rowItems[id] else { continue }
                 signature[row] = GalleryVisibleListRowSignature(
                     row: rows[row],
@@ -316,7 +325,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
     private func reloadVisibleListRows() {
         let visibleRows = tableView.rows(in: tableView.visibleRect)
         guard visibleRows.length > 0, tableView.numberOfColumns > 0 else { return }
-        let validRows = visibleRows.location..<(visibleRows.location + visibleRows.length)
+        let validRows = visibleRows.location ..< (visibleRows.location + visibleRows.length)
         let rowIndexes = IndexSet(validRows.filter { rows.indices.contains($0) })
         guard !rowIndexes.isEmpty else { return }
         tableView.reloadData(forRowIndexes: rowIndexes, columnIndexes: IndexSet(integer: 0))
@@ -329,7 +338,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         guard !rows.isEmpty else { return false }
 
         let selectedRow = rows.firstIndex { row in
-            guard case .item(let id) = row else { return false }
+            guard case let .item(id) = row else { return false }
             return id == library.selectedItemID
         }
         let currentRow = selectedRow ?? (tableView.selectedRow >= 0 ? tableView.selectedRow : 0)
@@ -342,7 +351,7 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         }
 
         for row in range {
-            guard case .item(let id) = rows[row], let item = rowItems[id] else { continue }
+            guard case let .item(id) = rows[row], let item = rowItems[id] else { continue }
             library.select(item)
             return true
         }
@@ -350,13 +359,16 @@ final class GalleryContentViewController: NSViewController, WorkspaceFocusable {
         return true
     }
 
+    @objc private func handlePullToRefresh() {
+        library.refreshFromNetwork()
+    }
+
     @objc private func openSelectedTableItemInDetail() {
         let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
-        guard rows.indices.contains(row), case .item(let id) = rows[row], let item = rowItems[id] else { return }
+        guard rows.indices.contains(row), case let .item(id) = rows[row], let item = rowItems[id] else { return }
         library.select(item)
         detailPane.setPresented(true)
     }
-
 }
 
 private struct GalleryVisibleListRowSignature: Equatable {
@@ -368,11 +380,11 @@ private struct GalleryVisibleListRowSignature: Equatable {
 }
 
 extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int {
+    func numberOfRows(in _: NSTableView) -> Int {
         rows.count
     }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+    func tableView(_: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard rows.indices.contains(row) else { return 96 }
         switch rows[row] {
         case .item:
@@ -382,30 +394,31 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
         }
     }
 
-    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+    func tableView(_: NSTableView, isGroupRow _: Int) -> Bool {
         false
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+    func tableView(_: NSTableView, shouldSelectRow row: Int) -> Bool {
         guard rows.indices.contains(row) else { return false }
         if case .item = rows[row] { return true }
         return false
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+    func tableView(_: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row),
-              case .item(let id) = rows[row],
-              let item = rowItems[id] else {
+              case let .item(id) = rows[row],
+              let item = rowItems[id]
+        else {
             return nil
         }
         return item.detailURL as NSURL
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         guard rows.indices.contains(row) else { return nil }
         loadMoreIfNeeded(for: row)
         switch rows[row] {
-        case .item(let id):
+        case let .item(id):
             let view = tableView.makeView(withIdentifier: GalleryListRowView.reuseID, owner: self)
                 as? GalleryListRowView ?? GalleryListRowView()
             if let item = rowItems[id] {
@@ -438,10 +451,10 @@ extension GalleryContentViewController: NSTableViewDataSource, NSTableViewDelega
         }
     }
 
-    func tableViewSelectionDidChange(_ notification: Notification) {
+    func tableViewSelectionDidChange(_: Notification) {
         guard !isApplyingSelection else { return }
         let row = tableView.selectedRow
-        guard rows.indices.contains(row), case .item(let id) = rows[row], let item = rowItems[id] else { return }
+        guard rows.indices.contains(row), case let .item(id) = rows[row], let item = rowItems[id] else { return }
         library.select(item)
     }
 

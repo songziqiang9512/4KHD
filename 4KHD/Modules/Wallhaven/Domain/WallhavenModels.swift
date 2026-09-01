@@ -75,11 +75,13 @@ struct Wallpaper: Identifiable, Codable, Hashable {
 enum WallhavenSection: String, CaseIterable, Identifiable {
     case browse
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .browse: "浏览"
+        case .browse: "Wallhaven"
         }
     }
 
@@ -96,7 +98,9 @@ enum WallhavenCategory: String, CaseIterable, Identifiable, Codable {
     case anime
     case people
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -123,7 +127,9 @@ nonisolated enum WallhavenPurity: String, CaseIterable, Identifiable, Codable {
     case nsfw
     case all
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -173,7 +179,9 @@ enum WallhavenSorting: String, CaseIterable, Identifiable, Codable {
     case views
     case relevance
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -201,7 +209,9 @@ enum WallhavenTopRange: String, CaseIterable, Identifiable, Codable {
     case sixMonths = "6M"
     case oneYear = "1y"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }
 
 enum WallhavenResolution: String, CaseIterable, Identifiable, Codable {
@@ -210,9 +220,17 @@ enum WallhavenResolution: String, CaseIterable, Identifiable, Codable {
     case qhd = "2560x1440"
     case uhd = "3840x2160"
 
-    var id: String { rawValue }
-    var title: String { self == .any ? "分辨率" : rawValue }
-    var apiValue: String? { self == .any ? nil : rawValue }
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        self == .any ? "分辨率" : rawValue
+    }
+
+    var apiValue: String? {
+        self == .any ? nil : rawValue
+    }
 }
 
 enum WallhavenRatio: String, CaseIterable, Identifiable, Codable {
@@ -222,9 +240,17 @@ enum WallhavenRatio: String, CaseIterable, Identifiable, Codable {
     case twentyOneNine = "21x9"
     case nineSixteen = "9x16"
 
-    var id: String { rawValue }
-    var title: String { self == .any ? "比例" : rawValue }
-    var apiValue: String? { self == .any ? nil : rawValue }
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        self == .any ? "比例" : rawValue
+    }
+
+    var apiValue: String? {
+        self == .any ? nil : rawValue
+    }
 }
 
 struct WallhavenSearchParameters: Hashable {

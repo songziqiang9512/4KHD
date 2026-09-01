@@ -5,7 +5,9 @@ import AVKit
 /// 爱妹子视频使用独立原生窗口，避免播放器生命周期和图片详情切换互相干扰。
 @MainActor
 final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegate {
+    private let contentRoot = NSView()
     private let playerView = AVPlayerView()
+    private let loadingIndicator = NSProgressIndicator()
     private var currentSourceURL: URL?
     private var currentPolicySource: OnlineSourcePolicy.Source = .knit
     private var currentSaveAction: (() -> Void)?
@@ -45,13 +47,28 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
             defer: false
         )
         window.title = "视频播放"
-        window.contentView = playerView
+        window.contentView = contentRoot
         window.contentMinSize = NSSize(width: 560, height: 360)
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.collectionBehavior = [.fullScreenAuxiliary]
         playerView.controlsStyle = .floating
         playerView.showsFullScreenToggleButton = true
+        playerView.translatesAutoresizingMaskIntoConstraints = false
+        loadingIndicator.style = .spinning
+        loadingIndicator.controlSize = .large
+        loadingIndicator.isDisplayedWhenStopped = false
+        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        contentRoot.addSubview(playerView)
+        contentRoot.addSubview(loadingIndicator)
+        NSLayoutConstraint.activate([
+            playerView.leadingAnchor.constraint(equalTo: contentRoot.leadingAnchor),
+            playerView.trailingAnchor.constraint(equalTo: contentRoot.trailingAnchor),
+            playerView.topAnchor.constraint(equalTo: contentRoot.topAnchor),
+            playerView.bottomAnchor.constraint(equalTo: contentRoot.bottomAnchor),
+            loadingIndicator.centerXAnchor.constraint(equalTo: contentRoot.centerXAnchor),
+            loadingIndicator.centerYAnchor.constraint(equalTo: contentRoot.centerYAnchor),
+        ])
         super.init(window: window)
         window.delegate = self
 
@@ -87,13 +104,8 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         playbackGeneration = generation
         currentPolicySource = source
         updateCurrentVideoContext(url: url, saveAction: onSave)
-        window?.title = title.isEmpty ? Self.defaultTitle(for: source) : title
-        if window?.isVisible != true {
-            window?.center()
-        }
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        presentWindow(title: title, source: source)
+        setLoadingVisible(true)
 
         if let referer, !referer.isEmpty {
             Task { @MainActor in
@@ -112,12 +124,37 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
                     self.startPlaying(assetURL: prepared.url, userAgent: userAgent)
                 } catch {
                     guard self.playbackGeneration == generation else { return }
+                    self.setLoadingVisible(false)
                     self.presentPlaybackFailure(message: error.localizedDescription)
                 }
             }
             return
         }
         startPlaying(assetURL: url, userAgent: userAgent)
+    }
+
+    func beginPreparingPlayback(title: String, source: OnlineSourcePolicy.Source) {
+        currentPolicySource = source
+        presentWindow(title: title, source: source)
+        setLoadingVisible(true)
+    }
+
+    func presentResolveFailure(message: String) {
+        setLoadingVisible(false)
+        if window?.isVisible != true {
+            presentWindow(title: Self.defaultTitle(for: currentPolicySource), source: currentPolicySource)
+        }
+        presentPlaybackFailure(message: message)
+    }
+
+    private func presentWindow(title: String, source: OnlineSourcePolicy.Source) {
+        window?.title = title.isEmpty ? Self.defaultTitle(for: source) : title
+        if window?.isVisible != true {
+            window?.center()
+        }
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func startPlaying(assetURL: URL, userAgent: String) {
@@ -128,6 +165,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         let playerItem = AVPlayerItem(asset: asset)
         playerView.player = AVPlayer(playerItem: playerItem)
         observeStatus(of: playerItem)
+        setLoadingVisible(false)
         playerView.player?.play()
     }
 
@@ -145,6 +183,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         playerItemStatusObservation?.invalidate()
         playerItemStatusObservation = nil
         dismissPlaybackFailureAlert()
+        setLoadingVisible(false)
         if let player = playerView.player {
             player.pause()
             player.replaceCurrentItem(with: nil)
@@ -237,6 +276,16 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
             return
         }
         WorkspaceCurrentReference.web(url).writeToPasteboard()
+    }
+
+    private func setLoadingVisible(_ visible: Bool) {
+        if visible {
+            loadingIndicator.isHidden = false
+            loadingIndicator.startAnimation(nil)
+        } else {
+            loadingIndicator.stopAnimation(nil)
+            loadingIndicator.isHidden = true
+        }
     }
 
     private static func defaultTitle(for source: OnlineSourcePolicy.Source) -> String {

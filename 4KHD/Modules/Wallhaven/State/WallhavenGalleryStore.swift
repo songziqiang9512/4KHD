@@ -21,10 +21,18 @@ final class WallhavenGalleryStore {
 
     // MARK: - Convenience accessors
 
-    var section: WallhavenSection { feed.section }
+    var section: WallhavenSection {
+        feed.section
+    }
 
-    func setSection(_ section: WallhavenSection) { feed.setSection(section) }
-    var wallpapers: [Wallpaper] { feed.wallpapers }
+    func setSection(_ section: WallhavenSection) {
+        feed.setSection(section)
+    }
+
+    var wallpapers: [Wallpaper] {
+        feed.wallpapers
+    }
+
     var selectedWallpaperID: Wallpaper.ID? {
         get { feed.selectedWallpaperID }
         set {
@@ -32,21 +40,62 @@ final class WallhavenGalleryStore {
             selectedWallpaper = feed.selectedWallpaper
         }
     }
-    var isRefreshingList: Bool { feed.isRefreshingList }
-    var canLoadMoreList: Bool { feed.canLoadMoreList }
-    var feedErrorMessage: String? { feed.feedErrorMessage }
-    var searchText: String { feed.searchText }
-    var activeSearchQuery: String? { feed.activeSearchQuery }
 
-    var category: WallhavenCategory { feed.category }
-    var sorting: WallhavenSorting { feed.sorting }
-    var purity: WallhavenPurity { feed.purity }
-    var hasAPIKey: Bool { feed.hasAPIKey }
-    var allowedPurities: [WallhavenPurity] { feed.allowedPurities }
-    var resolvedWallpaper: Wallpaper? { feed.resolvedWallpaper }
-    var isResolvingDetail: Bool { feed.isResolvingDetail }
-    var resolution: WallhavenResolution { feed.resolution }
-    var ratio: WallhavenRatio { feed.ratio }
+    var isRefreshingList: Bool {
+        feed.isRefreshingList
+    }
+
+    var canLoadMoreList: Bool {
+        feed.canLoadMoreList
+    }
+
+    var feedErrorMessage: String? {
+        feed.feedErrorMessage
+    }
+
+    var searchText: String {
+        feed.searchText
+    }
+
+    var activeSearchQuery: String? {
+        feed.activeSearchQuery
+    }
+
+    var category: WallhavenCategory {
+        feed.category
+    }
+
+    var sorting: WallhavenSorting {
+        feed.sorting
+    }
+
+    var purity: WallhavenPurity {
+        feed.purity
+    }
+
+    var hasAPIKey: Bool {
+        feed.hasAPIKey
+    }
+
+    var allowedPurities: [WallhavenPurity] {
+        feed.allowedPurities
+    }
+
+    var resolvedWallpaper: Wallpaper? {
+        feed.resolvedWallpaper
+    }
+
+    var isResolvingDetail: Bool {
+        feed.isResolvingDetail
+    }
+
+    var resolution: WallhavenResolution {
+        feed.resolution
+    }
+
+    var ratio: WallhavenRatio {
+        feed.ratio
+    }
 
     var selectedWallpaper: Wallpaper?
 
@@ -58,27 +107,81 @@ final class WallhavenGalleryStore {
         return selectedWallpaper
     }
 
-    func select(_ wallpaper: Wallpaper) { feed.select(wallpaper) }
-    func refreshFromNetwork() { feed.refreshFromNetwork() }
-    func retryLastFailure() { feed.retryLastFailure() }
-    func bootstrapIfNeeded() { feed.bootstrapIfNeeded() }
-    func loadMoreIfNeeded() { feed.loadMoreIfNeeded() }
-    func setSearchText(_ text: String) { feed.setSearchText(text) }
-    func submitSearch(_ query: String) { feed.submitSearch(query) }
-    func clearSearch() { feed.clearSearch() }
+    func select(_ wallpaper: Wallpaper) {
+        feed.select(wallpaper)
+    }
 
-    func setCategory(_ newValue: WallhavenCategory) { feed.setCategory(newValue) }
-    func setSorting(_ newValue: WallhavenSorting) { feed.setSorting(newValue) }
-    func setResolution(_ newValue: WallhavenResolution) { feed.setResolution(newValue) }
-    func setRatio(_ newValue: WallhavenRatio) { feed.setRatio(newValue) }
-    func setPurity(_ newValue: WallhavenPurity) { feed.setPurity(newValue) }
+    func refreshFromNetwork() {
+        feed.refreshFromNetwork()
+    }
 
-    func resolveDetail(for wallpaper: Wallpaper) { feed.resolveDetail(for: wallpaper) }
-    func cancelResolveDetail() { feed.cancelResolveDetail() }
+    func retryLastFailure() {
+        feed.retryLastFailure()
+    }
 
-    var isBrowsingUploader: Bool { feed.isBrowsingUploader }
-    func showUploaderWorks(username: String) { feed.showUploaderWorks(username: username) }
-    func restorePreviousBrowseState() { feed.restorePreviousBrowseState() }
+    func bootstrapIfNeeded() {
+        feed.bootstrapIfNeeded()
+    }
+
+    func loadMoreIfNeeded() {
+        feed.loadMoreIfNeeded()
+    }
+
+    func setSearchText(_ text: String) {
+        feed.setSearchText(text)
+    }
+
+    func submitSearch(_ query: String) {
+        feed.submitSearch(query)
+    }
+
+    func clearSearch() {
+        feed.clearSearch()
+    }
+
+    func setCategory(_ newValue: WallhavenCategory) {
+        feed.setCategory(newValue)
+    }
+
+    func setSorting(_ newValue: WallhavenSorting) {
+        feed.setSorting(newValue)
+    }
+
+    func setResolution(_ newValue: WallhavenResolution) {
+        feed.setResolution(newValue)
+    }
+
+    func setRatio(_ newValue: WallhavenRatio) {
+        feed.setRatio(newValue)
+    }
+
+    func setPurity(_ newValue: WallhavenPurity) {
+        feed.setPurity(newValue)
+    }
+
+    func resolveDetail(for wallpaper: Wallpaper) {
+        feed.resolveDetail(for: wallpaper)
+    }
+
+    func cancelResolveDetail() {
+        feed.cancelResolveDetail()
+    }
+
+    var isBrowsingUploader: Bool {
+        feed.isBrowsingUploader
+    }
+
+    var uploaderUsername: String? {
+        feed.uploaderUsername
+    }
+
+    func showUploaderWorks(username: String) {
+        feed.showUploaderWorks(username: username)
+    }
+
+    func restorePreviousBrowseState() {
+        feed.restorePreviousBrowseState()
+    }
 
     // MARK: - Favorites
 

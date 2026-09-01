@@ -6,6 +6,9 @@
 
 ## 功能
 
+### 工作区
+- 工具栏当前位置显示模块名或当前分类/标签；列表与网格支持下拉刷新（`⌘R` / 菜单刷新仍可用）
+
 ### 在线图库 — 4KHD Gallery
 - 浏览 4KHD 网站栏目（最新、推荐、Cosplay、写真）
 - 列表/网格双视图，封面缩略图 + 标题 + 元信息
@@ -23,6 +26,7 @@
 - 搜索高亮+debounce、收藏集成、Inspector 信息展示
 
 ### 在线图库 — Wallhaven
+- 侧边栏分组与入口使用站点原名 Wallhaven
 - 浏览 wallhaven.cc 壁纸（分类/排序/比例/分辨率筛选）
 - 纯度门控（无 API Key 仅 SFW）
 - 上传者作品浏览（API @username 搜索 + HTML 抓取回退）
@@ -54,15 +58,15 @@
 - 无右侧详情栏。只播放公开观看页中的 `data-src`；`viewhd` 卡片改解析同一 id 的 `/video/view/`。不伪造登录态
 
 ### 在线视频 — TangxinGallery
-- 侧边栏固定最近更新、分类目录、作者目录；标签和作者名称运行时从 `/tag/`、`/a/` 解析。分类/作者目录用随文字宽高变化的密集小卡片
+- 侧边栏固定最近更新、分类目录、作者目录；标签和作者名称运行时从 `/tag/`、`/a/` 解析。分类/作者目录用统一固定宽高的标签格，长名字换行
 - 无右侧详情栏。双击目录卡片进入子信息流；视频卡片双击或右键播放公开观看页中的当前片 HLS（媒体请求带站点 Referer），并可打开作者、分类与相关推荐
 
 ### 图片详情
 - 触控板缩放/平移、鼠标位置为中心缩放
 - 上/下张键盘/浮层按钮导航，Escape/Tab/Enter 键盘支持
 - 窗内大图模式（自动隐藏工具栏和胶卷条）
-- 底部缩略图胶卷条（4KHD/MissKon/爱妹子/每日大赛及其在线收藏详情）
-- 4KHD/MissKon/爱妹子/每日大赛及对应在线收藏的图集尾页推荐，可直接进入来源模块的推荐图集
+- 底部缩略图胶卷条（4KHD/MissKon/爱妹子/每日大赛及我的收藏详情）
+- 4KHD/MissKon/爱妹子/每日大赛及对应收藏来源的图集尾页推荐，可直接进入来源模块的推荐图集
 - 保存图片、重置缩放
 
 ### 本地图片
@@ -72,8 +76,8 @@
 - 设为桌面壁纸
 - 搜索匹配文件名和文件夹名，结果高亮
 
-### 收藏（在线收藏）
-- 「本地」分组内的「在线收藏」节点，汇总 4KHD / MissKon / Wallhaven / KnitGallery / MrdsGallery / QuanjiGallery / PornyGallery / TangxinGallery 的收藏
+### 收藏（我的收藏）
+- 「本地」分组内的「我的收藏」节点，汇总 4KHD / MissKon / Wallhaven / KnitGallery / MrdsGallery / QuanjiGallery / PornyGallery / TangxinGallery 的收藏
 - 工具栏按来源筛选（全部及各在线模块）与搜索
 - 列表 / 瀑布流网格双布局（与 MissKon/4KHD 相同的卡片、hover、双击交互）；图集来源的详情区为大图查看区（缩放、胶片条、沉浸模式）
 - 持久保存于 FavoritesStore（favorites.json）；旧版本收藏数据按 detailURL host 自动兼容
@@ -122,7 +126,7 @@
 
 Shell 通过 `WorkspaceModuleDescriptor` 组装每个模块的 content/detail controller 与工具栏能力；Favorites 通过 App 注册的 source adapter 使用各在线源能力，业务模块之间不直接引用具体实现。
 
-维护边界见 `AGENTS.md`；当前实现与验证状态见 `docs/ai-handover-2026-09-01.md`；发布操作见 `docs/release-process.md`；1.9.1 用户可见改动见 `docs/releases/1.9.1.md`。
+维护边界见 `AGENTS.md`；当前实现与验证状态见 `docs/ai-handover-2026-09-01.md`；发布操作见 `docs/release-process.md`；1.9.2 用户可见改动见 `docs/releases/1.9.2.md`。
 
 ## 开发
 

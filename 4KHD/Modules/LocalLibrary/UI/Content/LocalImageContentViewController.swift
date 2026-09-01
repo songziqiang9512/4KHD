@@ -44,7 +44,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -87,6 +87,9 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         gridView.onShowInfo = { [weak self] image in
             self?.showInfo(for: image)
         }
+        gridView.onRefresh = { [weak self] in
+            self?.localLibrary.refreshSelectedRoot()
+        }
     }
 
     private func setupTableView() {
@@ -96,6 +99,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         scrollView.hasVerticalScroller = true
         scrollView.contentView.drawsBackground = false
         scrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: scrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Image"))
         tableView.addTableColumn(column)
@@ -125,15 +133,18 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
 
         if localLibrary.roots.isEmpty {
             setActiveView(makePlaceholderView(title: "还没有本地目录", detail: "导入一个图片目录开始浏览。", showsImportButton: true))
+            syncPullToRefresh()
             return
         }
         let selectedImages = localLibrary.selectedImages
         guard !selectedImages.isEmpty else {
             setActiveView(makePlaceholderView(title: "当前目录没有图片", detail: selectedPlaceholderDetail, showsImportButton: false))
+            syncPullToRefresh()
             return
         }
         guard !filteredEntries.isEmpty else {
             setActiveView(makePlaceholderView(title: "没有匹配图片", detail: preferences.searchText, showsImportButton: false))
+            syncPullToRefresh()
             return
         }
 
@@ -187,6 +198,16 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             }
         }
         pendingScrollIndex = nil
+        syncPullToRefresh()
+    }
+
+    @objc private func handlePullToRefresh() {
+        localLibrary.refreshSelectedRoot()
+    }
+
+    private func syncPullToRefresh() {
+        WorkspacePullToRefresh.sync(scrollView, isRefreshing: localLibrary.isScanning)
+        WorkspacePullToRefresh.sync(gridView.scrollView, isRefreshing: localLibrary.isScanning)
     }
 
     private func setActiveView(_ nextView: NSView) {
@@ -231,7 +252,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             stack.centerXAnchor.constraint(equalTo: readableArea.centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: readableArea.centerYAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: readableArea.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: readableArea.trailingAnchor, constant: -24)
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: readableArea.trailingAnchor, constant: -24),
         ])
         return container
     }
@@ -243,6 +264,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
             _ = localLibrary.roots
             _ = localLibrary.selectedFolderID
             _ = localLibrary.selectedImageIndex
+            _ = localLibrary.isScanning
             _ = preferences.searchText
             _ = preferences.layout
             _ = preferences.sortField
@@ -333,7 +355,7 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         } ?? 0
         let lowerBound = max(0, selectedRow - 80)
         let upperBound = min(filteredEntries.count, selectedRow + 160)
-        return filteredEntries[lowerBound..<upperBound].map(\.image)
+        return filteredEntries[lowerBound ..< upperBound].map(\.image)
     }
 
     private func compare(_ lhs: LocalImageItem, _ rhs: LocalImageItem) -> ComparisonResult {
@@ -366,7 +388,8 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
 
     private func syncTableSelection() {
         guard let selectedID = localLibrary.selectedImage?.id,
-              let row = filteredEntries.firstIndex(where: { $0.image.id == selectedID }) else {
+              let row = filteredEntries.firstIndex(where: { $0.image.id == selectedID })
+        else {
             tableView.deselectAll(nil)
             return
         }
@@ -390,11 +413,11 @@ final class LocalImageContentViewController: NSViewController, NSTableViewDataSo
         }
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int {
+    func numberOfRows(in _: NSTableView) -> Int {
         filteredEntries.count
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         guard filteredEntries.indices.contains(row) else { return nil }
         let cell = tableView.makeView(
             withIdentifier: LocalImageListCellView.reuseID,

@@ -56,115 +56,14 @@ final class OnlineVideoDirectoryHeaderView: NSView {
 
 enum OnlineVideoDirectoryChipMetrics {
     static let horizontalPadding: CGFloat = 10
-    static let verticalPadding: CGFloat = 7
-    static let titleSubtitleSpacing: CGFloat = 1
-    static let minWidth: CGFloat = 72
-    static let maxWidth: CGFloat = 220
+    static let verticalPadding: CGFloat = 8
+    static let titleSubtitleSpacing: CGFloat = 2
+    static let itemSize = NSSize(width: 120, height: 76)
+    static let titleLineLimit = 3
     static let interitemSpacing: CGFloat = 8
     static let lineSpacing: CGFloat = 8
     static let footerHeight: CGFloat = 42
-
-    static func size(title: String, subtitle: String) -> NSSize {
-        let titleFont = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let subtitleFont = NSFont.systemFont(ofSize: 11)
-        let maxTextWidth = maxWidth - horizontalPadding * 2
-        let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-        let titleBounds = (title as NSString).boundingRect(
-            with: NSSize(width: maxTextWidth, height: 36),
-            options: options,
-            attributes: [.font: titleFont]
-        )
-        var width = ceil(titleBounds.width) + horizontalPadding * 2
-        var height = ceil(titleBounds.height) + verticalPadding * 2
-        if !subtitle.isEmpty {
-            let subtitleBounds = (subtitle as NSString).boundingRect(
-                with: NSSize(width: maxTextWidth, height: 28),
-                options: options,
-                attributes: [.font: subtitleFont]
-            )
-            width = max(width, ceil(subtitleBounds.width) + horizontalPadding * 2)
-            height += ceil(subtitleBounds.height) + titleSubtitleSpacing
-        }
-        return NSSize(
-            width: min(max(width, minWidth), maxWidth),
-            height: max(height, 30)
-        )
-    }
-}
-
-final class OnlineVideoDirectoryChipLayout: NSCollectionViewLayout {
-    var itemSizeProvider: ((Int) -> NSSize)?
-    var treatsLastItemAsFooter = true
-    private var cache: [NSCollectionViewLayoutAttributes] = []
-    private var contentHeight: CGFloat = 0
-    private var preparedWidth: CGFloat = 0
-
-    override var collectionViewContentSize: NSSize {
-        NSSize(width: preparedWidth, height: contentHeight)
-    }
-
-    override func prepare() {
-        super.prepare()
-        cache.removeAll(keepingCapacity: true)
-        contentHeight = 0
-        preparedWidth = 0
-        guard let collectionView, collectionView.numberOfSections > 0 else { return }
-        let width = collectionView.bounds.width
-        guard width > 1 else { return }
-        preparedWidth = width
-        let itemCount = collectionView.numberOfItems(inSection: 0)
-        let inset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        let usableWidth = max(width - inset.left - inset.right, 1)
-        var x = inset.left
-        var y = inset.top
-        var rowHeight: CGFloat = 0
-        let chipCount = treatsLastItemAsFooter ? max(itemCount - 1, 0) : itemCount
-        for index in 0 ..< chipCount {
-            var size = itemSizeProvider?(index) ?? NSSize(width: 80, height: 32)
-            size.width = min(size.width, usableWidth)
-            if x > inset.left, x + size.width > width - inset.right {
-                x = inset.left
-                y += rowHeight + OnlineVideoDirectoryChipMetrics.lineSpacing
-                rowHeight = 0
-            }
-            let attributes = NSCollectionViewLayoutAttributes(forItemWith: IndexPath(item: index, section: 0))
-            attributes.frame = NSRect(x: x, y: y, width: size.width, height: size.height)
-            cache.append(attributes)
-            x += size.width + OnlineVideoDirectoryChipMetrics.interitemSpacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        if treatsLastItemAsFooter, itemCount > chipCount {
-            if chipCount > 0 {
-                y += rowHeight + OnlineVideoDirectoryChipMetrics.lineSpacing
-            }
-            let attributes = NSCollectionViewLayoutAttributes(
-                forItemWith: IndexPath(item: chipCount, section: 0)
-            )
-            attributes.frame = NSRect(
-                x: inset.left,
-                y: y,
-                width: usableWidth,
-                height: OnlineVideoDirectoryChipMetrics.footerHeight
-            )
-            cache.append(attributes)
-            y += OnlineVideoDirectoryChipMetrics.footerHeight
-        } else {
-            y += rowHeight
-        }
-        contentHeight = max(y + inset.bottom, inset.top + inset.bottom)
-    }
-
-    override func layoutAttributesForElements(in rect: NSRect) -> [NSCollectionViewLayoutAttributes] {
-        cache.filter { $0.frame.intersects(rect) }
-    }
-
-    override func layoutAttributesForItem(at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
-        cache.first { $0.indexPath == indexPath }
-    }
-
-    override func shouldInvalidateLayout(forBoundsChange newBounds: NSRect) -> Bool {
-        abs(newBounds.width - preparedWidth) > 0.5
-    }
+    static let sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
 }
 
 @MainActor
@@ -182,16 +81,25 @@ final class OnlineVideoDirectoryChipItem: NSCollectionViewItem {
         chrome.layer?.masksToBounds = true
         chrome.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.maximumNumberOfLines = 2
+        titleLabel.alignment = .center
+        titleLabel.usesSingleLineMode = false
+        titleLabel.maximumNumberOfLines = OnlineVideoDirectoryChipMetrics.titleLineLimit
+        titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        if let cell = titleLabel.cell as? NSTextFieldCell {
+            cell.wraps = true
+            cell.truncatesLastVisibleLine = true
+            cell.isScrollable = false
+        }
         subtitleLabel.font = .systemFont(ofSize: 11)
         subtitleLabel.textColor = .secondaryLabelColor
+        subtitleLabel.alignment = .center
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.maximumNumberOfLines = 1
         let stack = NSStackView(views: [titleLabel, subtitleLabel])
         stack.orientation = .vertical
-        stack.alignment = .leading
+        stack.alignment = .centerX
         stack.spacing = OnlineVideoDirectoryChipMetrics.titleSubtitleSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(chrome)
@@ -209,16 +117,26 @@ final class OnlineVideoDirectoryChipItem: NSCollectionViewItem {
                 equalTo: chrome.trailingAnchor,
                 constant: -OnlineVideoDirectoryChipMetrics.horizontalPadding
             ),
+            stack.centerYAnchor.constraint(equalTo: chrome.centerYAnchor),
             stack.topAnchor.constraint(
-                equalTo: chrome.topAnchor,
+                greaterThanOrEqualTo: chrome.topAnchor,
                 constant: OnlineVideoDirectoryChipMetrics.verticalPadding
             ),
             stack.bottomAnchor.constraint(
-                equalTo: chrome.bottomAnchor,
+                lessThanOrEqualTo: chrome.bottomAnchor,
                 constant: -OnlineVideoDirectoryChipMetrics.verticalPadding
             ),
         ])
         updateChrome()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let textWidth = max(
+            chrome.bounds.width - OnlineVideoDirectoryChipMetrics.horizontalPadding * 2,
+            1
+        )
+        titleLabel.preferredMaxLayoutWidth = textWidth
     }
 
     override func prepareForReuse() {
@@ -231,13 +149,30 @@ final class OnlineVideoDirectoryChipItem: NSCollectionViewItem {
 
     func configure(item: OnlineVideoItem, isSelected selected: Bool, searchQuery: String?) {
         if let searchQuery, !searchQuery.isEmpty {
-            titleLabel.attributedStringValue = highlightedAttributedString(item.title, query: searchQuery)
+            titleLabel.attributedStringValue = wrappingTitle(
+                highlightedAttributedString(item.title, query: searchQuery)
+            )
         } else {
             titleLabel.stringValue = item.title
         }
         subtitleLabel.stringValue = item.subtitle
         subtitleLabel.isHidden = item.subtitle.isEmpty
         applySelectionState(selected)
+    }
+
+    private func wrappingTitle(_ attributed: NSAttributedString) -> NSAttributedString {
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        mutable.addAttributes(
+            [
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium),
+                .paragraphStyle: paragraph,
+            ],
+            range: NSRange(location: 0, length: mutable.length)
+        )
+        return mutable
     }
 
     override var isSelected: Bool {

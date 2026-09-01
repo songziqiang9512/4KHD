@@ -21,13 +21,15 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     private let configureImageRequest: (inout URLRequest) -> Void
     private let onPlayVideo: (OnlineVideoItem, URL) -> Void
     private let onSaveVideo: (OnlineVideoItem, URL) -> Void
+    private let onPreparePlay: ((OnlineVideoItem) -> Void)?
+    private let onPlayFailed: ((String) -> Void)?
     private let onOpenFilter: ((String) -> Void)?
     private let tableView = WorkspaceTableView()
     private let tableScrollView = NSScrollView()
     private let collectionView = OnlineVideoGridCollectionView()
     private let gridScrollView = NSScrollView()
     private let gridLayout = WorkspaceThumbnailWaterfallLayout()
-    private let directoryChipLayout = OnlineVideoDirectoryChipLayout()
+    private let directoryChipLayout = NSCollectionViewFlowLayout()
     private let directoryHeader = OnlineVideoDirectoryHeaderView()
     private let contentContainer = NSView()
     private var directoryHeaderHeight: NSLayoutConstraint?
@@ -84,6 +86,8 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         configureImageRequest: @escaping (inout URLRequest) -> Void,
         onPlayVideo: @escaping (OnlineVideoItem, URL) -> Void,
         onSaveVideo: @escaping (OnlineVideoItem, URL) -> Void,
+        onPreparePlay: ((OnlineVideoItem) -> Void)? = nil,
+        onPlayFailed: ((String) -> Void)? = nil,
         onOpenFilter: ((String) -> Void)? = nil
     ) {
         self.store = store
@@ -91,6 +95,8 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         self.configureImageRequest = configureImageRequest
         self.onPlayVideo = onPlayVideo
         self.onSaveVideo = onSaveVideo
+        self.onPreparePlay = onPreparePlay
+        self.onPlayFailed = onPlayFailed
         self.onOpenFilter = onOpenFilter
         super.init(nibName: nil, bundle: nil)
     }
@@ -152,6 +158,11 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         tableScrollView.automaticallyAdjustsContentInsets = true
         tableScrollView.hasVerticalScroller = true
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("OnlineVideoItemCol")))
         tableView.headerView = nil
         tableView.rowHeight = 96
@@ -164,6 +175,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         tableView.doubleAction = #selector(playTableSelection)
         tableView.keyboardContext = WorkspaceKeyboardContext(
             stepSelection: { [weak self] delta in self?.stepListSelection(delta) ?? false },
+            quickLook: { [weak self] in self?.playCurrentSelection() ?? false },
             onEscape: { [weak self] in self?.clearSearch() ?? false },
             onEnter: { [weak self] in self?.playCurrentSelection(); return true }
         )
@@ -197,16 +209,14 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         collectionView.register(OnlineVideoGridItem.self, forItemWithIdentifier: OnlineVideoGridItem.identifier)
         collectionView.register(OnlineVideoDirectoryChipItem.self, forItemWithIdentifier: OnlineVideoDirectoryChipItem.identifier)
         collectionView.register(OnlineVideoGridFooterItem.self, forItemWithIdentifier: OnlineVideoGridFooterItem.identifier)
-        directoryChipLayout.treatsLastItemAsFooter = true
-        directoryChipLayout.itemSizeProvider = { [weak self] index in
-            guard let self, store.items.indices.contains(index) else {
-                return NSSize(width: 80, height: 32)
-            }
-            let item = store.items[index]
-            return OnlineVideoDirectoryChipMetrics.size(title: item.title, subtitle: item.subtitle)
-        }
+        directoryChipLayout.itemSize = OnlineVideoDirectoryChipMetrics.itemSize
+        directoryChipLayout.minimumInteritemSpacing = OnlineVideoDirectoryChipMetrics.interitemSpacing
+        directoryChipLayout.minimumLineSpacing = OnlineVideoDirectoryChipMetrics.lineSpacing
+        directoryChipLayout.sectionInset = OnlineVideoDirectoryChipMetrics.sectionInset
+        collectionView.autoresizingMask = [.width, .height]
         collectionView.keyboardContext = WorkspaceKeyboardContext(
             stepSelection: { [weak self] delta in self?.stepGridSelection(delta) ?? false },
+            quickLook: { [weak self] in self?.playCurrentSelection() ?? false },
             onEscape: { [weak self] in self?.clearSearch() ?? false },
             onEnter: { [weak self] in self?.playCurrentSelection(); return true }
         )
@@ -220,7 +230,13 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         gridScrollView.hasVerticalScroller = true
         gridScrollView.hasHorizontalScroller = false
         gridScrollView.contentView.drawsBackground = false
+        gridScrollView.contentView.clipsToBounds = true
         gridScrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(
+            on: gridScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         gridScrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self,
@@ -257,7 +273,9 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     private func reloadContent() {
         updateDirectoryHeader()
         rows = store.items.map { .item($0.id) }
-        if shouldShowFooter { rows.append(.footer) }
+        let showFooter = shouldShowFooter
+        if showFooter { rows.append(.footer) }
+        gridLayout.treatsLastItemAsFooter = showFooter
         let directoryChips = usesDirectoryChipGrid
         if directoryChips != lastUsedDirectoryChips {
             lastUsedDirectoryChips = directoryChips
@@ -268,6 +286,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
             applyCollectionLayoutForCurrentFeed()
             setActiveView(gridScrollView)
             reloadGridContent()
+            syncPullToRefresh()
             return
         }
         applyCollectionLayoutForCurrentFeed()
@@ -279,6 +298,16 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
             setActiveView(gridScrollView)
             reloadGridContent()
         }
+        syncPullToRefresh()
+    }
+
+    @objc private func handlePullToRefresh() {
+        store.refreshFromNetwork()
+    }
+
+    private func syncPullToRefresh() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: store.isRefreshingList)
+        WorkspacePullToRefresh.sync(gridScrollView, isRefreshing: store.isRefreshingList)
     }
 
     private var shouldShowFooter: Bool {
@@ -289,8 +318,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
         return store.listErrorMessage != nil
             || store.isRefreshingList
             || store.canLoadMoreList
-            || !store.items.isEmpty
-            || store.activeSearchQuery != nil
+            || (store.items.isEmpty && store.activeSearchQuery != nil)
     }
 
     private func updateDirectoryHeader() {
@@ -502,7 +530,7 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
             return
         }
         Task { [weak self] in
-            await self?.performVideoAction(item, title: "无法播放") { item, url in
+            await self?.performVideoAction(item, title: "无法播放", preparePlayback: true) { item, url in
                 self?.onPlayVideo(item, url)
             }
         }
@@ -519,14 +547,22 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     private func performVideoAction(
         _ item: OnlineVideoItem,
         title: String,
+        preparePlayback: Bool = false,
         action: @MainActor (OnlineVideoItem, URL) -> Void
     ) async {
+        if preparePlayback {
+            onPreparePlay?(item)
+        }
         do {
             let url = try await store.resolveVideoURL(for: item)
             action(item, url)
         } catch is CancellationError {
             return
         } catch {
+            if preparePlayback, let onPlayFailed {
+                onPlayFailed(error.localizedDescription)
+                return
+            }
             let alert = makeAppAlert(
                 title: title,
                 message: error.localizedDescription,
@@ -846,12 +882,16 @@ final class OnlineVideoFeedViewController: NSViewController, WorkspaceFocusable 
     @discardableResult
     private func updateGridLayoutIfNeeded() -> Bool {
         if usesDirectoryChipGrid {
-            let visibleWidth = gridScrollView.contentView.bounds.width > 0
-                ? gridScrollView.contentView.bounds.width
-                : view.bounds.width
-            let widthChanged = abs(visibleWidth - lastGridLayoutWidth) > 0.5
+            let paneWidth = floor(gridScrollView.bounds.width)
+            guard paneWidth > 1 else { return false }
+            if abs(collectionView.frame.width - paneWidth) > 0.5 {
+                collectionView.setFrameSize(
+                    NSSize(width: paneWidth, height: max(collectionView.frame.height, 1))
+                )
+            }
+            let widthChanged = abs(paneWidth - lastGridLayoutWidth) > 0.5
             guard widthChanged else { return false }
-            lastGridLayoutWidth = visibleWidth
+            lastGridLayoutWidth = paneWidth
             NSView.performWithoutAnimation { directoryChipLayout.invalidateLayout() }
             return true
         }
@@ -1061,7 +1101,25 @@ extension OnlineVideoFeedViewController: NSTableViewDataSource, NSTableViewDeleg
     }
 }
 
-extension OnlineVideoFeedViewController: NSCollectionViewDataSource, NSCollectionViewDelegate {
+extension OnlineVideoFeedViewController: NSCollectionViewDataSource, NSCollectionViewDelegate, NSCollectionViewDelegateFlowLayout {
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        layout _: NSCollectionViewLayout,
+        sizeForItemAt indexPath: IndexPath
+    ) -> NSSize {
+        guard usesDirectoryChipGrid else {
+            return OnlineVideoDirectoryChipMetrics.itemSize
+        }
+        if indexPath.item >= store.items.count {
+            let inset = OnlineVideoDirectoryChipMetrics.sectionInset
+            return NSSize(
+                width: max(collectionView.bounds.width - inset.left - inset.right, 1),
+                height: OnlineVideoDirectoryChipMetrics.footerHeight
+            )
+        }
+        return OnlineVideoDirectoryChipMetrics.itemSize
+    }
+
     nonisolated func numberOfSections(in _: NSCollectionView) -> Int {
         1
     }
@@ -1103,6 +1161,9 @@ extension OnlineVideoFeedViewController: NSCollectionViewDataSource, NSCollectio
         guard !isApplyingSelection else { return }
         gridSelectionChanged()
         refreshVisibleGridSelection()
+        if usesDirectoryChipGrid, let item = store.selectedItem, item.isDirectoryEntry {
+            play(item)
+        }
     }
 }
 

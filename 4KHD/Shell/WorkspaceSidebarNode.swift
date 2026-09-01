@@ -39,7 +39,7 @@ enum WorkspaceSidebarNode: Hashable {
         case let .localFolder(folder):
             folder.title
         case .favoritesModule:
-            "在线收藏"
+            "我的收藏"
         }
     }
 

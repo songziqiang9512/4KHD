@@ -8,6 +8,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     var onNeedsMore: (() -> Void)?
     var onEscape: (() -> Bool)?
     var onRetry: (() -> Void)?
+    var onRefresh: (() -> Void)?
     var contextMenuProvider: ((Wallpaper) -> NSMenu?)?
 
     private let scrollView = NSScrollView()
@@ -32,14 +33,16 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "WallhavenGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
-    nonisolated(unsafe) private var scrollObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupView()
     }
 
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     deinit {
         if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
@@ -51,7 +54,13 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         scheduleThumbnailPrefetch()
     }
 
-    func focus() { window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView) }
+    func focus() {
+        window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView)
+    }
+
+    @objc private func handlePullToRefresh() {
+        onRefresh?()
+    }
 
     func firstVisibleItemID() -> Wallpaper.ID? {
         collectionView.indexPathsForVisibleItems()
@@ -92,6 +101,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         self.isRefreshing = isRefreshing
         self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
+        WorkspacePullToRefresh.sync(scrollView, isRefreshing: isRefreshing)
         aspectRatiosByItemID = aspectRatiosByItemID.filter { nextItemIDSet.contains($0.key) }
 
         let itemSizeChanged = updateItemSize()
@@ -126,7 +136,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
                   let cell = collectionView.item(at: indexPath) as? WallhavenGridItemView else { continue }
             let wallpaper = wallpapers[indexPath.item]
             cell.configure(wallpaper: wallpaper, isSelected: wallpaper.id == selectedWallpaperID, searchQuery: searchQuery) { [weak self] ratio in
-                self?.updateAspectRatio(ratio, for: wallpaper.id, knownAspectRatio: wallpaper.aspectRatio.map({ CGFloat($0) }))
+                self?.updateAspectRatio(ratio, for: wallpaper.id, knownAspectRatio: wallpaper.aspectRatio.map { CGFloat($0) })
             }
         }
     }
@@ -153,15 +163,17 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         let oldItemCount = previousItemIDs.count
         performWithoutAnimation {
             collectionView.performBatchUpdates {
-                let indexPaths = Set((oldItemCount..<nextItemIDs.count).map { IndexPath(item: $0, section: 0) })
+                let indexPaths = Set((oldItemCount ..< nextItemIDs.count).map { IndexPath(item: $0, section: 0) })
                 collectionView.insertItems(at: indexPaths)
             }
         }
     }
 
-    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    func numberOfSections(in _: NSCollectionView) -> Int {
+        1
+    }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+    func collectionView(_: NSCollectionView, numberOfItemsInSection _: Int) -> Int {
         wallpapers.count + (showsFooter ? 1 : 0)
     }
 
@@ -182,12 +194,12 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         item.thumbnailMaxPixelSize = thumbnailMaxPixelSize
         let wallpaper = wallpapers[indexPath.item]
         item.configure(wallpaper: wallpaper, isSelected: wallpaper.id == selectedWallpaperID, searchQuery: searchQuery) { [weak self] ratio in
-            self?.updateAspectRatio(ratio, for: wallpaper.id, knownAspectRatio: wallpaper.aspectRatio.map({ CGFloat($0) }))
+            self?.updateAspectRatio(ratio, for: wallpaper.id, knownAspectRatio: wallpaper.aspectRatio.map { CGFloat($0) })
         }
         return item
     }
 
-    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+    func collectionView(_: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection, let indexPath = indexPaths.first, wallpapers.indices.contains(indexPath.item) else { return }
         let wallpaper = wallpapers[indexPath.item]
         selectedWallpaperID = wallpaper.id
@@ -195,12 +207,12 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         onSelect?(wallpaper)
     }
 
-    func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
+    func collectionView(_: NSCollectionView, willDisplay _: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
         guard indexPath.item >= max(wallpapers.count - 3, 0) else { return }
         onNeedsMore?()
     }
 
-    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+    func collectionView(_: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         guard wallpapers.indices.contains(indexPath.item) else { return nil }
         return wallpapers[indexPath.item].sourcePageUrl as NSURL
     }
@@ -212,6 +224,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         scrollView.hasVerticalScroller = true
         scrollView.contentView.drawsBackground = false
         scrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(on: scrollView, target: self, action: #selector(handlePullToRefresh))
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
@@ -265,7 +278,7 @@ final class WallhavenGridContainerView: NSView, NSCollectionViewDataSource, NSCo
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
@@ -429,7 +442,9 @@ final class WallhavenGridCollectionView: WorkspaceCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
     var doubleClickHandler: ((IndexPath) -> Void)?
 
-    override func accessibilityLabel() -> String? { "Wallhaven 图片网格" }
+    override func accessibilityLabel() -> String? {
+        "Wallhaven 图片网格"
+    }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
@@ -446,11 +461,15 @@ final class WallhavenGridCollectionView: WorkspaceCollectionView {
 
     override func clearHoverOnVisibleItems() {
         lastHoveredIndexPath = nil
-        for item in visibleItems() { (item as? WallhavenGridItemView)?.clearHoverState() }
+        for item in visibleItems() {
+            (item as? WallhavenGridItemView)?.clearHoverState()
+        }
     }
 
     override func syncHoverOnVisibleItems(windowLocation: NSPoint?) {
-        for item in visibleItems() { (item as? WallhavenGridItemView)?.syncHoverState(windowLocation: windowLocation) }
+        for item in visibleItems() {
+            (item as? WallhavenGridItemView)?.syncHoverState(windowLocation: windowLocation)
+        }
     }
 }
 

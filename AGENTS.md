@@ -98,6 +98,7 @@
 | `SharingPresenter` | `Shared/Platform/` | 系统分享面板弹出 |
 | `WorkspaceKeyboardHandler` | `Shared/Platform/` | 键盘事件分发 |
 | `WorkspaceCoalescingQueue` | `Shared/Platform/` | 合并高频刷新 |
+| `WorkspacePullToRefresh` | `Shared/Platform/` | 列表/网格下拉刷新（运行时挂 `NSRefreshController`，旧 SDK 编译通过、旧系统 no-op） |
 | `FilmstripVisibilityController` | `Shared/State/` | 胶卷条显示/隐藏动画状态 |
 | `WorkspaceDetailPaneController` | `Shared/State/` | 详情窗格展开/收起 |
 | `OnlineVideoGalleryStore` | `Shared/State/` | 木瓜视频 / 91PORNY / 糖心Vlog 共用的视频列表与 HLS 解析状态 |
@@ -116,9 +117,9 @@
 
 ## 7. 当前状态与开发注意事项
 
-### 统一收藏模块（在线收藏）
+### 统一收藏模块（我的收藏）
 
-- 侧边栏「在线收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY/糖心Vlog，rawValue 作路由 itemID）
+- 侧边栏「我的收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY/糖心Vlog，rawValue 作路由 itemID）
 - 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整。木瓜视频/91PORNY/糖心Vlog 收藏例外：双击或回车直接播放，右键提供「播放」「下载视频」，不打开右侧详情栏
 - 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery 的具体类型
 - **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery/MrdsGallery 收藏继续使用原站解析、胶片条和页尾推荐；木瓜视频/91PORNY/糖心Vlog 收藏 `playsFromFeed`，`navigationMode: .sourceRecords`，无详情栏、胶片条与推荐。Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
@@ -148,6 +149,7 @@
 
 ### Wallhaven 模块
 
+- 侧边栏分组与入口标题均为 `Wallhaven`（不再使用「在线壁纸」或「浏览」）
 - API Key 存储改用 **UserDefaults**（原 Keychain 已移除，避免每次启动弹授权窗）
 - **列表请求状态机**：`beginListRequest()` 每请求独立 token → await 后写入前 guard `listRequestToken + section/query` → 旧 Task 不能清新状态
 - **上传者浏览**：参数快照化（username/purity/apiKey 在 Task 创建前捕获）→ 身份校验（`uploaderUsername == requestUsername`）→ HTML fallback 支持 `data-wallpaper-id` + `href="/w/{id}"`
@@ -218,7 +220,7 @@
 ### TangxinGallery 模块（糖心Vlog）
 
 - **侧边栏**：高级模块开关下「糖心Vlog」分组，只固定 3 项：最近更新 `/featured/`、分类目录 `/tag/`、作者目录 `/a/`。不要把标签或作者枚举写进仓库；运行时从目录页解析。深链 itemID `tag:{slug}` / `author:{name}` / `related:{id}` 不出现在侧边栏树里，但 `normalizeRoute` 必须识别
-- **列表**：首页最新用 `/featured/`（不要用无分页的 `/`）。卡片 `article.card` + `/v/{数字 id}/`，封面 `t.5gcdn.xyz/videos/{id}/cover.jpg`。分类/作者目录双击进入子信息流，不是播放；目录页没有封面，用宽高随文字变化的密集小卡片而不是无图大卡片或竖向列表。搜索走公开 `/rss.xml`（Pagefind 空壳不可用），结果上限 200
+- **列表**：首页最新用 `/featured/`（不要用无分页的 `/`）。卡片 `article.card` + `/v/{数字 id}/`，封面 `t.5gcdn.xyz/videos/{id}/cover.jpg`。分类/作者目录双击进入子信息流，不是播放；目录页没有封面，用统一固定宽高的标签格（长名字换行），而不是无图大卡片或竖向列表。搜索走公开 `/rss.xml`（Pagefind 空壳不可用），结果上限 200
 - **无详情栏**：`showsDetailPane: false`。视频卡片双击/回车/右键播放；右键还可打开作者主页、分类和相关推荐。目录卡片只有「打开」
 - **HLS**：公开观看页 `const m3u8 = "https://t.5gcdn.xyz/videos/{id}/index.m3u8"`，必须命中当前路径 id，不得拿相关条目的地址。AES-128 MPEG-TS VOD，分片 `.ts`。**不得**伪造 Cookie、打登录接口、接第三方 parse
 - **视频**：复用 App 层播放器，`source: .tangxin`。媒体 CDN 无 Referer 会 403。播放走本机 `http://127.0.0.1` 代理（带 Safari UA 与 `https://tangxinvlog.app/` Referer），代理拉密钥并解密 TS，清单去掉 `EXT-X-KEY`。不要用自定义 scheme 喂 `.ts`（AVPlayer `-12881`）。保存 MP4 走 `KnitVideoDownloadService`（无 Knit Cloudflare 验证），封装与 1.9.0 相同：concat TS 后 `AVAssetExportPresetPassthrough`
@@ -247,6 +249,7 @@
 
 - 修改 Shell 集成任何模块时，先搜索 `case .模块名` 覆盖所有 switch
 - 工具栏展示能力统一声明在 `WorkspaceModuleDescriptor.presentation`；新增模块先补 descriptor profile，不要在 `WorkspaceToolbarHost` 追加 moduleID 条件链。纯视频源设 `showsDetailPane: false`
+- 工具栏不再放刷新按钮；原位置显示当前模块名或分类/标签名（`locationTitle`）。列表与网格用 `WorkspacePullToRefresh` 下拉刷新。`⌘R` / 菜单「刷新」仍走 `refreshCurrentContent`。不要给胶片条、Inspector、下载窗口或侧边栏加下拉刷新
 - 修改任何在线模块时，以 `4KHDGallery` 的状态流和 UI 行为为参考
 - 在线模块异步结果必须按请求时的 section/query 回写，不能在 `await` 后直接读当前 section 写状态
 - Gallery/MissKon 详情请求合并器必须按 waiter 计数处理取消；最后一个等待者取消时要取消底层网络任务，避免切换详情后继续解析、写缓存或创建 WebKit fallback

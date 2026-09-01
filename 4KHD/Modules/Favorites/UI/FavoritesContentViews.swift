@@ -210,7 +210,7 @@ final class FavoritesGridCollectionView: WorkspaceCollectionView {
     var doubleClickHandler: ((IndexPath) -> Void)?
 
     override func accessibilityLabel() -> String? {
-        "在线收藏图片网格"
+        "我的收藏图片网格"
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -246,6 +246,7 @@ final class FavoritesGridCollectionView: WorkspaceCollectionView {
 final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     var onSelect: ((FavoriteRecord) -> Void)?
     var onOpenDetail: (() -> Void)?
+    var onRefresh: (() -> Void)?
     var contextMenuProvider: ((FavoriteRecord) -> NSMenu?)?
 
     private let gridScrollView = NSScrollView()
@@ -371,6 +372,10 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         }
     }
 
+    @objc private func handlePullToRefresh() {
+        onRefresh?()
+    }
+
     private func refreshVisibleItems() {
         for indexPath in collectionView.indexPathsForVisibleItems() {
             guard records.indices.contains(indexPath.item) else { continue }
@@ -436,6 +441,11 @@ final class FavoritesGridContainerView: NSView, NSCollectionViewDataSource, NSCo
         gridScrollView.hasVerticalScroller = true
         gridScrollView.contentView.drawsBackground = false
         gridScrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(
+            on: gridScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         gridScrollView.contentView.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: gridScrollView.contentView, queue: .main

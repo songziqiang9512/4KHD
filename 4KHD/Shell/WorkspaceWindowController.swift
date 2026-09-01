@@ -110,12 +110,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
             }
             return "\(section.title) - MissKon"
         case .wallhaven:
-            guard let section = WallhavenSection(rawValue: route.itemID) else {
-                return "Wallhaven"
-            }
-            return "\(section.title) - Wallhaven"
+            return "Wallhaven"
         case .favorites:
-            return "在线收藏"
+            return "我的收藏"
         case .knitGallery:
             let section = KnitBrowseFilter.filter(forRouteItemID: route.itemID)?.sidebarSection ?? .recentUpdates
             return "\(section.title) - 爱妹子"

@@ -59,6 +59,16 @@ nonisolated struct OnlineVideoItem: Identifiable, Hashable {
         return parts.joined(separator: " · ")
     }
 
+    static func durationText(fromFavoriteSubtitle subtitle: String) -> String {
+        subtitle
+            .split(separator: "·")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .last { part in
+                let pieces = part.split(separator: ":")
+                return (2 ... 3).contains(pieces.count) && pieces.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
+            } ?? ""
+    }
+
     /// List row second line prefers a real author over the module placeholder.
     var listSecondaryLine: String {
         let author = authorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

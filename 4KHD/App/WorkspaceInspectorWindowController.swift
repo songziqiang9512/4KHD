@@ -208,7 +208,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
         case .favorites:
             cancelLocalMetadata()
             guard let record = appContext.favoritesModuleStore.selectedRecord else {
-                renderEmpty(module: "在线收藏", symbolName: "heart")
+                renderEmpty(module: "我的收藏", symbolName: "heart")
                 return
             }
             render(snapshot(for: record))
@@ -769,7 +769,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
         return InspectorSnapshot(
             symbolName: source?.systemImage ?? "heart",
             title: metadata?.title.nilIfEmpty ?? record.title,
-            moduleTitle: "在线收藏 · \(source?.title ?? "未知来源")",
+            moduleTitle: "我的收藏 · \(source?.title ?? "未知来源")",
             summary: metadata?.detailText.nilIfEmpty ?? record.subtitle.nilIfEmpty,
             sections: compactSections([
                 section("收藏记录", rows: [

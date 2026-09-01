@@ -15,6 +15,7 @@ final class LocalImageGridContainerView: NSView {
     var onOpenDetail: (() -> Void)?
     var onQuickLook: ((LocalImageItem) -> Void)?
     var onShowInfo: ((LocalImageItem) -> Void)?
+    var onRefresh: (() -> Void)?
     var searchQuery: String?
 
     private lazy var dataSource = LocalImageGridDiffableDataSource(collectionView: collectionView) {
@@ -81,8 +82,8 @@ final class LocalImageGridContainerView: NSView {
     var isApplyingSelection = false
     private var lastAppliedIDs: [LocalImageItem.ID] = []
     private var lastLayoutWidth: CGFloat = 0
-    nonisolated(unsafe) private var scrollObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var prefetchWorkItem: DispatchWorkItem?
+    private nonisolated(unsafe) var scrollObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var prefetchWorkItem: DispatchWorkItem?
     private var prefetchTask: Task<Void, Never>?
     private var lastPrefetchIDs = Set<LocalImageItem.ID>()
     private let restoreScrollQueue = WorkspaceCoalescingQueue(
@@ -96,7 +97,7 @@ final class LocalImageGridContainerView: NSView {
         setupView()
     }
 
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -186,11 +187,20 @@ final class LocalImageGridContainerView: NSView {
         refreshLayoutAfterGeometryChange()
     }
 
+    @objc private func handlePullToRefresh() {
+        onRefresh?()
+    }
+
     private func setupView() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
 
         scrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(
+            on: scrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         dataSource.pasteboardWriter = { [weak self] indexPath in
             guard let self, self.entries.indices.contains(indexPath.item) else { return nil }
             return self.entries[indexPath.item].image.url as NSURL
@@ -210,7 +220,7 @@ final class LocalImageGridContainerView: NSView {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
@@ -238,13 +248,14 @@ final class LocalImageGridContainerView: NSView {
     private func makeGridItem(
         collectionView: NSCollectionView,
         indexPath: IndexPath,
-        imageID: LocalImageItem.ID
+        imageID _: LocalImageItem.ID
     ) -> NSCollectionViewItem {
         guard let entry = entries.indices.contains(indexPath.item) ? entries[indexPath.item] : nil,
               let item = collectionView.makeItem(
-                withIdentifier: LocalImageGridItemView.reuseID,
-                for: indexPath
-              ) as? LocalImageGridItemView else {
+                  withIdentifier: LocalImageGridItemView.reuseID,
+                  for: indexPath
+              ) as? LocalImageGridItemView
+        else {
             return NSCollectionViewItem()
         }
 
@@ -278,7 +289,7 @@ final class LocalImageGridContainerView: NSView {
         guard ids != lastAppliedIDs else { return }
         let animate = !lastAppliedIDs.isEmpty
             && abs(ids.count - lastAppliedIDs.count)
-                <= max(20, collectionView.indexPathsForVisibleItems().count + 10)
+            <= max(20, collectionView.indexPathsForVisibleItems().count + 10)
         let isPureAppend = ids.count >= lastAppliedIDs.count
             && Array(ids.prefix(lastAppliedIDs.count)) == lastAppliedIDs
         if !isPureAppend {
@@ -345,7 +356,8 @@ final class LocalImageGridContainerView: NSView {
               visible.height > 1,
               waterfallLayout.layoutAttributesForElements(in: visible).isEmpty,
               let indexPath = visibleRecoveryIndexPath(),
-              let attributes = waterfallLayout.layoutAttributesForItem(at: indexPath) else {
+              let attributes = waterfallLayout.layoutAttributesForItem(at: indexPath)
+        else {
             return
         }
         let contentHeight = waterfallLayout.collectionViewContentSize.height
@@ -364,7 +376,8 @@ final class LocalImageGridContainerView: NSView {
 
     private func visibleRecoveryIndexPath() -> IndexPath? {
         if let selectedImageID,
-           let selectedIndex = entries.firstIndex(where: { $0.image.id == selectedImageID }) {
+           let selectedIndex = entries.firstIndex(where: { $0.image.id == selectedImageID })
+        {
             return IndexPath(item: selectedIndex, section: 0)
         }
         return entries.isEmpty ? nil : IndexPath(item: 0, section: 0)
@@ -372,7 +385,8 @@ final class LocalImageGridContainerView: NSView {
 
     private func syncSelection() {
         guard let selectedImageID,
-              let index = entries.firstIndex(where: { $0.image.id == selectedImageID }) else {
+              let index = entries.firstIndex(where: { $0.image.id == selectedImageID })
+        else {
             isApplyingSelection = true
             collectionView.selectionIndexPaths = []
             isApplyingSelection = false
@@ -407,7 +421,8 @@ final class LocalImageGridContainerView: NSView {
         let visible = scrollView.contentView.bounds
         guard frame.isFiniteForScrolling,
               visible.isFiniteForScrolling,
-              collectionView.bounds.isFiniteForScrolling else {
+              collectionView.bounds.isFiniteForScrolling
+        else {
             return
         }
         guard !visible.contains(frame) else { return }
@@ -511,7 +526,7 @@ final class LocalImageGridContainerView: NSView {
         prefetchTask = Task(priority: .utility) {
             await withTaskGroup(of: Void.self) { group in
                 var iterator = urls.makeIterator()
-                for _ in 0..<4 {
+                for _ in 0 ..< 4 {
                     guard let url = iterator.next() else { break }
                     group.addTask {
                         _ = await LocalImageCache.shared.image(for: url, maxPixelSize: maxPixelSize)
@@ -537,7 +552,7 @@ final class LocalImageGridContainerView: NSView {
 }
 
 extension LocalImageGridContainerView: NSCollectionViewDelegate {
-    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+    func collectionView(_: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection,
               let indexPath = indexPaths.first,
               indexPath.item < entries.count else { return }
@@ -545,7 +560,7 @@ extension LocalImageGridContainerView: NSCollectionViewDelegate {
     }
 
     func collectionView(
-        _ collectionView: NSCollectionView,
+        _: NSCollectionView,
         willDisplay item: NSCollectionViewItem,
         forRepresentedObjectAt indexPath: IndexPath
     ) {
@@ -554,8 +569,8 @@ extension LocalImageGridContainerView: NSCollectionViewDelegate {
     }
 
     func collectionView(
-        _ collectionView: NSCollectionView,
-        shouldDeselectItemsAt indexPaths: Set<IndexPath>
+        _: NSCollectionView,
+        shouldDeselectItemsAt _: Set<IndexPath>
     ) -> Set<IndexPath> {
         []
     }
@@ -572,14 +587,14 @@ private extension NSRect {
     }
 }
 
-nonisolated private final class LocalImageGridDiffableDataSource: NSCollectionViewDiffableDataSource<
+private final nonisolated class LocalImageGridDiffableDataSource: NSCollectionViewDiffableDataSource<
     LocalImageGridContainerView.Section,
     LocalImageItem.ID
 > {
     var pasteboardWriter: ((IndexPath) -> NSPasteboardWriting?)?
 
     func collectionView(
-        _ collectionView: NSCollectionView,
+        _: NSCollectionView,
         pasteboardWriterForItemAt indexPath: IndexPath
     ) -> NSPasteboardWriting? {
         pasteboardWriter?(indexPath)

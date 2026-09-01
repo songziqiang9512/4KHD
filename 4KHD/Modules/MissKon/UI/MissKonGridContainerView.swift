@@ -8,10 +8,14 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     var onNeedsMore: (() -> Void)?
     var onEscape: (() -> Bool)?
     var onRetry: (() -> Void)?
+    var onRefresh: (() -> Void)?
     var contextMenuProvider: ((MissKonItem) -> NSMenu?)?
 
     private let gridScrollView = NSScrollView()
-    var scrollView: NSScrollView { gridScrollView }
+    var scrollView: NSScrollView {
+        gridScrollView
+    }
+
     private let collectionView = MissKonGridCollectionView()
     private let gridLayout = WorkspaceThumbnailWaterfallLayout()
     private var items: [MissKonItem] = []
@@ -34,14 +38,16 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
     private let aspectRatioLayoutQueue = WorkspaceCoalescingQueue(
         name: "MissKonGridAspectRatio", interval: 0.03, maxInterval: 0.1
     )
-    nonisolated(unsafe) private var scrollObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var scrollObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupView()
     }
 
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     deinit {
         if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
@@ -53,7 +59,13 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scheduleThumbnailPrefetch()
     }
 
-    func focus() { window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView) }
+    func focus() {
+        window?.makeFirstResponderUnlessDescendantIsFirstResponder(collectionView)
+    }
+
+    @objc private func handlePullToRefresh() {
+        onRefresh?()
+    }
 
     func firstVisibleItemID() -> MissKonItem.ID? {
         collectionView.indexPathsForVisibleItems()
@@ -97,13 +109,15 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         self.isRefreshing = isRefreshing
         self.errorMessage = errorMessage
         self.canLoadMore = canLoadMore
+        WorkspacePullToRefresh.sync(scrollView, isRefreshing: isRefreshing)
         aspectRatiosByItemID = aspectRatiosByItemID.filter { nextItemIDSet.contains($0.key) }
 
         let sizeChanged = updateItemSize()
         if !sizeChanged,
            showsFooter == lastShowsFooter,
-           canApplyAppendUpdate(from: previousItemIDs, to: nextItemIDs) {
-            let insertedRange = previousItemIDs.count..<items.count
+           canApplyAppendUpdate(from: previousItemIDs, to: nextItemIDs)
+        {
+            let insertedRange = previousItemIDs.count ..< items.count
             lastAppliedIDs = nextItemIDs
             performWithoutAnimation {
                 collectionView.insertItems(at: Set(insertedRange.map { IndexPath(item: $0, section: 0) }))
@@ -165,9 +179,11 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         }
     }
 
-    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    func numberOfSections(in _: NSCollectionView) -> Int {
+        1
+    }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+    func collectionView(_: NSCollectionView, numberOfItemsInSection _: Int) -> Int {
         items.count + (showsFooter ? 1 : 0)
     }
 
@@ -193,7 +209,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         return item
     }
 
-    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+    func collectionView(_: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         guard !isApplyingSelection, let indexPath = indexPaths.first, items.indices.contains(indexPath.item) else { return }
         let item = items[indexPath.item]
         previousSelectedItemID = selectedItemID
@@ -202,12 +218,12 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         onSelect?(item)
     }
 
-    func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
+    func collectionView(_: NSCollectionView, willDisplay _: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
         guard indexPath.item >= max(items.count - 3, 0) else { return }
         onNeedsMore?()
     }
 
-    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+    func collectionView(_: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         guard items.indices.contains(indexPath.item) else { return nil }
         return items[indexPath.item].detailURL as NSURL
     }
@@ -219,6 +235,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         scrollView.hasVerticalScroller = true
         scrollView.contentView.drawsBackground = false
         scrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(on: scrollView, target: self, action: #selector(handlePullToRefresh))
         scrollView.contentView.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
@@ -269,7 +286,7 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
@@ -373,7 +390,8 @@ final class MissKonGridContainerView: NSView, NSCollectionViewDataSource, NSColl
         let visible = scrollView.contentView.bounds
         guard frame.isValidScrollRect,
               visible.isValidScrollRect,
-              gridLayout.collectionViewContentSize.isValidScrollSize else {
+              gridLayout.collectionViewContentSize.isValidScrollSize
+        else {
             return
         }
         guard !visible.contains(frame) else { return }
@@ -454,7 +472,9 @@ final class MissKonGridCollectionView: WorkspaceCollectionView {
     var arrowKeyHandler: ((Int) -> Bool)?
     var doubleClickHandler: ((IndexPath) -> Void)?
 
-    override func accessibilityLabel() -> String? { "MissKon 图片网格" }
+    override func accessibilityLabel() -> String? {
+        "MissKon 图片网格"
+    }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
@@ -471,10 +491,14 @@ final class MissKonGridCollectionView: WorkspaceCollectionView {
 
     override func clearHoverOnVisibleItems() {
         lastHoveredIndexPath = nil
-        for item in visibleItems() { (item as? MissKonGridItemView)?.clearHoverState() }
+        for item in visibleItems() {
+            (item as? MissKonGridItemView)?.clearHoverState()
+        }
     }
 
     override func syncHoverOnVisibleItems(windowLocation: NSPoint?) {
-        for item in visibleItems() { (item as? MissKonGridItemView)?.syncHoverState(windowLocation: windowLocation) }
+        for item in visibleItems() {
+            (item as? MissKonGridItemView)?.syncHoverState(windowLocation: windowLocation)
+        }
     }
 }

@@ -36,10 +36,10 @@ final class WorkspaceCommandValidator {
             return canStepImage(1, moduleID: state.currentModuleID)
         case #selector(WorkspaceSplitViewController.setContentListLayout(_:)):
             updateLayoutValidationItem(item, moduleID: state.currentModuleID, isList: true)
-            return true
+            return !isVideoDirectoryListing(state.currentModuleID)
         case #selector(WorkspaceSplitViewController.setContentGridLayout(_:)):
             updateLayoutValidationItem(item, moduleID: state.currentModuleID, isList: false)
-            return true
+            return !isVideoDirectoryListing(state.currentModuleID)
         case #selector(WorkspaceSplitViewController.increaseLocalGridColumns(_:)):
             return canAdjustLocalGridColumns(1, moduleID: state.currentModuleID)
         case #selector(WorkspaceSplitViewController.decreaseLocalGridColumns(_:)):
@@ -124,6 +124,15 @@ final class WorkspaceCommandValidator {
     private func canStepImage(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {
         let fields = appContext.toolbarContext.snapshot(for: moduleID).fields
         return delta < 0 ? fields.canSelectPreviousImage : fields.canSelectNextImage
+    }
+
+    private func isVideoDirectoryListing(_ moduleID: WorkspaceModuleID) -> Bool {
+        switch appContext.toolbarContext.snapshot(for: moduleID) {
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+            snapshot.showsDirectoryListing
+        default:
+            false
+        }
     }
 
     private func canAdjustLocalGridColumns(_ delta: Int, moduleID: WorkspaceModuleID) -> Bool {

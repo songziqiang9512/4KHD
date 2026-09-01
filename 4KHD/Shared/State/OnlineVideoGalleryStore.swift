@@ -34,6 +34,7 @@ final class OnlineVideoGalleryStore {
     @ObservationIgnored private let filterTitle: FilterTitle
     @ObservationIgnored private let makeFavoriteRecord: FavoriteFactory
     @ObservationIgnored private let directoryFilters: Set<String>
+    @ObservationIgnored private let homeFilter: String
     @ObservationIgnored private var directoryTitles: [String: String] = [:]
     @ObservationIgnored private var selectedItemSnapshot: OnlineVideoItem?
     @ObservationIgnored private var listTask: Task<Void, Never>?
@@ -64,6 +65,7 @@ final class OnlineVideoGalleryStore {
     ) {
         self.policySource = policySource
         self.sourceTitle = sourceTitle
+        homeFilter = defaultFilter
         filter = defaultFilter
         self.favorites = favorites
         self.listURL = listURL
@@ -105,6 +107,10 @@ final class OnlineVideoGalleryStore {
 
     var displayFilterTitle: String {
         directoryTitles[filter] ?? filterTitle(filter)
+    }
+
+    var locationTitle: String {
+        filter == homeFilter ? sourceTitle : displayFilterTitle
     }
 
     var showsDirectoryListing: Bool {

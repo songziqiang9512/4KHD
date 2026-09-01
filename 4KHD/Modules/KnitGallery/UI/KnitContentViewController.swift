@@ -58,7 +58,9 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     override func loadView() {
         view = NSView()
@@ -93,6 +95,11 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
         tableScrollView.automaticallyAdjustsContentInsets = true
         tableScrollView.hasVerticalScroller = true
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("KnitItem")))
         tableView.headerView = nil
         tableView.rowHeight = 96
@@ -153,6 +160,11 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
         gridScrollView.hasHorizontalScroller = false
         gridScrollView.contentView.drawsBackground = false
         gridScrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(
+            on: gridScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         gridScrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self,
@@ -187,6 +199,8 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     private func reloadContent() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: store.isRefreshingList)
+        WorkspacePullToRefresh.sync(gridScrollView, isRefreshing: store.isRefreshingList)
         rows = store.items.map { .item($0.id) }
         if shouldShowFooter { rows.append(.footer) }
         switch preferences.layout {
@@ -209,7 +223,8 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
 
     private func syncTableSelection() {
         guard let id = store.selectedItemID,
-              let row = rows.firstIndex(of: .item(id)) else {
+              let row = rows.firstIndex(of: .item(id))
+        else {
             isApplyingSelection = true
             tableView.deselectAll(nil)
             isApplyingSelection = false
@@ -240,7 +255,7 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
 
         if structureChanged {
             if canAppend {
-                let insertedRange = lastAppliedListItemIDs.count..<itemIDs.count
+                let insertedRange = lastAppliedListItemIDs.count ..< itemIDs.count
                 NSView.performWithoutAnimation {
                     tableView.insertRows(at: IndexSet(integersIn: insertedRange), withAnimation: [])
                 }
@@ -275,7 +290,7 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
         let upperBound = min(visibleRows.location + visibleRows.length, totalRows)
         guard upperBound > visibleRows.location else { return }
         tableView.reloadData(
-            forRowIndexes: IndexSet(integersIn: visibleRows.location..<upperBound),
+            forRowIndexes: IndexSet(integersIn: visibleRows.location ..< upperBound),
             columnIndexes: IndexSet(integer: 0)
         )
     }
@@ -301,7 +316,8 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
         isApplyingSelection = true
         defer { isApplyingSelection = false }
         guard let id = store.selectedItemID,
-              let index = store.items.firstIndex(where: { $0.id == id }) else {
+              let index = store.items.firstIndex(where: { $0.id == id })
+        else {
             collectionView.selectionIndexPaths = []
             refreshVisibleGridSelection()
             return
@@ -335,6 +351,10 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
         return true
     }
 
+    @objc private func handlePullToRefresh() {
+        store.refreshFromNetwork()
+    }
+
     @objc private func gridSelectionChanged() {
         guard let indexPath = collectionView.selectionIndexPaths.first,
               store.items.indices.contains(indexPath.item) else { return }
@@ -349,7 +369,7 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
 
     @objc private func openTableSelection() {
         let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
-        guard rows.indices.contains(row), case .item(let id) = rows[row],
+        guard rows.indices.contains(row), case let .item(id) = rows[row],
               let item = store.items.first(where: { $0.id == id }) else { return }
         store.select(item)
         detailPane.setPresented(true)
@@ -357,7 +377,7 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
 
     private func makeContextMenu(forRow row: Int) -> NSMenu? {
         guard rows.indices.contains(row),
-              case .item(let id) = rows[row],
+              case let .item(id) = rows[row],
               let item = store.items.first(where: { $0.id == id }) else { return nil }
         if tableView.selectedRow != row {
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -503,7 +523,7 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
         updateGridLayoutIfNeeded()
         if contentChanged {
             if canAppend {
-                let insertedRange = lastAppliedGridItemIDs.count..<itemIDs.count
+                let insertedRange = lastAppliedGridItemIDs.count ..< itemIDs.count
                 NSView.performWithoutAnimation {
                     collectionView.insertItems(
                         at: Set(insertedRange.map { IndexPath(item: $0, section: 0) })
@@ -659,7 +679,9 @@ final class KnitContentViewController: NSViewController, WorkspaceFocusable {
 
 @MainActor
 private final class KnitGridCollectionView: WorkspaceCollectionView {
-    override func accessibilityLabel() -> String? { "爱妹子图片网格" }
+    override func accessibilityLabel() -> String? {
+        "爱妹子图片网格"
+    }
 
     override func viewDidEndLiveResize() {
         clearHoverOnVisibleItems()
@@ -681,19 +703,19 @@ private final class KnitGridCollectionView: WorkspaceCollectionView {
 }
 
 extension KnitContentViewController: NSTableViewDataSource, NSTableViewDelegate {
-    nonisolated func numberOfRows(in tableView: NSTableView) -> Int {
+    nonisolated func numberOfRows(in _: NSTableView) -> Int {
         MainActor.assumeIsolated { rows.count }
     }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+    func tableView(_: NSTableView, heightOfRow row: Int) -> CGFloat {
         guard rows.indices.contains(row) else { return 96 }
         return rows[row] == .footer ? 42 : 96
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         guard rows.indices.contains(row) else { return nil }
         switch rows[row] {
-        case .item(let id):
+        case let .item(id):
             guard let item = store.items.first(where: { $0.id == id }) else { return nil }
             let cell = tableView.makeView(withIdentifier: KnitListRowView.identifier, owner: self) as? KnitListRowView
                 ?? KnitListRowView()
@@ -715,18 +737,20 @@ extension KnitContentViewController: NSTableViewDataSource, NSTableViewDelegate 
         }
     }
 
-    func tableViewSelectionDidChange(_ notification: Notification) {
+    func tableViewSelectionDidChange(_: Notification) {
         guard !isApplyingSelection, rows.indices.contains(tableView.selectedRow),
-              case .item(let id) = rows[tableView.selectedRow],
+              case let .item(id) = rows[tableView.selectedRow],
               let item = store.items.first(where: { $0.id == id }) else { return }
         store.select(item)
     }
 }
 
 extension KnitContentViewController: NSCollectionViewDataSource, NSCollectionViewDelegate {
-    nonisolated func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    nonisolated func numberOfSections(in _: NSCollectionView) -> Int {
+        1
+    }
 
-    nonisolated func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+    nonisolated func collectionView(_: NSCollectionView, numberOfItemsInSection _: Int) -> Int {
         MainActor.assumeIsolated { store.items.count + (shouldShowFooter ? 1 : 0) }
     }
 
@@ -749,7 +773,7 @@ extension KnitContentViewController: NSCollectionViewDataSource, NSCollectionVie
         return item
     }
 
-    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+    func collectionView(_: NSCollectionView, didSelectItemsAt _: Set<IndexPath>) {
         guard !isApplyingSelection else { return }
         gridSelectionChanged()
         refreshVisibleGridSelection()
@@ -796,11 +820,13 @@ private final class KnitListRowView: NSTableCellView {
             cover.heightAnchor.constraint(equalToConstant: 86),
             root.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             root.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            root.topAnchor.constraint(equalTo: topAnchor, constant: 4)
+            root.topAnchor.constraint(equalTo: topAnchor, constant: 4),
         ])
     }
 
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) {
+        nil
+    }
 
     func configure(item: KnitGalleryItem, isFavorite: Bool, searchQuery: String?) {
         cover.setImage(url: item.coverURL)
@@ -835,14 +861,21 @@ private final class KnitListFooterView: NSTableCellView {
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor), stack.centerYAnchor.constraint(equalTo: centerYAnchor)])
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(retry)))
     }
-    required init?(coder: NSCoder) { nil }
+
+    required init?(coder _: NSCoder) {
+        nil
+    }
+
     func configure(isRefreshing: Bool, errorMessage: String?, canLoadMore: Bool, hasItems: Bool) {
         progress.isHidden = !isRefreshing || errorMessage != nil
         isRefreshing && errorMessage == nil ? progress.startAnimation(nil) : progress.stopAnimation(nil)
         label.stringValue = errorMessage.map { "\($0) — 点击重试" } ?? (isRefreshing ? "加载中…" : (canLoadMore ? "加载更多" : (hasItems ? "已到末尾" : "无内容")))
         label.textColor = errorMessage == nil ? .tertiaryLabelColor : .systemRed
     }
-    @objc private func retry() { onRetry?() }
+
+    @objc private func retry() {
+        onRetry?()
+    }
 }
 
 @MainActor
@@ -878,7 +911,7 @@ private final class KnitGridItem: NSCollectionViewItem {
             card.topAnchor.constraint(equalTo: view.topAnchor), card.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             videoBadge.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
             videoBadge.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            videoBadge.widthAnchor.constraint(equalToConstant: 26), videoBadge.heightAnchor.constraint(equalToConstant: 26)
+            videoBadge.widthAnchor.constraint(equalToConstant: 26), videoBadge.heightAnchor.constraint(equalToConstant: 26),
         ])
     }
 
@@ -921,8 +954,8 @@ private final class KnitGridItem: NSCollectionViewItem {
         applySelectionState(isSelected)
         videoBadge.isHidden = !item.hasVideo
         guard imageSourceChanged
-                || (failedCoverLoadUptime == nil && requiresResolutionUpgrade)
-                || failedCoverRetryIsDue else { return }
+            || (failedCoverLoadUptime == nil && requiresResolutionUpgrade)
+            || failedCoverRetryIsDue else { return }
         loadCover(for: item, onImageAspectRatioResolved: onImageAspectRatioResolved)
     }
 
@@ -1027,7 +1060,10 @@ private final class KnitGridItem: NSCollectionViewItem {
 private final class KnitGridFooterItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("KnitGridFooterItem")
     private let footer = KnitListFooterView()
-    override func loadView() { view = footer }
+    override func loadView() {
+        view = footer
+    }
+
     func configure(isRefreshing: Bool, errorMessage: String?, canLoadMore: Bool, hasItems: Bool, onRetry: @escaping () -> Void) {
         footer.configure(isRefreshing: isRefreshing, errorMessage: errorMessage, canLoadMore: canLoadMore, hasItems: hasItems)
         footer.onRetry = onRetry
@@ -1050,7 +1086,11 @@ private final class KnitThumbnailView: NSImageView {
         layer?.cornerRadius = 6
         layer?.masksToBounds = true
     }
-    required init?(coder: NSCoder) { nil }
+
+    required init?(coder _: NSCoder) {
+        nil
+    }
+
     func setImage(url: URL?) {
         let sourceChanged = loadedURL != url
         let failedLoadRetryIsDue = failedLoadUptime.map {

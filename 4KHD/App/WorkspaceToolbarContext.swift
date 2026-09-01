@@ -16,6 +16,7 @@ enum WorkspaceToolbarSnapshot {
     struct GallerySnapshot {
         let searchText: String
         let layout: GalleryContentLayout
+        let locationTitle: String
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -33,6 +34,7 @@ enum WorkspaceToolbarSnapshot {
     struct MissKonSnapshot {
         let searchText: String
         let layout: MissKonContentLayout
+        let locationTitle: String
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -50,6 +52,7 @@ enum WorkspaceToolbarSnapshot {
     struct WallhavenSnapshot {
         let searchText: String
         let layout: WallhavenContentLayout
+        let locationTitle: String
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -67,6 +70,7 @@ enum WorkspaceToolbarSnapshot {
         let layout: KnitContentLayout
         let filter: KnitBrowseFilter
         let pageStatusText: String
+        let locationTitle: String
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -85,6 +89,7 @@ enum WorkspaceToolbarSnapshot {
     struct MrdsSnapshot {
         let searchText: String
         let layout: MrdsContentLayout
+        let locationTitle: String
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -103,6 +108,7 @@ enum WorkspaceToolbarSnapshot {
     struct VideoFeedSnapshot {
         let searchText: String
         let layout: OnlineVideoContentLayout
+        let locationTitle: String
         let isRefreshing: Bool
         let canFavorite: Bool
         let isFavorite: Bool
@@ -112,6 +118,8 @@ enum WorkspaceToolbarSnapshot {
         let canSelectNextImage: Bool
         let canSaveVideo: Bool
         let canShare: Bool
+        let showsDirectoryListing: Bool
+        let searchPlaceholder: String
     }
 
     struct LocalSnapshot {
@@ -119,6 +127,7 @@ enum WorkspaceToolbarSnapshot {
         let layout: LocalContentLayout
         let sortField: LocalImageSortField
         let sortDirection: LocalImageSortDirection
+        let locationTitle: String
         let isRefreshing: Bool
         let hasSelection: Bool
         let canIncreaseGridColumns: Bool
@@ -135,6 +144,7 @@ enum WorkspaceToolbarSnapshot {
     struct FavoritesSnapshot {
         let searchText: String
         let layout: FavoritesContentLayout
+        let locationTitle: String
         let canFavorite: Bool
         let isFavorite: Bool
         let canIncreaseGridColumns: Bool
@@ -154,6 +164,7 @@ enum WorkspaceToolbarSnapshot {
     /// for repeated 4-way switches in WorkspaceToolbarHost.
     struct CommonFields {
         let moduleName: String
+        let locationTitle: String
         let searchText: String
         let isRefreshing: Bool
         let canFavorite: Bool
@@ -176,7 +187,7 @@ enum WorkspaceToolbarSnapshot {
         switch self {
         case let .gallery(s):
             CommonFields(
-                moduleName: "4KHD", searchText: s.searchText,
+                moduleName: "4KHD", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -191,7 +202,7 @@ enum WorkspaceToolbarSnapshot {
             )
         case let .local(s):
             CommonFields(
-                moduleName: "本地图片", searchText: s.searchText,
+                moduleName: "本地图片", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: false, isFavorite: false,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -206,7 +217,7 @@ enum WorkspaceToolbarSnapshot {
             )
         case let .missKon(s):
             CommonFields(
-                moduleName: "MissKon", searchText: s.searchText,
+                moduleName: "MissKon", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -221,7 +232,7 @@ enum WorkspaceToolbarSnapshot {
             )
         case let .wallhaven(s):
             CommonFields(
-                moduleName: "Wallhaven", searchText: s.searchText,
+                moduleName: "Wallhaven", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -235,7 +246,7 @@ enum WorkspaceToolbarSnapshot {
             )
         case let .favorites(s):
             CommonFields(
-                moduleName: "在线收藏", searchText: s.searchText,
+                moduleName: "我的收藏", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: false,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -250,7 +261,7 @@ enum WorkspaceToolbarSnapshot {
             )
         case let .knit(s):
             CommonFields(
-                moduleName: "爱妹子", searchText: s.searchText,
+                moduleName: "爱妹子", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -265,7 +276,7 @@ enum WorkspaceToolbarSnapshot {
             )
         case let .mrds(s):
             CommonFields(
-                moduleName: "每日大赛", searchText: s.searchText,
+                moduleName: "每日大赛", locationTitle: s.locationTitle, searchText: s.searchText,
                 isRefreshing: s.isRefreshing,
                 canFavorite: s.canFavorite, isFavorite: s.isFavorite,
                 canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -289,7 +300,7 @@ enum WorkspaceToolbarSnapshot {
 
     private static func videoFields(_ s: VideoFeedSnapshot, moduleName: String) -> CommonFields {
         CommonFields(
-            moduleName: moduleName, searchText: s.searchText,
+            moduleName: moduleName, locationTitle: s.locationTitle, searchText: s.searchText,
             isRefreshing: s.isRefreshing,
             canFavorite: s.canFavorite, isFavorite: s.isFavorite,
             canIncreaseGridColumns: s.canIncreaseGridColumns,
@@ -490,6 +501,7 @@ final class WorkspaceToolbarContext {
                 .init(
                     searchText: galleryStore.searchText,
                     layout: galleryPreferences.layout,
+                    locationTitle: galleryStore.section == .latest ? "4KHD" : galleryStore.section.title,
                     isRefreshing: galleryStore.isRefreshingList,
                     canFavorite: selectedItem != nil,
                     isFavorite: selectedItem.map { galleryStore.isFavorite($0) } ?? false,
@@ -519,6 +531,9 @@ final class WorkspaceToolbarContext {
                     layout: localPreferences.layout,
                     sortField: localPreferences.sortField,
                     sortDirection: localPreferences.sortDirection,
+                    locationTitle: localLibraryStore.selectedFolderID == LocalLibraryStore.allImagesFolderID
+                        ? "本地图片"
+                        : (localLibraryStore.selectedFolder?.title ?? "本地图片"),
                     isRefreshing: localLibraryStore.isScanning,
                     hasSelection: hasLocalRoot,
                     canIncreaseGridColumns: hasLocalRoot && canAdjustGridColumns
@@ -544,6 +559,7 @@ final class WorkspaceToolbarContext {
                 .init(
                     searchText: missKonStore.searchText,
                     layout: missKonPreferences.layout,
+                    locationTitle: missKonStore.section == .latest ? "MissKon" : missKonStore.section.title,
                     isRefreshing: missKonStore.isRefreshingList,
                     canFavorite: currentItem != nil,
                     isFavorite: currentItem.map { missKonStore.isFavorite($0) } ?? false,
@@ -571,6 +587,7 @@ final class WorkspaceToolbarContext {
                 .init(
                     searchText: wallhavenStore.searchText,
                     layout: wallhavenPreferences.layout,
+                    locationTitle: wallhavenLocationTitle(store: wallhavenStore),
                     isRefreshing: wallhavenStore.isRefreshingList,
                     canFavorite: effective != nil,
                     isFavorite: effective.map { wallhavenStore.isFavorite($0) } ?? false,
@@ -617,6 +634,9 @@ final class WorkspaceToolbarContext {
                 .init(
                     searchText: favoritesModuleStore.searchText,
                     layout: favoritesPreferences.layout,
+                    locationTitle: favoritesModuleStore.filter == .all
+                        ? "我的收藏"
+                        : favoritesModuleStore.filter.title,
                     canFavorite: selectedRecord != nil,
                     isFavorite: selectedRecord != nil,
                     canIncreaseGridColumns: canAdjustGridColumns
@@ -650,6 +670,7 @@ final class WorkspaceToolbarContext {
                     layout: knitPreferences.layout,
                     filter: knitStore.filter,
                     pageStatusText: knitStore.pageStatusText,
+                    locationTitle: knitStore.filter == .all ? "爱妹子" : knitStore.filter.title,
                     isRefreshing: knitStore.isRefreshingList,
                     canFavorite: item != nil,
                     isFavorite: item.map { knitStore.isFavorite($0) } ?? false,
@@ -675,6 +696,7 @@ final class WorkspaceToolbarContext {
                 .init(
                     searchText: mrdsStore.searchText,
                     layout: mrdsPreferences.layout,
+                    locationTitle: mrdsStore.filter == .latest ? "每日大赛" : mrdsStore.filter.title,
                     isRefreshing: mrdsStore.isRefreshingList,
                     canFavorite: item != nil,
                     isFavorite: item.map { mrdsStore.isFavorite($0) } ?? false,
@@ -714,6 +736,7 @@ final class WorkspaceToolbarContext {
         return .init(
             searchText: store.searchText,
             layout: preferences.layout,
+            locationTitle: store.locationTitle,
             isRefreshing: store.isRefreshingList,
             canFavorite: isPlayable,
             isFavorite: item.map { store.isFavorite($0) } ?? false,
@@ -722,8 +745,33 @@ final class WorkspaceToolbarContext {
             canSelectPreviousImage: store.canStepSelectionBackward,
             canSelectNextImage: store.canStepSelectionForward,
             canSaveVideo: isPlayable,
-            canShare: item != nil
+            canShare: item != nil,
+            showsDirectoryListing: store.showsDirectoryListing,
+            searchPlaceholder: videoSearchPlaceholder(store: store)
         )
+    }
+
+    private func wallhavenLocationTitle(store: WallhavenGalleryStore) -> String {
+        if store.isBrowsingUploader, let username = store.uploaderUsername, !username.isEmpty {
+            return username
+        }
+        if let query = store.activeSearchQuery, !query.isEmpty {
+            return query
+        }
+        if store.category != .all {
+            return store.category.title
+        }
+        return "Wallhaven"
+    }
+
+    private func videoSearchPlaceholder(store: OnlineVideoGalleryStore) -> String {
+        if store.showsDirectoryListing {
+            return store.filter == TangxinSection.authors.rawValue ? "筛选作者" : "筛选分类"
+        }
+        if store.policySource == .tangxin {
+            return "搜索视频"
+        }
+        return "搜索 \(store.sourceTitle)"
     }
 
     private func videoStore(for moduleID: WorkspaceModuleID) -> OnlineVideoGalleryStore? {
@@ -802,6 +850,15 @@ final class WorkspaceToolbarContext {
         case .quanjiGallery, .pornyGallery, .tangxinGallery:
             guard let store = videoStore(for: moduleID) else { return }
             store.searchText = text
+            if store.showsDirectoryListing {
+                let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if query.isEmpty {
+                    store.clearSearch()
+                } else {
+                    store.submitSearch()
+                }
+                return
+            }
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                store.activeSearchQuery != nil
             {

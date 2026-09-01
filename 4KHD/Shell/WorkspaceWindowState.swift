@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 struct WorkspaceWindowState: Codable {
-    static let defaultExpandedSidebarNodeIDs = ["group:本地", "group:4KHD", "group:在线壁纸"]
+    static let defaultExpandedSidebarNodeIDs = ["group:本地", "group:4KHD", "group:Wallhaven"]
 
     var isFullScreen: Bool
     var splitViewWidths: [Int]
@@ -34,10 +34,18 @@ struct WorkspaceWindowState: Codable {
         presentedSplitViewWidths = try container.decodeIfPresent([Int].self, forKey: .presentedSplitViewWidths)
         isSidebarHidden = try container.decode(Bool.self, forKey: .isSidebarHidden)
         isDetailPanePresented = try container.decode(Bool.self, forKey: .isDetailPanePresented)
-        expandedSidebarNodeIDs = try container.decodeIfPresent(
-            [String].self,
-            forKey: .expandedSidebarNodeIDs
-        ) ?? Self.defaultExpandedSidebarNodeIDs
+        expandedSidebarNodeIDs = try Self.migratedExpandedSidebarNodeIDs(
+            container.decodeIfPresent(
+                [String].self,
+                forKey: .expandedSidebarNodeIDs
+            ) ?? Self.defaultExpandedSidebarNodeIDs
+        )
+    }
+
+    static func migratedExpandedSidebarNodeIDs(_ ids: [String]) -> [String] {
+        ids.map { id in
+            id == "group:在线壁纸" ? "group:Wallhaven" : id
+        }
     }
 }
 

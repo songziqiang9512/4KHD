@@ -19,6 +19,7 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
     private var lastGridColumnCount = 4
     private var pendingScrollRecordIdentity: FavoritesModuleStore.SelectionIdentity?
     private var lastSearchQuery: String?
+    private var isPullRefreshing = false
     /// 行渲染用的记录快照,避免每行经 visibleRecords 计算属性全量重算(O(n²))。
     private var recordsSnapshot: [FavoriteRecord] = []
     private let reloadQueue = WorkspaceCoalescingQueue(
@@ -75,6 +76,11 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         tableScrollView.hasVerticalScroller = true
         tableScrollView.contentView.drawsBackground = false
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FavoritesRecord"))
         tableView.addTableColumn(column)
@@ -95,6 +101,10 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         tableView.keyboardContext = WorkspaceKeyboardContext(
             stepSelection: { [weak self] delta in
                 self?.selectAdjacentFromTable(delta: delta) ?? false
+            },
+            quickLook: { [weak self] in
+                self?.activateSelectedTableItem()
+                return true
             },
             onEscape: { [weak self] in self?.clearSearch() ?? false },
             onEnter: { [weak self] in
@@ -118,6 +128,9 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             guard let self else { return nil }
             self.moduleStore.select(record: record)
             return self.makeContextMenu(for: record)
+        }
+        gridView.onRefresh = { [weak self] in
+            self?.reloadFavoritesFromDisk()
         }
     }
 
@@ -203,6 +216,28 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
             }
         }
         pendingScrollRecordIdentity = nil
+        syncPullToRefresh()
+    }
+
+    @objc private func handlePullToRefresh() {
+        reloadFavoritesFromDisk()
+    }
+
+    private func reloadFavoritesFromDisk() {
+        guard !isPullRefreshing else { return }
+        isPullRefreshing = true
+        syncPullToRefresh()
+        Task { [weak self] in
+            await self?.moduleStore.favoritesStore.reloadFromDisk()
+            guard let self else { return }
+            self.isPullRefreshing = false
+            self.syncPullToRefresh()
+        }
+    }
+
+    private func syncPullToRefresh() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: isPullRefreshing)
+        WorkspacePullToRefresh.sync(gridView.scrollView, isRefreshing: isPullRefreshing)
     }
 
     private func capturePendingScrollRecordIfSwitchingLayout() {
@@ -325,12 +360,19 @@ final class FavoritesContentViewController: NSViewController, WorkspaceFocusable
         guard let adapter = FavoriteSourceAdapterRegistry.shared.adapter(for: record),
               let actions = adapter.videoActions
         else { return }
+        if title == "无法播放" {
+            actions.preparePlay?(record)
+        }
         do {
             let url = try await adapter.resolvePlayableVideoURL(for: record)
             action(record, url, actions)
         } catch is CancellationError {
             return
         } catch {
+            if title == "无法播放", let playFailed = actions.playFailed {
+                playFailed(error.localizedDescription)
+                return
+            }
             let alert = makeAppAlert(
                 title: title,
                 message: error.localizedDescription,

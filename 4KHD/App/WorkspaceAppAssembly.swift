@@ -82,6 +82,12 @@ enum WorkspaceAppAssembly {
                 saveAsMP4: { record, sourceURL in
                     guard let item = KnitFavoritesBridge.item(from: record) else { return }
                     knitDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                },
+                preparePlay: { record in
+                    knitVideoPlayer.beginPreparingPlayback(title: record.title, source: .knit)
+                },
+                playFailed: { message in
+                    knitVideoPlayer.presentResolveFailure(message: message)
                 }
             ),
             mrdsVideoActions: FavoriteVideoActions(
@@ -99,6 +105,12 @@ enum WorkspaceAppAssembly {
                 saveAsMP4: { record, sourceURL in
                     guard let item = MrdsFavoritesBridge.item(from: record) else { return }
                     mrdsDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                },
+                preparePlay: { record in
+                    knitVideoPlayer.beginPreparingPlayback(title: record.title, source: .mrds)
+                },
+                playFailed: { message in
+                    knitVideoPlayer.presentResolveFailure(message: message)
                 }
             ),
             quanjiVideoActions: FavoriteVideoActions(
@@ -116,6 +128,12 @@ enum WorkspaceAppAssembly {
                 saveAsMP4: { record, sourceURL in
                     guard let item = QuanjiFavoritesBridge.item(from: record) else { return }
                     quanjiDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                },
+                preparePlay: { record in
+                    knitVideoPlayer.beginPreparingPlayback(title: record.title, source: .quanji)
+                },
+                playFailed: { message in
+                    knitVideoPlayer.presentResolveFailure(message: message)
                 }
             ),
             pornyVideoActions: FavoriteVideoActions(
@@ -133,6 +151,12 @@ enum WorkspaceAppAssembly {
                 saveAsMP4: { record, sourceURL in
                     guard let item = PornyFavoritesBridge.item(from: record) else { return }
                     pornyDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                },
+                preparePlay: { record in
+                    knitVideoPlayer.beginPreparingPlayback(title: record.title, source: .porny)
+                },
+                playFailed: { message in
+                    knitVideoPlayer.presentResolveFailure(message: message)
                 }
             ),
             tangxinVideoActions: FavoriteVideoActions(
@@ -151,6 +175,12 @@ enum WorkspaceAppAssembly {
                 saveAsMP4: { record, sourceURL in
                     guard let item = TangxinFavoritesBridge.item(from: record) else { return }
                     tangxinDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                },
+                preparePlay: { record in
+                    knitVideoPlayer.beginPreparingPlayback(title: record.title, source: .tangxin)
+                },
+                playFailed: { message in
+                    knitVideoPlayer.presentResolveFailure(message: message)
                 }
             )
         )
@@ -1127,6 +1157,12 @@ enum WorkspaceAppAssembly {
                             },
                             onSaveVideo: { item, url in
                                 quanjiDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            },
+                            onPreparePlay: { item in
+                                knitVideoPlayer.beginPreparingPlayback(title: item.title, source: .quanji)
+                            },
+                            onPlayFailed: { message in
+                                knitVideoPlayer.presentResolveFailure(message: message)
                             }
                         )
                     },
@@ -1176,6 +1212,12 @@ enum WorkspaceAppAssembly {
                             },
                             onSaveVideo: { item, url in
                                 pornyDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            },
+                            onPreparePlay: { item in
+                                knitVideoPlayer.beginPreparingPlayback(title: item.title, source: .porny)
+                            },
+                            onPlayFailed: { message in
+                                knitVideoPlayer.presentResolveFailure(message: message)
                             }
                         )
                     },
@@ -1226,6 +1268,12 @@ enum WorkspaceAppAssembly {
                             },
                             onSaveVideo: { item, url in
                                 tangxinDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            },
+                            onPreparePlay: { item in
+                                knitVideoPlayer.beginPreparingPlayback(title: item.title, source: .tangxin)
+                            },
+                            onPlayFailed: { message in
+                                knitVideoPlayer.presentResolveFailure(message: message)
                             },
                             onOpenFilter: { filter in
                                 context.appContext.routeController.select(

@@ -115,7 +115,7 @@ enum PornyFavoritesBridge {
             detailURL: detailURL,
             coverURL: coverURL,
             coverAspectRatio: 16.0 / 9.0,
-            durationText: ""
+            durationText: OnlineVideoItem.durationText(fromFavoriteSubtitle: record.subtitle)
         )
     }
 

@@ -17,6 +17,12 @@ final class TangxinGalleryTests: XCTestCase {
         )
     }
 
+    func testFavoriteSubtitleDurationIsRestored() {
+        XCTAssertEqual(OnlineVideoItem.durationText(fromFavoriteSubtitle: "糖心Vlog · 12:34"), "12:34")
+        XCTAssertEqual(OnlineVideoItem.durationText(fromFavoriteSubtitle: "1:02:03"), "1:02:03")
+        XCTAssertEqual(OnlineVideoItem.durationText(fromFavoriteSubtitle: "糖心Vlog"), "")
+    }
+
     func testRouteParseRecognizesDeepLinks() {
         XCTAssertEqual(TangxinRoute.parse("latest"), .latest)
         XCTAssertEqual(TangxinRoute.parse("tags")?.itemID, "tags")
@@ -238,6 +244,7 @@ final class TangxinGalleryTests: XCTestCase {
         let record = TangxinFavoritesBridge.record(from: item)
         XCTAssertEqual(FavoriteSource.source(for: record), .tangxin)
         XCTAssertEqual(TangxinFavoritesBridge.item(from: record)?.id, "36005")
+        XCTAssertEqual(TangxinFavoritesBridge.item(from: record)?.durationText, "12:34")
         XCTAssertNil(TangxinFavoritesBridge.item(from: FavoriteRecord(
             id: "tangxin:x", sourceID: "tangxin", title: "x", rawTitle: "x", subtitle: "",
             detailURL: "https://tangxinvlog.app/tag/silk/", coverURL: nil, imageCount: 0, pageCount: 1

@@ -30,7 +30,9 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         super.init(nibName: nil, bundle: nil)
     }
 
-    @available(*, unavailable) required init?(coder: NSCoder) { nil }
+    @available(*, unavailable) required init?(coder _: NSCoder) {
+        nil
+    }
 
     override func loadView() {
         view = NSView()
@@ -58,6 +60,11 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         tableScrollView.hasVerticalScroller = true
         tableScrollView.contentView.drawsBackground = false
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("MissKonItem"))
         tableView.addTableColumn(column)
@@ -88,6 +95,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         gridView.onNeedsMore = { [weak self] in self?.library.loadMoreListIfNeeded() }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
         gridView.onRetry = { [weak self] in self?.library.retryLastFailure() }
+        gridView.onRefresh = { [weak self] in self?.library.refreshFromNetwork() }
         gridView.contextMenuProvider = { [weak self] item in self?.makeContextMenu(for: item) }
     }
 
@@ -96,6 +104,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
     }
 
     private func reloadContent() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: library.isRefreshingList)
         // Save scroll offset for the outgoing section before content changes.
         if let lastSection, lastSection != library.section {
             saveCurrentScrollOffset(for: lastSection)
@@ -123,8 +132,9 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
                 showsFooter: currentShowsFooter
             )
             if canApplyAppendUpdate(from: lastAppliedVisibleIDs, to: currentIDs),
-               currentShowsFooter == lastShowsFooter {
-                let insertedRange = lastAppliedVisibleIDs.count..<currentIDs.count
+               currentShowsFooter == lastShowsFooter
+            {
+                let insertedRange = lastAppliedVisibleIDs.count ..< currentIDs.count
                 lastAppliedVisibleIDs = currentIDs
                 NSView.performWithoutAnimation {
                     tableView.insertRows(at: IndexSet(integersIn: insertedRange), withAnimation: [])
@@ -143,7 +153,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
             lastListFooterState = currentFooterState
             syncTableSelection()
             if let pendingScrollItemID,
-               let row = library.visibleItems.firstIndex(where: { $0.id == pendingScrollItemID }) {
+               let row = library.visibleItems.firstIndex(where: { $0.id == pendingScrollItemID })
+            {
                 tableView.scrollRowToVisible(row)
             } else if let offset = pendingScrollOffset, library.visibleItems.indices.contains(0) {
                 let clipView = tableScrollView.contentView
@@ -190,7 +201,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         let rowRange = NSRange(location: visibleRows.location, length: upperBound - visibleRows.location)
         guard rowRange.length > 0 else { return }
         let columnIndexes = IndexSet(integer: 0)
-        tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: columnIndexes)
+        tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound ..< rowRange.upperBound), columnIndexes: columnIndexes)
     }
 
     private func reloadFooterRowIfVisible() {
@@ -254,7 +265,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
     private func syncTableSelection() {
         guard let selectedID = library.selectedItemID,
-              let row = library.visibleItems.firstIndex(where: { $0.id == selectedID }) else {
+              let row = library.visibleItems.firstIndex(where: { $0.id == selectedID })
+        else {
             isApplyingSelection = true
             tableView.deselectAll(nil)
             isApplyingSelection = false
@@ -276,8 +288,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         return true
     }
 
-    // 列表单击选中与网格一致：同步 library 选中，详情面板与方向键导航跟随。
-    func tableViewSelectionDidChange(_ notification: Notification) {
+    /// 列表单击选中与网格一致：同步 library 选中，详情面板与方向键导航跟随。
+    func tableViewSelectionDidChange(_: Notification) {
         guard !isApplyingSelection else { return }
         let row = tableView.selectedRow
         guard library.visibleItems.indices.contains(row) else { return }
@@ -286,11 +298,11 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
     // MARK: - NSTableViewDataSource
 
-    func numberOfRows(in tableView: NSTableView) -> Int {
+    func numberOfRows(in _: NSTableView) -> Int {
         library.visibleItems.count + (shouldShowFooter ? 1 : 0)
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         if row >= library.visibleItems.count {
             library.loadMoreListIfNeeded()
             let footer = tableView.makeView(withIdentifier: MissKonFooterRowView.reuseID, owner: self) as? MissKonFooterRowView ?? MissKonFooterRowView()
@@ -314,16 +326,20 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         return cell
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+    func tableView(_: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         library.visibleItems.indices.contains(row) ? library.visibleItems[row].detailURL as NSURL : nil
     }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+    func tableView(_: NSTableView, heightOfRow row: Int) -> CGFloat {
         row >= library.visibleItems.count ? 34 : 96
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+    func tableView(_: NSTableView, shouldSelectRow row: Int) -> Bool {
         library.visibleItems.indices.contains(row)
+    }
+
+    @objc private func handlePullToRefresh() {
+        library.refreshFromNetwork()
     }
 
     @objc private func openSelectedTableItemInDetail() {
@@ -368,7 +384,8 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         // 详情页解析出 MediaFire 下载链接(短链)后提供快捷入口;
         // 只对当前详情图集显示,避免打开别的图集的链接。
         if library.detail.currentItem?.id == item.id,
-           let mediaFireURL = library.detail.mediaFireDownloadURL {
+           let mediaFireURL = library.detail.mediaFireDownloadURL
+        {
             let mediaFireItem = NSMenuItem(title: "MediaFire", action: #selector(openMediaFire(_:)), keyEquivalent: "")
             mediaFireItem.target = self
             mediaFireItem.representedObject = mediaFireURL
@@ -391,7 +408,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         return menu
     }
 
-    @objc private func openInBrowser(_ sender: NSMenuItem) {
+    @objc private func openInBrowser(_: NSMenuItem) {
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }) else { return }
         NSWorkspace.shared.open(item.detailURL)
     }
@@ -401,7 +418,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         NSWorkspace.shared.open(url)
     }
 
-    @objc private func copyDetailLink(_ sender: NSMenuItem) {
+    @objc private func copyDetailLink(_: NSMenuItem) {
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(item.detailURL.absoluteString, forType: .string)
@@ -424,7 +441,7 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
         }
     }
 
-    @objc private func shareItem(_ sender: NSMenuItem) {
+    @objc private func shareItem(_: NSMenuItem) {
         guard let item = library.selectedItemID.flatMap({ id in library.visibleItems.first { $0.id == id } }),
               let row = library.visibleItems.firstIndex(where: { $0.id == item.id }) else { return }
         SharingPresenter.show(items: [item.detailURL as NSURL], relativeTo: tableView.rect(ofRow: row), of: tableView, preferredEdge: .maxX)
@@ -450,7 +467,9 @@ final class MissKonContentViewController: NSViewController, NSTableViewDataSourc
 
 final class MissKonContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
-    override func accessibilityLabel() -> String? { "MissKon 图片列表" }
+    override func accessibilityLabel() -> String? {
+        "MissKon 图片列表"
+    }
 }
 
 private struct ListFooterState: Equatable {

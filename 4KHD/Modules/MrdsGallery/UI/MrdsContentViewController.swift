@@ -95,6 +95,11 @@ final class MrdsContentViewController: NSViewController, WorkspaceFocusable {
         tableScrollView.automaticallyAdjustsContentInsets = true
         tableScrollView.hasVerticalScroller = true
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("MrdsItem")))
         tableView.headerView = nil
         tableView.rowHeight = 96
@@ -155,6 +160,11 @@ final class MrdsContentViewController: NSViewController, WorkspaceFocusable {
         gridScrollView.hasHorizontalScroller = false
         gridScrollView.contentView.drawsBackground = false
         gridScrollView.documentView = collectionView
+        WorkspacePullToRefresh.install(
+            on: gridScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
         gridScrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self,
@@ -189,6 +199,8 @@ final class MrdsContentViewController: NSViewController, WorkspaceFocusable {
     }
 
     private func reloadContent() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: store.isRefreshingList)
+        WorkspacePullToRefresh.sync(gridScrollView, isRefreshing: store.isRefreshingList)
         rows = store.items.map { .item($0.id) }
         if shouldShowFooter { rows.append(.footer) }
         switch preferences.layout {
@@ -337,6 +349,10 @@ final class MrdsContentViewController: NSViewController, WorkspaceFocusable {
         guard store.activeSearchQuery != nil || !store.searchText.isEmpty else { return false }
         store.clearSearch()
         return true
+    }
+
+    @objc private func handlePullToRefresh() {
+        store.refreshFromNetwork()
     }
 
     @objc private func gridSelectionChanged() {

@@ -10,7 +10,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         static let layout = NSToolbarItem.Identifier("WorkspaceToolbar.layout")
         static let localGridColumns = NSToolbarItem.Identifier("WorkspaceToolbar.localGridColumns")
         static let localSort = NSToolbarItem.Identifier("WorkspaceToolbar.localSort")
-        static let refresh = NSToolbarItem.Identifier("WorkspaceToolbar.refresh")
+        static let locationTitle = NSToolbarItem.Identifier("WorkspaceToolbar.locationTitle")
         static let favorite = NSToolbarItem.Identifier("WorkspaceToolbar.favorite")
         static let resetZoom = NSToolbarItem.Identifier("WorkspaceToolbar.resetZoom")
         static let immersive = NSToolbarItem.Identifier("WorkspaceToolbar.immersive")
@@ -39,7 +39,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private weak var wallhavenFilterItem: NSMenuToolbarItem?
     private weak var favoritesFilterItem: NSMenuToolbarItem?
     private weak var knitFilterItem: NSMenuToolbarItem?
-    private weak var refreshItem: NSToolbarItem?
+    private weak var locationTitleItem: NSToolbarItem?
+    private weak var locationTitleLabel: NSTextField?
     private weak var favoriteItem: NSToolbarItem?
     private weak var resetZoomItem: NSToolbarItem?
     private weak var immersiveItem: NSToolbarItem?
@@ -98,7 +99,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             ItemID.detailTrackingSeparator,
             ItemID.localGridColumns,
             ItemID.localSort,
-            ItemID.refresh,
+            ItemID.locationTitle,
             ItemID.favorite,
             ItemID.resetZoom,
             ItemID.immersive,
@@ -129,7 +130,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             .flexibleSpace,
             .toggleSidebar,
             ItemID.sidebarTrackingSeparator,
-            ItemID.refresh,
+            ItemID.locationTitle,
             .flexibleSpace,
             ItemID.detailTrackingSeparator,
             .flexibleSpace,
@@ -137,7 +138,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         if profile.showsLocalSort {
             identifiers.append(ItemID.localGridColumns)
             identifiers.append(ItemID.localSort)
-        } else if profile.showsGridColumns {
+        } else if profile.showsGridColumns, !isVideoDirectoryListing {
             identifiers.append(ItemID.localGridColumns)
         }
         if profile.showsImportFolder {
@@ -274,17 +275,23 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
             localSortItem = item
             updateLocalSortItem()
             return item
-        case ItemID.refresh:
+        case ItemID.locationTitle:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.target = self
-            item.action = #selector(refreshContent(_:))
-            item.label = "刷新"
-            item.paletteLabel = "刷新"
-            item.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "刷新")
-            item.toolTip = "刷新当前内容"
+            let label = NSTextField(labelWithString: "")
+            label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+            label.lineBreakMode = .byTruncatingTail
+            label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
+            label.widthAnchor.constraint(lessThanOrEqualToConstant: 320).isActive = true
+            item.view = label
+            item.label = "当前位置"
+            item.paletteLabel = "当前位置"
             item.visibilityPriority = .high
-            refreshItem = item
-            updateRefreshItem()
+            locationTitleItem = item
+            locationTitleLabel = label
+            updateLocationTitleItem()
             return item
         case ItemID.favorite:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
@@ -459,8 +466,8 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case ItemID.refresh:
-            canRefreshCurrentModule
+        case ItemID.locationTitle:
+            true
         case ItemID.localSort:
             currentModuleID == .localLibrary
         case ItemID.localGridColumns:
@@ -522,11 +529,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         default: return
         }
         appContext.toolbarContext.adjustGridColumns(delta: delta, for: currentModuleID)
-        refresh()
-    }
-
-    @objc private func refreshContent(_: Any?) {
-        appContext.toolbarContext.refresh(for: currentModuleID)
         refresh()
     }
 
@@ -614,6 +616,24 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         appContext.routeController.route.moduleID
     }
 
+    private var isVideoDirectoryListing: Bool {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+            snapshot.showsDirectoryListing
+        default:
+            false
+        }
+    }
+
+    private func videoSearchPlaceholder() -> String? {
+        switch appContext.toolbarContext.snapshot(for: currentModuleID) {
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+            snapshot.searchPlaceholder
+        default:
+            nil
+        }
+    }
+
     private func scheduleRefresh() {
         refreshQueue.add(id: "refresh") { [weak self] in
             self?.refresh()
@@ -650,9 +670,12 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case let .favorites(s): _ = s.layout; _ = appContext.favoritesModuleStore.filter
         case let .knit(s): _ = s.layout; _ = s.filter; _ = s.pageStatusText
         case let .mrds(s): _ = s.layout
-        case let .quanji(s): _ = s.layout
-        case let .porny(s): _ = s.layout
-        case let .tangxin(s): _ = s.layout
+        case let .quanji(s): _ = s.layout; _ = s.searchPlaceholder
+        case let .porny(s): _ = s.layout; _ = s.searchPlaceholder
+        case let .tangxin(s):
+            _ = s.layout
+            _ = s.showsDirectoryListing
+            _ = s.searchPlaceholder
         }
     }
 
@@ -661,7 +684,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         updateSearchField()
         updateLocalGridColumnsControl()
         updateLocalSortItem()
-        updateRefreshItem()
+        updateLocationTitleItem()
         updateFavoriteItem()
         updateResetZoomItem()
         updateImmersiveItem()
@@ -679,7 +702,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
     private func updateSearchField() {
         guard let searchField = searchItem?.searchField else { return }
         let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
-        searchField.placeholderString = "搜索 \(f.moduleName)"
+        searchField.placeholderString = videoSearchPlaceholder() ?? "搜索 \(f.moduleName)"
         if searchField.stringValue != f.searchText {
             searchField.stringValue = f.searchText
         }
@@ -702,16 +725,11 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         localGridColumnsControl.setEnabled(f.canDecreaseGridColumns, forSegment: 1)
     }
 
-    private func updateRefreshItem() {
-        guard let refreshItem else { return }
-        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
-        if currentModuleID == .localLibrary {
-            refreshItem.isEnabled = !f.isRefreshing && f.hasSelection
-            refreshItem.toolTip = f.hasSelection ? "刷新本地图片" : "先选择一个本地目录"
-        } else {
-            refreshItem.isEnabled = !f.isRefreshing
-            refreshItem.toolTip = f.isRefreshing ? "正在刷新 \(f.moduleName)" : "刷新 \(f.moduleName)"
-        }
+    private func updateLocationTitleItem() {
+        let title = appContext.toolbarContext.snapshot(for: currentModuleID).fields.locationTitle
+        locationTitleLabel?.stringValue = title
+        locationTitleItem?.toolTip = title
+        locationTitleItem?.label = title
     }
 
     private func updateFavoriteItem() {
@@ -795,12 +813,6 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
         shareItem.isEnabled = f.canShare
         shareItem.toolTip = f.canShare ? "共享当前\(f.moduleName)内容" : "先选择一项"
-    }
-
-    private var canRefreshCurrentModule: Bool {
-        let f = appContext.toolbarContext.snapshot(for: currentModuleID).fields
-        let profile = appContext.moduleRegistry.descriptor(for: currentModuleID)?.presentation ?? .standard
-        return !f.isRefreshing && (!profile.refreshRequiresSelection || f.hasSelection)
     }
 
     private var canFavoriteCurrentModule: Bool {

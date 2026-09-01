@@ -27,7 +27,9 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         super.init(nibName: nil, bundle: nil)
     }
 
-    @available(*, unavailable) required init?(coder: NSCoder) { nil }
+    @available(*, unavailable) required init?(coder _: NSCoder) {
+        nil
+    }
 
     override func loadView() {
         view = NSView()
@@ -55,6 +57,11 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         tableScrollView.hasVerticalScroller = true
         tableScrollView.contentView.drawsBackground = false
         tableScrollView.documentView = tableView
+        WorkspacePullToRefresh.install(
+            on: tableScrollView,
+            target: self,
+            action: #selector(handlePullToRefresh)
+        )
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("WallhavenItem"))
         tableView.addTableColumn(column)
@@ -85,6 +92,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         gridView.onNeedsMore = { [weak self] in self?.library.loadMoreIfNeeded() }
         gridView.onEscape = { [weak self] in self?.clearSearch() ?? false }
         gridView.onRetry = { [weak self] in self?.library.retryLastFailure() }
+        gridView.onRefresh = { [weak self] in self?.library.refreshFromNetwork() }
         gridView.contextMenuProvider = { [weak self] wallpaper in self?.makeContextMenu(for: wallpaper) }
     }
 
@@ -93,6 +101,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
     }
 
     private func reloadContent() {
+        WorkspacePullToRefresh.sync(tableScrollView, isRefreshing: library.isRefreshingList)
         capturePendingScrollItemIfSwitchingLayout()
 
         switch preferences.layout {
@@ -101,8 +110,9 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
             let currentShowsFooter = shouldShowFooter
             let currentIDs = library.wallpapers.map(\.id)
             if canApplyAppendUpdate(from: lastAppliedVisibleIDs, to: currentIDs),
-               currentShowsFooter == lastShowsFooter {
-                let insertedRange = lastAppliedVisibleIDs.count..<currentIDs.count
+               currentShowsFooter == lastShowsFooter
+            {
+                let insertedRange = lastAppliedVisibleIDs.count ..< currentIDs.count
                 lastAppliedVisibleIDs = currentIDs
                 NSView.performWithoutAnimation {
                     tableView.insertRows(at: IndexSet(integersIn: insertedRange), withAnimation: [])
@@ -116,7 +126,8 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
             }
             syncTableSelection()
             if let pendingScrollItemID,
-               let row = library.wallpapers.firstIndex(where: { $0.id == pendingScrollItemID }) {
+               let row = library.wallpapers.firstIndex(where: { $0.id == pendingScrollItemID })
+            {
                 tableView.scrollRowToVisible(row)
             }
         case .grid:
@@ -150,7 +161,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         let upperBound = min(visibleRows.location + visibleRows.length, totalRows)
         let rowRange = NSRange(location: visibleRows.location, length: upperBound - visibleRows.location)
         guard rowRange.length > 0 else { return }
-        tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound..<rowRange.upperBound), columnIndexes: IndexSet(integer: 0))
+        tableView.reloadData(forRowIndexes: IndexSet(integersIn: rowRange.lowerBound ..< rowRange.upperBound), columnIndexes: IndexSet(integer: 0))
     }
 
     private func canApplyAppendUpdate(from oldIDs: [Wallpaper.ID], to newIDs: [Wallpaper.ID]) -> Bool {
@@ -204,7 +215,8 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
 
     private func syncTableSelection() {
         guard let selectedID = library.selectedWallpaperID,
-              let row = library.wallpapers.firstIndex(where: { $0.id == selectedID }) else {
+              let row = library.wallpapers.firstIndex(where: { $0.id == selectedID })
+        else {
             isApplyingSelection = true
             tableView.deselectAll(nil)
             isApplyingSelection = false
@@ -226,8 +238,8 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         return true
     }
 
-    // 列表单击选中与网格一致：同步 library 选中，详情面板与方向键导航跟随。
-    func tableViewSelectionDidChange(_ notification: Notification) {
+    /// 列表单击选中与网格一致：同步 library 选中，详情面板与方向键导航跟随。
+    func tableViewSelectionDidChange(_: Notification) {
         guard !isApplyingSelection else { return }
         let row = tableView.selectedRow
         guard library.wallpapers.indices.contains(row) else { return }
@@ -236,11 +248,11 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
 
     // MARK: - NSTableViewDataSource
 
-    func numberOfRows(in tableView: NSTableView) -> Int {
+    func numberOfRows(in _: NSTableView) -> Int {
         library.wallpapers.count + (shouldShowFooter ? 1 : 0)
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+    func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
         if row >= library.wallpapers.count {
             library.loadMoreIfNeeded()
             let footer = tableView.makeView(withIdentifier: WallhavenFooterRowView.reuseID, owner: self) as? WallhavenFooterRowView ?? WallhavenFooterRowView()
@@ -258,16 +270,20 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         return cell
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+    func tableView(_: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         library.wallpapers.indices.contains(row) ? library.wallpapers[row].sourcePageUrl as NSURL : nil
     }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+    func tableView(_: NSTableView, heightOfRow row: Int) -> CGFloat {
         row >= library.wallpapers.count ? 34 : 96
     }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+    func tableView(_: NSTableView, shouldSelectRow row: Int) -> Bool {
         library.wallpapers.indices.contains(row)
+    }
+
+    @objc private func handlePullToRefresh() {
+        library.refreshFromNetwork()
     }
 
     @objc private func openSelectedTableItemInDetail() {
@@ -288,7 +304,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         return makeContextMenu(for: library.wallpapers[row])
     }
 
-    func makeContextMenu(for wallpaper: Wallpaper) -> NSMenu? {
+    func makeContextMenu(for _: Wallpaper) -> NSMenu? {
         let menu = NSMenu(title: "WallhavenWallpaperMenu")
         menu.autoenablesItems = false
 
@@ -319,18 +335,18 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         return menu
     }
 
-    @objc private func openInBrowser(_ sender: NSMenuItem) {
+    @objc private func openInBrowser(_: NSMenuItem) {
         guard let wallpaper = library.selectedWallpaperID.flatMap({ id in library.wallpapers.first { $0.id == id } }) else { return }
         NSWorkspace.shared.open(wallpaper.sourcePageUrl)
     }
 
-    @objc private func copyDetailLink(_ sender: NSMenuItem) {
+    @objc private func copyDetailLink(_: NSMenuItem) {
         guard let wallpaper = library.selectedWallpaperID.flatMap({ id in library.wallpapers.first { $0.id == id } }) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(wallpaper.sourcePageUrl.absoluteString, forType: .string)
     }
 
-    @objc private func setDesktopWallpaper(_ sender: NSMenuItem) {
+    @objc private func setDesktopWallpaper(_: NSMenuItem) {
         guard let wallpaper = library.selectedWallpaperID.flatMap({ id in library.wallpapers.first { $0.id == id } }) else { return }
         let effective = library.effectiveSelectedWallpaper ?? wallpaper
         guard let fullImageUrl = effective.fullImageUrl else {
@@ -384,7 +400,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
         }
     }
 
-    @objc private func shareItem(_ sender: NSMenuItem) {
+    @objc private func shareItem(_: NSMenuItem) {
         guard let wallpaper = library.selectedWallpaperID.flatMap({ id in library.wallpapers.first { $0.id == id } }),
               let row = library.wallpapers.firstIndex(where: { $0.id == wallpaper.id }) else { return }
         SharingPresenter.show(items: [wallpaper.sourcePageUrl as NSURL], relativeTo: tableView.rect(ofRow: row), of: tableView, preferredEdge: .maxX)
@@ -399,5 +415,7 @@ final class WallhavenContentViewController: NSViewController, NSTableViewDataSou
 
 final class WallhavenContentTableView: WorkspaceTableView {
     var arrowKeyHandler: ((Int) -> Bool)?
-    override func accessibilityLabel() -> String? { "Wallhaven 图片列表" }
+    override func accessibilityLabel() -> String? {
+        "Wallhaven 图片列表"
+    }
 }

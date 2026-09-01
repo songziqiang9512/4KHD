@@ -34,7 +34,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         localRootFolderIDs = Set(localRoots.map(\.tree.id))
         let online = WorkspaceSidebarNode.group("4KHD")
         let misskon = WorkspaceSidebarNode.group("MissKon")
-        let wallhaven = WorkspaceSidebarNode.group("在线壁纸")
+        let wallhaven = WorkspaceSidebarNode.group("Wallhaven")
         let knit = WorkspaceSidebarNode.group("爱妹子")
         let mrds = WorkspaceSidebarNode.group("每日大赛")
         let quanji = WorkspaceSidebarNode.group("木瓜视频")
@@ -62,7 +62,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         childrenByNode[quanji] = QuanjiSection.allCases.map(WorkspaceSidebarNode.quanji)
         childrenByNode[porny] = PornySection.allCases.map(WorkspaceSidebarNode.porny)
         childrenByNode[tangxin] = TangxinSection.allCases.map(WorkspaceSidebarNode.tangxin)
-        // 在线收藏作为「本地」分组的子节点,紧跟在「我的图片」下方。
+        // 「我的收藏」作为「本地」分组的子节点,紧跟在「我的图片」下方。
         var localChildren: [WorkspaceSidebarNode] = [
             .localAllImages(count: localRoots.reduce(0) { $0 + $1.imageCount }),
             .favoritesModule,
@@ -186,7 +186,7 @@ final class WorkspaceSidebarDataSource: NSObject, NSOutlineViewDataSource {
         guard folderByID.count == ids.count else { return }
         let restored = ids.compactMap { folderByID[$0] }
         guard restored.count == ids.count else { return }
-        // 保留「我的图片」「在线收藏」等非目录节点,只回滚目录部分。
+        // 保留「我的图片」「我的收藏」等非目录节点,只回滚目录部分。
         childrenByNode[localGroup] = nonFolderNodes + restored
         outlineView.reloadItem(localGroup)
     }
