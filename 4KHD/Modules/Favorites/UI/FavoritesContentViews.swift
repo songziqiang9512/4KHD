@@ -31,7 +31,7 @@ final class FavoritesListRowView: NSTableCellView {
         }
         let sourceTitle = source?.title ?? "未知来源"
         switch source {
-        case .quanji, .porny, .tangxin:
+        case .quanji, .porny, .tangxin, .taiav:
             let extra = record.subtitle.isEmpty ? "视频" : record.subtitle
             subtitleLabel.stringValue = "\(sourceTitle) · \(extra)"
         default:
@@ -126,7 +126,7 @@ final class FavoritesGridItemView: NSCollectionViewItem {
         representedIdentity = identity
         let metadata: String
         switch source {
-        case .quanji, .porny, .tangxin:
+        case .quanji, .porny, .tangxin, .taiav:
             metadata = record.subtitle.isEmpty ? "视频" : record.subtitle
         default:
             metadata = record.imageCount > 0 ? "\(record.imageCount) 张图片" : "多张图片"

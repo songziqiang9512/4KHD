@@ -12,7 +12,7 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -32,7 +32,8 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
 
     override func keyDown(with event: NSEvent) {
         if let keyboardContextProvider,
-           WorkspaceKeyboardHandler.keyDown(event, context: keyboardContextProvider()) {
+           WorkspaceKeyboardHandler.keyDown(event, context: keyboardContextProvider())
+        {
             return
         }
         super.keyDown(with: event)
@@ -43,8 +44,8 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
     }
 
     override func draggingSession(
-        _ session: NSDraggingSession,
-        sourceOperationMaskFor context: NSDraggingContext
+        _: NSDraggingSession,
+        sourceOperationMaskFor _: NSDraggingContext
     ) -> NSDragOperation {
         .move
     }
@@ -66,6 +67,74 @@ final class WorkspaceSidebarOutlineView: NSOutlineView, WorkspaceLiveResizeScrol
         }
         return contextMenuProvider?(row)
     }
+
+    override func frameOfOutlineCell(atRow row: Int) -> NSRect {
+        if isGroupRow(row) {
+            return .zero
+        }
+        return super.frameOfOutlineCell(atRow: row)
+    }
+
+    override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
+        var frame = super.frameOfCell(atColumn: column, row: row)
+        guard isGroupRow(row) else { return frame }
+        let outlineFrame = super.frameOfOutlineCell(atRow: row)
+        let targetX = outlineFrame.width > 0.5 ? outlineFrame.minX : frame.minX - indentationPerLevel
+        let shift = frame.minX - targetX
+        guard shift > 0.5 else { return frame }
+        frame.origin.x -= shift
+        frame.size.width += shift
+        return frame
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard super.hitTest(point) != nil else { return nil }
+        if isGroupRow(row(at: point)) {
+            return self
+        }
+        return super.hitTest(point)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        if isGroupRow(row), let node = item(atRow: row) as? WorkspaceSidebarNode {
+            window?.makeFirstResponder(self)
+            toggleGroup(node)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    private func toggleGroup(_ node: WorkspaceSidebarNode) {
+        if isItemExpanded(node) {
+            if selectedRowIsInside(node) {
+                deselectAll(nil)
+            }
+            collapseItem(node)
+        } else {
+            expandItem(node)
+        }
+    }
+
+    private func selectedRowIsInside(_ group: WorkspaceSidebarNode) -> Bool {
+        guard selectedRow >= 0 else { return false }
+        var current: Any? = item(atRow: selectedRow)
+        while let item = current {
+            if let node = item as? WorkspaceSidebarNode, node == group {
+                return true
+            }
+            current = parent(forItem: item)
+        }
+        return false
+    }
+
+    private func isGroupRow(_ row: Int) -> Bool {
+        guard row >= 0, let node = item(atRow: row) as? WorkspaceSidebarNode else { return false }
+        if case .group = node {
+            return true
+        }
+        return false
+    }
 }
 
 final class WorkspaceSidebarRowView: NSTableRowView {
@@ -82,6 +151,7 @@ final class WorkspaceSidebarCellView: NSTableCellView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let countLabel = NSTextField(labelWithString: "")
     private let spacer = NSView()
+    private let disclosureView = NSImageView()
     private let stackView = NSStackView()
 
     override init(frame frameRect: NSRect) {
@@ -90,11 +160,11 @@ final class WorkspaceSidebarCellView: NSTableCellView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
-    func configure(title: String, image: NSImage?, count: Int?) {
+    func configure(title: String, image: NSImage?, count: Int?, isGroupExpanded: Bool? = nil) {
         titleLabel.stringValue = title
         iconView.image = image
         iconView.isHidden = image == nil
@@ -105,6 +175,7 @@ final class WorkspaceSidebarCellView: NSTableCellView {
             countLabel.stringValue = ""
             countLabel.isHidden = true
         }
+        setGroupDisclosure(isExpanded: isGroupExpanded)
     }
 
     func setDraggingPresentation(_ isDragging: Bool) {
@@ -114,6 +185,22 @@ final class WorkspaceSidebarCellView: NSTableCellView {
     func setTitleStyle(font: NSFont, color: NSColor) {
         titleLabel.font = font
         titleLabel.textColor = color
+        iconView.contentTintColor = color
+    }
+
+    func setGroupDisclosure(isExpanded: Bool?) {
+        guard let isExpanded else {
+            disclosureView.isHidden = true
+            disclosureView.image = nil
+            return
+        }
+        disclosureView.isHidden = false
+        let symbolName = isExpanded ? "chevron.down" : "chevron.right"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: isExpanded ? "已展开" : "已折叠")
+        image?.isTemplate = true
+        disclosureView.image = image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        )
     }
 
     private func setupView() {
@@ -127,12 +214,24 @@ final class WorkspaceSidebarCellView: NSTableCellView {
         titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
+        titleLabel.refusesFirstResponder = true
+        titleLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         countLabel.font = .systemFont(ofSize: 11, weight: .regular)
         countLabel.textColor = .secondaryLabelColor
         countLabel.alignment = .right
         countLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        disclosureView.imageScaling = .scaleProportionallyDown
+        disclosureView.contentTintColor = .tertiaryLabelColor
+        disclosureView.setContentHuggingPriority(.required, for: .horizontal)
+        disclosureView.setContentCompressionResistancePriority(.required, for: .horizontal)
+        disclosureView.isHidden = true
+
+        spacer.setContentHuggingPriority(.fittingSizeCompression, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         stackView.orientation = .horizontal
         stackView.alignment = .centerY
@@ -144,15 +243,19 @@ final class WorkspaceSidebarCellView: NSTableCellView {
         stackView.addArrangedSubview(titleLabel)
         stackView.addArrangedSubview(spacer)
         stackView.addArrangedSubview(countLabel)
+        stackView.addArrangedSubview(disclosureView)
 
         NSLayoutConstraint.activate([
             iconView.widthAnchor.constraint(equalToConstant: 18),
             iconView.heightAnchor.constraint(equalToConstant: 18),
             countLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 18),
+            disclosureView.widthAnchor.constraint(equalToConstant: 12),
+            disclosureView.heightAnchor.constraint(equalToConstant: 12),
+            spacer.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
             stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             stackView.topAnchor.constraint(equalTo: topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 }

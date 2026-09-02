@@ -2,12 +2,8 @@ import AppKit
 import QuartzCore
 
 enum WorkspaceThumbnailGridCardAnimation {
-    static let cardHoverScale: CGFloat = 1.05
-    static let cardPressedScale: CGFloat = 0.96
     static let cardHoverExpandDuration: CFTimeInterval = 0.30
     static let cardHoverCollapseDuration: CFTimeInterval = 0.34
-    static let cardPressDownDuration: CFTimeInterval = 0.08
-    static let cardPressUpDuration: CFTimeInterval = 0.12
     static let cardEnterTiming = CAMediaTimingFunction(controlPoints: 0.22, 0.86, 0.26, 1.0)
     static let cardExitTiming = CAMediaTimingFunction(controlPoints: 0.26, 0.64, 0.30, 1.0)
 }
@@ -26,9 +22,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
 
     private var trackingAreaRef: NSTrackingArea?
     private var isHovering = false
-    private var isPressingCard = false
     private var isSelectedState = false
-    private var currentScale: CGFloat = 1
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -43,7 +37,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
     override func layout() {
         super.layout()
         guard bounds.isUsableForManualLayout else { return }
-        ensureLayerAnchorCentered()
         let fontSizes = fontSizeForWidth(bounds.width)
         titleLabel.font = .systemFont(ofSize: fontSizes.title, weight: .medium)
         metadataLabel.font = .monospacedDigitSystemFont(ofSize: fontSizes.metadata, weight: .regular)
@@ -127,9 +120,7 @@ final class WorkspaceThumbnailGridCardView: NSView {
     func resetForReuse(preservingImage: Bool = false) {
         removeTransientAnimations()
         isHovering = false
-        isPressingCard = false
         isSelectedState = false
-        currentScale = 1
         imageView.contentMode = .aspectFill
         if !preservingImage {
             imageView.image = placeholderImage
@@ -144,7 +135,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
         imageView.alphaValue = 1
         infoOverlay.alphaValue = 1
         hoverOutline.alphaValue = 0
-        layer?.transform = CATransform3DIdentity
         refreshAppearance()
     }
 
@@ -204,23 +194,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
         refreshAppearance()
     }
 
-    func applyPressedState(_ isPressed: Bool) {
-        guard isPressingCard != isPressed else { return }
-        isPressingCard = isPressed
-        guard isHovering else { return }
-        applyCardScale(
-            targetScale: isPressed
-                ? WorkspaceThumbnailGridCardAnimation.cardPressedScale
-                : WorkspaceThumbnailGridCardAnimation.cardHoverScale,
-            duration: isPressed
-                ? WorkspaceThumbnailGridCardAnimation.cardPressDownDuration
-                : WorkspaceThumbnailGridCardAnimation.cardPressUpDuration,
-            timing: isPressed
-                ? WorkspaceThumbnailGridCardAnimation.cardEnterTiming
-                : WorkspaceThumbnailGridCardAnimation.cardExitTiming
-        )
-    }
-
     func syncHoverState(windowLocation: NSPoint?) {
         guard let windowLocation, window != nil, !isHidden else {
             setHovering(false)
@@ -237,11 +210,8 @@ final class WorkspaceThumbnailGridCardView: NSView {
     func prepareForImmediateDisplay() {
         removeTransientAnimations()
         isHovering = false
-        isPressingCard = false
-        currentScale = 1
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.transform = CATransform3DIdentity
         hoverOutline.alphaValue = 0
         infoOverlay.alphaValue = 1
         CATransaction.commit()
@@ -312,7 +282,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
     }
 
     private func removeTransientAnimations() {
-        layer?.removeAnimation(forKey: "workspace.grid.card.scale")
         layer?.removeAllAnimations()
         imageView.layer?.removeAllAnimations()
         hoverOutline.layer?.removeAllAnimations()
@@ -323,20 +292,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
     private func setHovering(_ hovering: Bool) {
         guard isHovering != hovering else { return }
         isHovering = hovering
-        let targetScale: CGFloat = hovering
-            ? (isPressingCard
-                ? WorkspaceThumbnailGridCardAnimation.cardPressedScale
-                : WorkspaceThumbnailGridCardAnimation.cardHoverScale)
-            : 1
-        applyCardScale(
-            targetScale: targetScale,
-            duration: hovering
-                ? WorkspaceThumbnailGridCardAnimation.cardHoverExpandDuration
-                : WorkspaceThumbnailGridCardAnimation.cardHoverCollapseDuration,
-            timing: hovering
-                ? WorkspaceThumbnailGridCardAnimation.cardEnterTiming
-                : WorkspaceThumbnailGridCardAnimation.cardExitTiming
-        )
         animateHoverChrome(hovering)
     }
 
@@ -361,27 +316,6 @@ final class WorkspaceThumbnailGridCardView: NSView {
                 : WorkspaceThumbnailGridCardAnimation.cardExitTiming
             hoverOutline.animator().alphaValue = hovering ? 1 : 0
         }
-    }
-
-    private func applyCardScale(targetScale: CGFloat, duration: CFTimeInterval, timing: CAMediaTimingFunction) {
-        guard let layer else { return }
-        ensureLayerAnchorCentered()
-        guard abs(currentScale - targetScale) > 0.0001 else { return }
-        // Remove any in-flight scale animation so the presentation layer reverts to the
-        // model value, avoiding a visual bounce when the old animation is replaced.
-        layer.removeAnimation(forKey: "workspace.grid.card.scale")
-        let from = currentScale
-        let animation = CABasicAnimation(keyPath: "transform.scale")
-        animation.fromValue = from
-        animation.toValue = targetScale
-        animation.duration = duration
-        animation.timingFunction = timing
-        layer.add(animation, forKey: "workspace.grid.card.scale")
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.transform = CATransform3DMakeScale(targetScale, targetScale, 1)
-        CATransaction.commit()
-        currentScale = targetScale
     }
 
     private func refreshAppearance() {

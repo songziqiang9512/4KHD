@@ -63,6 +63,18 @@ enum WorkspaceAppAssembly {
             userAgent: TangxinRequestFactory.userAgent,
             referer: TangxinRequestFactory.htmlOrigin
         )
+        let taiavStore = TaiavGalleryFactory.makeStore(favorites: favoritesStore)
+        let taiavPreferences = OnlineVideoContentPreferences(
+            layoutKey: "com.songziqiang.4khd.taiav.layout",
+            gridColumnsKey: "com.songziqiang.4khd.taiav.gridColumns"
+        )
+        let taiavDetailInteraction = OnlineVideoDetailInteractionController(
+            downloadStore: downloadStore,
+            policySource: .taiav,
+            sourceTitle: "TaiAV",
+            userAgent: TaiavRequestFactory.userAgent,
+            referer: TaiavRequestFactory.htmlOrigin
+        )
         configureFavoriteSourceAdapters(
             wallhavenPageResolver: { detailPageURL in
                 let detail = try await wallhavenFeedStore.favoriteDetail(forDetailPageURL: detailPageURL)
@@ -182,6 +194,30 @@ enum WorkspaceAppAssembly {
                 playFailed: { message in
                     knitVideoPlayer.presentResolveFailure(message: message)
                 }
+            ),
+            taiavVideoActions: FavoriteVideoActions(
+                play: { record, sourceURL in
+                    guard let item = TaiavFavoritesBridge.item(from: record) else { return }
+                    knitVideoPlayer.play(
+                        url: sourceURL,
+                        title: record.title,
+                        source: .taiav,
+                        userAgent: TaiavRequestFactory.userAgent,
+                        referer: TaiavRequestFactory.htmlOrigin
+                    ) {
+                        taiavDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                    }
+                },
+                saveAsMP4: { record, sourceURL in
+                    guard let item = TaiavFavoritesBridge.item(from: record) else { return }
+                    taiavDetailInteraction.saveVideo(item: item, sourceURL: sourceURL)
+                },
+                preparePlay: { record in
+                    knitVideoPlayer.beginPreparingPlayback(title: record.title, source: .taiav)
+                },
+                playFailed: { message in
+                    knitVideoPlayer.presentResolveFailure(message: message)
+                }
             )
         )
         let wallhavenStore = WallhavenGalleryStore(feed: wallhavenFeedStore, favorites: favoritesStore)
@@ -221,6 +257,9 @@ enum WorkspaceAppAssembly {
             tangxinStore: tangxinStore,
             tangxinPreferences: tangxinPreferences,
             tangxinDetailInteraction: tangxinDetailInteraction,
+            taiavStore: taiavStore,
+            taiavPreferences: taiavPreferences,
+            taiavDetailInteraction: taiavDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -256,6 +295,9 @@ enum WorkspaceAppAssembly {
             tangxinStore: tangxinStore,
             tangxinPreferences: tangxinPreferences,
             tangxinDetailInteraction: tangxinDetailInteraction,
+            taiavStore: taiavStore,
+            taiavPreferences: taiavPreferences,
+            taiavDetailInteraction: taiavDetailInteraction,
             localLibraryStore: localLibraryStore,
             localPreferences: localPreferences,
             localDetailInteraction: localDetailInteraction,
@@ -286,6 +328,7 @@ enum WorkspaceAppAssembly {
             quanjiStore: quanjiStore,
             pornyStore: pornyStore,
             tangxinStore: tangxinStore,
+            taiavStore: taiavStore,
             localLibraryStore: localLibraryStore,
             favoritesStore: favoritesStore,
             favoritesModuleStore: favoritesModuleStore,
@@ -304,7 +347,8 @@ enum WorkspaceAppAssembly {
         mrdsVideoActions: FavoriteVideoActions? = nil,
         quanjiVideoActions: FavoriteVideoActions? = nil,
         pornyVideoActions: FavoriteVideoActions? = nil,
-        tangxinVideoActions: FavoriteVideoActions? = nil
+        tangxinVideoActions: FavoriteVideoActions? = nil,
+        taiavVideoActions: FavoriteVideoActions? = nil
     ) {
         FavoriteSourceAdapterRegistry.shared.replaceAdapters([
             FavoriteSourceAdapter(
@@ -473,6 +517,14 @@ enum WorkspaceAppAssembly {
                 configureImageRequest: TangxinRequestFactory.configureImageRequest,
                 sourceTitle: "糖心Vlog",
                 videoActions: tangxinVideoActions
+            ),
+            makeVideoFavoriteAdapter(
+                source: .taiav,
+                itemFromRecord: TaiavFavoritesBridge.item(from:),
+                resolve: TaiavDetailResolver.resolve,
+                configureImageRequest: TaiavRequestFactory.configureImageRequest,
+                sourceTitle: "TaiAV",
+                videoActions: taiavVideoActions
             ),
         ])
     }
@@ -742,6 +794,9 @@ enum WorkspaceAppAssembly {
         tangxinStore: OnlineVideoGalleryStore,
         tangxinPreferences: OnlineVideoContentPreferences,
         tangxinDetailInteraction: OnlineVideoDetailInteractionController,
+        taiavStore: OnlineVideoGalleryStore,
+        taiavPreferences: OnlineVideoContentPreferences,
+        taiavDetailInteraction: OnlineVideoDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -1011,7 +1066,7 @@ enum WorkspaceAppAssembly {
                                         )
                                     )
                                     mrdsStore.openRecommendation(recommendation)
-                                case .quanji, .porny, .tangxin:
+                                case .quanji, .porny, .tangxin, .taiav:
                                     break
                                 }
                             }
@@ -1296,6 +1351,62 @@ enum WorkspaceAppAssembly {
                         }
                     },
                     bootstrap: { tangxinStore.bootstrapIfNeeded() }
+                ),
+                WorkspaceModuleDescriptor(
+                    id: .taiavGallery,
+                    displayName: "TaiavGallery",
+                    presentation: WorkspaceModulePresentationProfile(
+                        showsGridColumns: true, showsLocalSort: false, showsImportFolder: false,
+                        showsFavorite: true, showsOnlineSave: true, showsWallhavenControls: false,
+                        showsFavoritesFilter: false, showsKnitFilters: false, showsVideoSave: true,
+                        showsDetailPane: false,
+                        filmstripAvailability: .none,
+                        refreshRequiresSelection: false, detailActions: .none
+                    ),
+                    defaultRoute: {
+                        WorkspaceRoute(moduleID: .taiavGallery, itemID: TaiavSection.latest.rawValue)
+                    },
+                    makeContentController: { _ in
+                        OnlineVideoFeedViewController(
+                            store: taiavStore,
+                            preferences: taiavPreferences,
+                            configureImageRequest: TaiavRequestFactory.configureImageRequest,
+                            onPlayVideo: { item, url in
+                                knitVideoPlayer.play(
+                                    url: url,
+                                    title: item.title,
+                                    source: .taiav,
+                                    userAgent: TaiavRequestFactory.userAgent,
+                                    referer: TaiavRequestFactory.htmlOrigin
+                                ) {
+                                    taiavDetailInteraction.saveVideo(item: item, sourceURL: url)
+                                }
+                            },
+                            onSaveVideo: { item, url in
+                                taiavDetailInteraction.saveVideo(item: item, sourceURL: url)
+                            },
+                            onPreparePlay: { item in
+                                knitVideoPlayer.beginPreparingPlayback(title: item.title, source: .taiav)
+                            },
+                            onPlayFailed: { message in
+                                knitVideoPlayer.presentResolveFailure(message: message)
+                            }
+                        )
+                    },
+                    makeDetailController: { _ in
+                        NSViewController()
+                    },
+                    normalizeRoute: { route in
+                        let section = TaiavSection(rawValue: route.itemID) ?? .latest
+                        return WorkspaceRoute(moduleID: .taiavGallery, itemID: section.rawValue)
+                    },
+                    applyRoute: { route in
+                        guard let section = TaiavSection(rawValue: route.itemID) else { return }
+                        if taiavStore.filter != section.rawValue {
+                            taiavStore.setFilter(section.rawValue)
+                        }
+                    },
+                    bootstrap: { taiavStore.bootstrapIfNeeded() }
                 ),
             ]
         )

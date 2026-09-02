@@ -22,12 +22,6 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
     var preferredCardMinimumWidth: CGFloat = 136 {
         didSet { invalidateIfChanged(oldValue, preferredCardMinimumWidth) }
     }
-    /// Scale factor applied to cards on hover (e.g., 1.05 = 5% larger).
-    /// Spacing is dynamically adjusted based on this value to prevent
-    /// adjacent cards from overlapping when scaled.
-    var hoverScaleFactor: CGFloat = 1.05 {
-        didSet { invalidateIfChanged(oldValue, hoverScaleFactor) }
-    }
     var aspectRatioProvider: ((IndexPath) -> CGFloat)?
     /// 最近一次 prepare 得到的卡片列宽；宿主用它计算缩略图解码尺寸。
     private(set) var resolvedColumnWidth: CGFloat = 0
@@ -94,24 +88,13 @@ class WorkspaceThumbnailWaterfallLayout: NSCollectionViewLayout {
             return
         }
 
-        // Dynamic hover-aware spacing: when cards scale up on hover (hoverScaleFactor),
-        // increase spacing proportionally to prevent overlap between adjacent cards.
-        // hoverOverflow is the extra width/height on each side of a card during hover.
-        // Column spacing must accommodate overflow from both sides of adjacent cards (2x),
-        // while row spacing only needs one side's overflow.
-        let safeHoverScale = max(1.0, hoverScaleFactor.isFinite ? hoverScaleFactor : 1.05)
-        let hoverOverflow = columnWidth * (safeHoverScale - 1.0) / 2.0
-        let effectiveColumnSpacing = max(safeColumnSpacing, hoverOverflow * 2)
-        let effectiveRowSpacing = max(safeRowSpacing, hoverOverflow)
-        let adjustedColumnWidth = max(60, (availableWidth - effectiveColumnSpacing * CGFloat(columns - 1)) / CGFloat(columns))
-
         let metrics = LayoutMetrics(
             itemCount: newItemCount,
             boundsWidth: boundsWidth,
             columns: columns,
-            columnWidth: adjustedColumnWidth,
-            columnSpacing: effectiveColumnSpacing,
-            rowSpacing: effectiveRowSpacing,
+            columnWidth: columnWidth,
+            columnSpacing: safeColumnSpacing,
+            rowSpacing: safeRowSpacing,
             sectionInset: inset,
             minAspectRatio: minAspectRatio,
             maxAspectRatio: maxAspectRatio

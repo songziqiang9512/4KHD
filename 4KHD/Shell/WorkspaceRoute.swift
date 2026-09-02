@@ -11,6 +11,7 @@ enum WorkspaceModuleID: String, Hashable, Codable, Identifiable {
     case quanjiGallery
     case pornyGallery
     case tangxinGallery
+    case taiavGallery
 
     var id: String {
         rawValue

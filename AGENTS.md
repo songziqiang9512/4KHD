@@ -39,6 +39,7 @@
     QuanjiGallery/ — 91quanji.com 木瓜视频模块
     PornyGallery/ — 91porny.com 视频模块
     TangxinGallery/ — tangxinvlog.app 糖心Vlog 视频模块
+    TaiavGallery/ — taiav.com TaiAV 视频模块
 ```
 
 ### 模块内部结构
@@ -70,8 +71,9 @@
 | 在线视频 | `QuanjiGallery` | 91quanji.com 木瓜视频：公开列表/标签/搜索、无右侧详情栏，双击播放，XOR 解码 HLS |
 | 在线视频 | `PornyGallery` | 91porny.com 十四分类浏览与搜索，无右侧详情栏；公开 `data-src` HLS 才播放；不绕过登录 |
 | 在线视频 | `TangxinGallery` | tangxinvlog.app 糖心Vlog：侧边栏最近更新/分类目录/作者目录，标签与作者运行时从 `/tag/`、`/a/` 解析；无右侧详情栏 |
+| 在线视频 | `TaiavGallery` | taiav.com TaiAV：侧边栏最近更新 + 无码/有码/国产AV/网红主播；公开 `getmovie` HLS 才播放；无购买/积分 |
 | 本地图片 | `LocalLibrary` | 本地目录导入、扫描、metadata 读取 |
-| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY/糖心Vlog），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
+| 收藏 | `Favorites` | 统一收藏入口：跨模块汇总（4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY/糖心Vlog/TaiAV），按来源筛选，列表/网格 + 信息卡详情，独立于业务模块 |
 
 ## 4. 共享能力清单
 
@@ -81,7 +83,7 @@
 | `WorkspaceCollectionView` | `Shared/UI/` | 统一 NSCollectionView 基类（hover、tracking area、keyDown） |
 | `WorkspaceZoomableImageView` | `Shared/UI/` | 可缩放图片视图基类（pinch zoom、fit、reset） |
 | `WorkspaceThumbnailWaterfallLayout` | `Shared/UI/` | 瀑布流布局 |
-| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 缩略图卡片视图（图片+标题默认显示+高亮+hover 描边缩放） |
+| `WorkspaceThumbnailGridCardView` | `Shared/UI/` | 缩略图卡片视图（图片+标题默认显示+高亮+hover 描边） |
 | `WorkspaceThumbnailPrefetchController` | `Shared/UI/` | 缩略图预取调度器（可见区附近智能预取） |
 | `RemoteImageView` | `Shared/UI/` | 共享远程图片视图（Nuke 加载、占位符、aspectFill/Fit、同步缓存命中） |
 | `DetailOverlayChromeView` | `Shared/UI/Detail/` | 详情区覆盖层圆角背景 |
@@ -101,7 +103,7 @@
 | `WorkspacePullToRefresh` | `Shared/Platform/` | 列表/网格下拉刷新（运行时挂 `NSRefreshController`，旧 SDK 编译通过、旧系统 no-op） |
 | `FilmstripVisibilityController` | `Shared/State/` | 胶卷条显示/隐藏动画状态 |
 | `WorkspaceDetailPaneController` | `Shared/State/` | 详情窗格展开/收起 |
-| `OnlineVideoGalleryStore` | `Shared/State/` | 木瓜视频 / 91PORNY / 糖心Vlog 共用的视频列表与 HLS 解析状态 |
+| `OnlineVideoGalleryStore` | `Shared/State/` | 木瓜视频 / 91PORNY / 糖心Vlog / TaiAV 共用的视频列表与 HLS 解析状态 |
 | `OnlineVideoFeedViewController` | `Shared/UI/` | 视频模块列表/网格；双击和右键播放/下载，无图集语义 |
 
 ## 5. 变更优先级
@@ -119,15 +121,15 @@
 
 ### 统一收藏模块（我的收藏）
 
-- 侧边栏「我的收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY/糖心Vlog，rawValue 作路由 itemID）
-- 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整。木瓜视频/91PORNY/糖心Vlog 收藏例外：双击或回车直接播放，右键提供「播放」「下载视频」，不打开右侧详情栏
-- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery 的具体类型
-- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery/MrdsGallery 收藏继续使用原站解析、胶片条和页尾推荐；木瓜视频/91PORNY/糖心Vlog 收藏 `playsFromFeed`，`navigationMode: .sourceRecords`，无详情栏、胶片条与推荐。Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
+- 侧边栏「我的收藏」是「本地」分组内的子节点（紧跟「我的图片」），工具栏按来源筛选（全部/4KHD/MissKon/Wallhaven/爱妹子/每日大赛/木瓜视频/91PORNY/糖心Vlog/TaiAV，rawValue 作路由 itemID）
+- 交互与 MissKon/4KHD 完全一致：瀑布流网格（共享 `WorkspaceThumbnailWaterfallLayout` + `WorkspaceThumbnailGridCardView`，间距 8/10/12）、列表行、单击选中/双击开详情、hover 高亮、方向键、右键菜单、搜索高亮、列数调整。木瓜视频/91PORNY/糖心Vlog/TaiAV 收藏例外：双击或回车直接播放，右键提供「播放」「下载视频」，不打开右侧详情栏
+- 详情区是大图查看区（缩放/上张下张/计数/胶片条/沉浸模式），由 `FavoritesDetailStore` 统一 slot 模型驱动；具体来源的解析与请求配置由 App 组装层注册 `FavoriteSourceAdapter`，Favorites 模块不得直接依赖 Gallery/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery/TaiavGallery 的具体类型
+- **详情能力必须与来源模块同源**：`FavoriteSourceAdapter` 负责注入图片分页、推荐、请求配置、详情 metadata、来源内导航和可选视频动作。4KHD/MissKon/KnitGallery/MrdsGallery 收藏继续使用原站解析、胶片条和页尾推荐；木瓜视频/91PORNY/糖心Vlog/TaiAV 收藏 `playsFromFeed`，`navigationMode: .sourceRecords`，无详情栏、胶片条与推荐。Gallery 解析仍保留原模块的 WebKit fallback，关闭详情时必须取消并释放等待中的 continuation
 - **选择身份与空状态**：列表/网格选择以标准化 `detailURL` 为主键，不得只比较可能跨来源冲突的站点 raw ID；切换到空筛选、删除当前或最后一条收藏时必须同步修正选择并清空旧详情、推荐、视频和工具栏状态
 - **KnitGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放，播放按钮及独立播放器的右键菜单均同时提供保存 MP4 与复制影片源 URL，工具栏「保存」菜单也可保存 MP4；播放和保存均经 App 组装层复用 KnitGallery 原生实现，Favorites 不直接依赖播放器或下载器类型。未解析到受信任视频源时必须禁用菜单；不同视频可进入共享下载队列，同一图集的活动任务由 `DownloadStore` 去重
 - **MrdsGallery 视频一致性**：收藏详情解析到真实 HLS 后显示「播放视频」，空格键可播放；播放按钮、独立播放器和工具栏「保存」均提供保存 MP4 与拷贝源 URL。站点清单是 AES-128 MPEG-TS VOD：下载密钥后按 KEY 行 IV 解密每个 TS，再走与爱妹子相同的无损封装。`FavoriteVideoActions.canSaveAsMP4 = true`。未解析到受信任视频源时必须禁用菜单
 - **Wallhaven 一致性**：收藏详情按同来源收藏记录导航，加载原图与完整 metadata，支持等待原图解析完成后设为壁纸；上传者入口必须在应用内路由到 Wallhaven 上传者作品，不得跳到外部网页或退化为封面图
-- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数、木瓜视频/91PORNY/糖心Vlog 1）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
+- **分页顺序**：收藏适配器必须声明来源真实页容量（4KHD 20、MissKon 12、KnitGallery 10、Wallhaven 1、MrdsGallery 单页容量=记录图片数、木瓜视频/91PORNY/糖心Vlog/TaiAV 1）；详情预取预算最多覆盖相邻两页，但请求必须沿连续完成前缀逐页串行推进。后页先返回或解析失败时不得跳过缺口、误判完成或提前进入推荐；再次翻页、点击失败状态或选择失败占位必须能重试。初始占位窗口最多 1,000 张，窗口外页面在推进到末端后继续插入；来源声明页数最多 500 页
 - **来源判定必须用 detailURL host**（`FavoriteSource.source(for:)`），`FavoriteRecord.sourceID` 不可靠；封面/大图的防盗链请求配置从对应 `FavoriteSourceAdapter` 获取
 - **历史封面仍需重新门禁**：从磁盘恢复或旧版本迁移的 `coverURL` 在列表、网格、预取和详情首图使用前，都必须重新通过所属来源的媒体 allowlist；不能因记录已经持久化就直接信任 URL
 - 模块 UI 直接观察 `FavoritesStore.favorites`（`FavoritesModuleStore.visibleRecords` 是计算属性），不要加回 `onFavoritesChanged` 链路
@@ -227,13 +229,23 @@
 - **安全门禁**：HTML 仅 HTTPS exact/subdomain `tangxinvlog.app`；媒体仅 exact `t.5gcdn.xyz`
 - 站点分页和入口实测快照见 `docs/tangxin-site-protocol-2026-09-02.md`
 
+### TaiavGallery 模块（TaiAV）
+
+- **侧边栏**：高级模块开关下「TaiAV」分组，固定最近更新 `/cn` 与原站 4 个分类：无码 / 有码 / 国产AV / 网红主播。rawValue 同时是路由 itemID。不要把标签名单写进仓库。只使用 `/cn`，不要跟 `/tc`、`/en`
+- **列表**：卡片 `movie-card` + `/cn/movie/{24hex}`，封面 `img.storyofthepast.xyz/videos/...`。跳过 `/file/` 广告。首页 `/cn` 无分页；分类 `/cn/category/{名}?page=N`，下一页来自 `&raquo;`。搜索 `/cn/search?q=`，查询串必须百分号编码（未编码中文会 400）
+- **无详情栏**：`showsDetailPane: false`。双击/回车/右键「播放」现请求公开 `getmovie` 再打开独立播放窗口；右键「下载视频」进入共享下载队列
+- **HLS**：`GET /api/getmovie?type=1280&id=` 的 JSON `m3u8` 字段。相对路径拼到 `https://img.storyofthepast.xyz`。路径必须含当前影片 id。签名 query 会过期，每次播放/下载现请求。AES-128 MPEG-TS VOD。**不得**调用 `/api/buymovie`、积分、登录、签到或站点下载购买接口
+- **视频**：复用 App 层播放器，`source: .taiav`。保存 MP4 走 `KnitVideoDownloadService`（无 Knit Cloudflare 验证）
+- **安全门禁**：HTML 仅 HTTPS exact/subdomain `taiav.com`；API 仅 `/api/getmovie`；媒体仅 exact `img.storyofthepast.xyz` 与 exact/subdomain `snmovie.com`
+- 站点分页和入口实测快照见 `docs/taiav-site-protocol-2026-09-03.md`
+
 ### 设置面板
 
-- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery/本地图库的列表/网格
+- **布局**：一个统一切换选项同时控制 4KHD/MissKon/Wallhaven/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery/TaiavGallery/本地图库的列表/网格
 - **缓存上限**：在线缓存容量选择（512MB-4GB/无限制）
 - **清除缓存**：一键清除 Nuke 图片缓存、详情页缓存、MissKon/Wallhaven 模块缓存、本地缩略图缓存、临时文件
-- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery 模块显示
-- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
+- **侧边栏**：开关控制 4KHD/MissKon/KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery/TaiavGallery 模块显示
+- **收藏备份**：导出必须覆盖 `FavoritesStore` 中全部合法来源记录（含 KnitGallery/MrdsGallery/QuanjiGallery/PornyGallery/TangxinGallery/TaiavGallery 全字段）；导入只接受通过对应 `OnlineSourcePolicy` HTTPS 门禁的来源详情 URL。重复 `detailURL` 不得崩溃，首次位置保持稳定、后项内容覆盖
 - 全部中文化
 
 ### 辅助窗口

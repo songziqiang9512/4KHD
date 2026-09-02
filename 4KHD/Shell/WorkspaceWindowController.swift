@@ -130,6 +130,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
                 ? appContext.tangxinStore.displayFilterTitle
                 : (TangxinRoute.parse(route.itemID)?.title ?? "糖心Vlog")
             return "\(title) - 糖心Vlog"
+        case .taiavGallery:
+            let section = TaiavSection(rawValue: route.itemID) ?? .latest
+            return "\(section.title) - TaiAV"
         }
     }
 }

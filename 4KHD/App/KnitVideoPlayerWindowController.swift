@@ -295,6 +295,7 @@ final class KnitVideoPlayerWindowController: NSWindowController, NSWindowDelegat
         case .quanji: "木瓜视频"
         case .porny: "91PORNY 视频"
         case .tangxin: "糖心Vlog"
+        case .taiav: "TaiAV"
         case .gallery, .missKon, .wallhaven: "视频播放"
         }
     }

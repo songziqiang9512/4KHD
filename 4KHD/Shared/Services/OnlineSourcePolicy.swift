@@ -11,6 +11,7 @@ enum OnlineSourcePolicy {
         case quanji
         case porny
         case tangxin
+        case taiav
     }
 
     enum Resource {
@@ -120,6 +121,13 @@ enum OnlineSourcePolicy {
             return host == "t.5gcdn.xyz"
         case (.tangxin, .api):
             return false
+        case (.taiav, .html):
+            return isExactOrSubdomain(host, of: "taiav.com")
+        case (.taiav, .media):
+            return host == "img.storyofthepast.xyz"
+                || isExactOrSubdomain(host, of: "snmovie.com")
+        case (.taiav, .api):
+            return isExactOrSubdomain(host, of: "taiav.com") && url.path == "/api/getmovie"
         }
     }
 
@@ -128,7 +136,7 @@ enum OnlineSourcePolicy {
     /// delegates because some image loaders do not retain custom Referer
     /// headers on `task.originalRequest`.
     nonisolated static func source(forMediaURL url: URL) -> Source? {
-        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds, .quanji, .porny, .tangxin].filter {
+        let matches = [Source.gallery, .missKon, .wallhaven, .knit, .mrds, .quanji, .porny, .tangxin, .taiav].filter {
             allows(url, source: $0, resource: .media)
         }
         return matches.count == 1 ? matches[0] : nil
@@ -225,6 +233,7 @@ final class OnlineRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Se
         if host == "91quanji.com" || host.hasSuffix(".91quanji.com") { return .quanji }
         if host == "91porny.com" || host.hasSuffix(".91porny.com") { return .porny }
         if host == "tangxinvlog.app" || host.hasSuffix(".tangxinvlog.app") { return .tangxin }
+        if host == "taiav.com" || host.hasSuffix(".taiav.com") { return .taiav }
         return nil
     }
 
@@ -260,6 +269,8 @@ final class OnlineSourceSession: NSObject, URLSessionTaskDelegate, @unchecked Se
     static let quanjiHTML = OnlineSourceSession(source: .quanji, resource: .html)
     static let pornyHTML = OnlineSourceSession(source: .porny, resource: .html)
     static let tangxinHTML = OnlineSourceSession(source: .tangxin, resource: .html)
+    static let taiavHTML = OnlineSourceSession(source: .taiav, resource: .html)
+    static let taiavAPI = OnlineSourceSession(source: .taiav, resource: .api)
 
     private let source: OnlineSourcePolicy.Source
     private let resource: OnlineSourcePolicy.Resource

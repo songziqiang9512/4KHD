@@ -711,6 +711,7 @@ nonisolated enum KnitVideoDownloadService {
         case .quanji: "https://91quanji.com/"
         case .porny: "https://91porny.com/"
         case .tangxin: "https://tangxinvlog.app/"
+        case .taiav: "https://taiav.com/cn"
         case .knit, .gallery, .missKon, .wallhaven: "https://xx.knit.bid/"
         }
     }

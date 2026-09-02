@@ -156,9 +156,14 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
                   let node = dataSource.node(withStateIdentifier: oldNode.stateIdentifier),
                   let view = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) else { continue }
             if let cell = view as? WorkspaceSidebarCellView {
-                cell.configure(title: node.title, image: sidebarImage(for: node), count: node.count)
+                cell.configure(
+                    title: node.title,
+                    image: sidebarImage(for: node),
+                    count: node.count,
+                    isGroupExpanded: isGroupNode(node) ? outlineView.isItemExpanded(node) : nil
+                )
                 if isGroupNode(node) {
-                    cell.setTitleStyle(font: font(for: node), color: .secondaryLabelColor)
+                    cell.setTitleStyle(font: font(for: node), color: .labelColor)
                 }
             }
         }
@@ -207,6 +212,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     func outlineView(_: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         guard let node = item as? WorkspaceSidebarNode else { return true }
         return !isGroupNode(node)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        guard let node = item as? WorkspaceSidebarNode, isGroupNode(node) else {
+            return outlineView.rowHeight > 0 ? outlineView.rowHeight : 24
+        }
+        return 30
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem _: Any) -> NSTableRowView? {
@@ -278,11 +290,24 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     }
 
     func outlineViewItemDidExpand(_: Notification) {
+        refreshVisibleGroupDisclosures()
         saveExpandedNodeIDsFromOutlineView()
     }
 
     func outlineViewItemDidCollapse(_: Notification) {
+        refreshVisibleGroupDisclosures()
         saveExpandedNodeIDsFromOutlineView()
+    }
+
+    private func refreshVisibleGroupDisclosures() {
+        guard outlineView.numberOfRows > 0 else { return }
+        for row in 0 ..< outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? WorkspaceSidebarNode,
+                  isGroupNode(node),
+                  let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? WorkspaceSidebarCellView
+            else { continue }
+            cell.setGroupDisclosure(isExpanded: outlineView.isItemExpanded(node))
+        }
     }
 
     func outlineView(
@@ -303,8 +328,13 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? WorkspaceSidebarCellView
                 ?? WorkspaceSidebarCellView()
             cell.identifier = identifier
-            cell.configure(title: node.title, image: nil, count: nil)
-            cell.setTitleStyle(font: font(for: node), color: .secondaryLabelColor)
+            cell.configure(
+                title: node.title,
+                image: sidebarImage(for: node),
+                count: nil,
+                isGroupExpanded: outlineView.isItemExpanded(node)
+            )
+            cell.setTitleStyle(font: font(for: node), color: .labelColor)
             return cell
         }
 
@@ -324,7 +354,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         let systemName: String
         switch node {
         case .group:
-            return nil
+            guard let groupSymbol = node.groupMediaSymbolName else { return nil }
+            systemName = groupSymbol
         case let .gallery(section):
             systemName = section.sidebarSystemImage
         case .localAllImages:
@@ -344,6 +375,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
         case let .porny(section):
             systemName = section.sidebarSystemImage
         case let .tangxin(section):
+            systemName = section.sidebarSystemImage
+        case let .taiav(section):
             systemName = section.sidebarSystemImage
         case .favoritesModule:
             systemName = "heart"
@@ -386,6 +419,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             selectedRoute = WorkspaceRoute(moduleID: .pornyGallery, itemID: section.rawValue)
         case let .tangxin(section):
             selectedRoute = WorkspaceRoute(moduleID: .tangxinGallery, itemID: section.rawValue)
+        case let .taiav(section):
+            selectedRoute = WorkspaceRoute(moduleID: .taiavGallery, itemID: section.rawValue)
         case .favoritesModule:
             selectedRoute = WorkspaceRoute(moduleID: .favorites, itemID: FavoriteSourceFilter.all.rawValue)
         case .group:
@@ -538,6 +573,8 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
             route.itemID == section.rawValue
         case let (.tangxinGallery, .tangxin(section)):
             TangxinRoute.parse(route.itemID)?.sidebarSection == section
+        case let (.taiavGallery, .taiav(section)):
+            route.itemID == section.rawValue
         case let (.localLibrary, .localFolder(folder)):
             route.itemID == folder.id
         case (.localLibrary, .localAllImages):
@@ -556,7 +593,7 @@ final class WorkspaceSidebarViewController: NSViewController, NSOutlineViewDeleg
     private func font(for node: WorkspaceSidebarNode) -> NSFont {
         switch node {
         case .group:
-            NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+            NSFont.systemFont(ofSize: 15, weight: .semibold)
         default:
             NSFont.systemFont(ofSize: NSFont.systemFontSize)
         }

@@ -12,6 +12,7 @@ enum WorkspaceToolbarSnapshot {
     case quanji(VideoFeedSnapshot)
     case porny(VideoFeedSnapshot)
     case tangxin(VideoFeedSnapshot)
+    case taiav(VideoFeedSnapshot)
 
     struct GallerySnapshot {
         let searchText: String
@@ -295,6 +296,8 @@ enum WorkspaceToolbarSnapshot {
             Self.videoFields(s, moduleName: "91PORNY")
         case let .tangxin(s):
             Self.videoFields(s, moduleName: "糖心Vlog")
+        case let .taiav(s):
+            Self.videoFields(s, moduleName: "TaiAV")
         }
     }
 
@@ -331,7 +334,7 @@ enum WorkspaceToolbarSnapshot {
             snapshot.layout == .list
         case let .mrds(snapshot):
             snapshot.layout == .list
-        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot), let .taiav(snapshot):
             snapshot.layout == .list
         }
     }
@@ -405,6 +408,9 @@ final class WorkspaceToolbarContext {
     private let tangxinStore: OnlineVideoGalleryStore
     private let tangxinPreferences: OnlineVideoContentPreferences
     private let tangxinDetailInteraction: OnlineVideoDetailInteractionController
+    private let taiavStore: OnlineVideoGalleryStore
+    private let taiavPreferences: OnlineVideoContentPreferences
+    private let taiavDetailInteraction: OnlineVideoDetailInteractionController
     private let localLibraryStore: LocalLibraryStore
     private let localPreferences: LocalLibraryContentPreferences
     private let localDetailInteraction: LocalDetailInteractionController
@@ -442,6 +448,9 @@ final class WorkspaceToolbarContext {
         tangxinStore: OnlineVideoGalleryStore,
         tangxinPreferences: OnlineVideoContentPreferences,
         tangxinDetailInteraction: OnlineVideoDetailInteractionController,
+        taiavStore: OnlineVideoGalleryStore,
+        taiavPreferences: OnlineVideoContentPreferences,
+        taiavDetailInteraction: OnlineVideoDetailInteractionController,
         localLibraryStore: LocalLibraryStore,
         localPreferences: LocalLibraryContentPreferences,
         localDetailInteraction: LocalDetailInteractionController,
@@ -478,6 +487,9 @@ final class WorkspaceToolbarContext {
         self.tangxinStore = tangxinStore
         self.tangxinPreferences = tangxinPreferences
         self.tangxinDetailInteraction = tangxinDetailInteraction
+        self.taiavStore = taiavStore
+        self.taiavPreferences = taiavPreferences
+        self.taiavDetailInteraction = taiavDetailInteraction
         self.localLibraryStore = localLibraryStore
         self.localPreferences = localPreferences
         self.localDetailInteraction = localDetailInteraction
@@ -721,6 +733,8 @@ final class WorkspaceToolbarContext {
             return .porny(videoFeedSnapshot(store: pornyStore, preferences: pornyPreferences))
         case .tangxinGallery:
             return .tangxin(videoFeedSnapshot(store: tangxinStore, preferences: tangxinPreferences))
+        case .taiavGallery:
+            return .taiav(videoFeedSnapshot(store: taiavStore, preferences: taiavPreferences))
         }
     }
 
@@ -779,6 +793,7 @@ final class WorkspaceToolbarContext {
         case .quanjiGallery: quanjiStore
         case .pornyGallery: pornyStore
         case .tangxinGallery: tangxinStore
+        case .taiavGallery: taiavStore
         default: nil
         }
     }
@@ -788,6 +803,7 @@ final class WorkspaceToolbarContext {
         case .quanjiGallery: quanjiPreferences
         case .pornyGallery: pornyPreferences
         case .tangxinGallery: tangxinPreferences
+        case .taiavGallery: taiavPreferences
         default: nil
         }
     }
@@ -797,6 +813,7 @@ final class WorkspaceToolbarContext {
         case .quanjiGallery: quanjiDetailInteraction
         case .pornyGallery: pornyDetailInteraction
         case .tangxinGallery: tangxinDetailInteraction
+        case .taiavGallery: taiavDetailInteraction
         default: nil
         }
     }
@@ -847,7 +864,7 @@ final class WorkspaceToolbarContext {
             {
                 mrdsStore.clearSearch()
             }
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             guard let store = videoStore(for: moduleID) else { return }
             store.searchText = text
             if store.showsDirectoryListing {
@@ -883,7 +900,7 @@ final class WorkspaceToolbarContext {
             knitPreferences.layout = isList ? .list : .grid
         case .mrdsGallery:
             mrdsPreferences.layout = isList ? .list : .grid
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             videoPreferences(for: moduleID)?.layout = isList ? .list : .grid
         }
     }
@@ -908,7 +925,7 @@ final class WorkspaceToolbarContext {
         case .mrdsGallery:
             guard mrdsPreferences.layout == .grid, !detailPaneController.isPresented else { return }
             mrdsPreferences.adjustGridColumns(delta: delta)
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             guard let preferences = videoPreferences(for: moduleID),
                   preferences.layout == .grid,
                   !detailPaneController.isPresented else { return }
@@ -932,7 +949,7 @@ final class WorkspaceToolbarContext {
             knitStore.submitSearch()
         case .mrdsGallery:
             mrdsStore.submitSearch()
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             videoStore(for: moduleID)?.submitSearch()
         }
     }
@@ -996,7 +1013,7 @@ final class WorkspaceToolbarContext {
             knitStore.refreshFromNetwork()
         case .mrdsGallery:
             mrdsStore.refreshFromNetwork()
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             videoStore(for: moduleID)?.refreshFromNetwork()
         }
     }
@@ -1029,7 +1046,7 @@ final class WorkspaceToolbarContext {
             return knitStore.selectedItem.map { [$0.detailURL] } ?? []
         case .mrdsGallery:
             return mrdsStore.selectedItem.map { [$0.detailURL] } ?? []
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             return videoStore(for: moduleID)?.selectedItem.map { [$0.detailURL] } ?? []
         }
     }
@@ -1052,7 +1069,7 @@ final class WorkspaceToolbarContext {
             return knitStore.selectedItem.map { .web($0.detailURL) }
         case .mrdsGallery:
             return mrdsStore.selectedItem.map { .web($0.detailURL) }
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             return videoStore(for: moduleID)?.selectedItem.map { .web($0.detailURL) }
         }
     }
@@ -1086,7 +1103,7 @@ final class WorkspaceToolbarContext {
                 case .mrdsGallery:
                     guard let item = mrdsStore.selectedItem else { return }
                     try await mrdsStore.toggleFavorite(for: item)
-                case .quanjiGallery, .pornyGallery, .tangxinGallery:
+                case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
                     guard let store = videoStore(for: moduleID),
                           let item = store.selectedItem else { return }
                     try await store.toggleFavorite(for: item)
@@ -1131,7 +1148,7 @@ final class WorkspaceToolbarContext {
             knitStore.stepImage(delta)
         case .mrdsGallery:
             mrdsStore.stepImage(delta)
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             videoStore(for: moduleID)?.stepSelection(delta)
         }
     }
@@ -1175,7 +1192,7 @@ final class WorkspaceToolbarContext {
                   let item = mrdsStore.selectedItem,
                   let slot = mrdsStore.selectedSlot else { return }
             mrdsDetailInteraction.save(item: item, slot: slot)
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             return
         }
     }
@@ -1204,7 +1221,7 @@ final class WorkspaceToolbarContext {
             case .missKon:
                 guard let item = MissKonFavoritesBridge.missKonItems(from: [record]).first else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .missKon(item))
-            case .wallhaven, .quanji, .porny, .tangxin, nil:
+            case .wallhaven, .quanji, .porny, .tangxin, .taiav, nil:
                 return
             case .knit:
                 guard let item = KnitFavoritesBridge.item(from: record) else { return }
@@ -1213,7 +1230,7 @@ final class WorkspaceToolbarContext {
                 guard let item = MrdsFavoritesBridge.item(from: record) else { return }
                 result = downloadStore.enqueueAlbumChoosingFolder(source: .mrds(item))
             }
-        case .localLibrary, .wallhaven, .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .localLibrary, .wallhaven, .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             return
         }
         switch result {
@@ -1268,7 +1285,7 @@ final class WorkspaceToolbarContext {
             guard let item = mrdsStore.selectedItem,
                   let videoURL = mrdsStore.videoURL else { return }
             mrdsDetailInteraction.saveVideo(item: item, sourceURL: videoURL)
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             guard let store = videoStore(for: moduleID),
                   let interaction = videoInteraction(for: moduleID),
                   let item = store.selectedItem else { return }
@@ -1309,7 +1326,7 @@ final class WorkspaceToolbarContext {
             knitDetailInteraction.resetZoom()
         case .mrdsGallery:
             mrdsDetailInteraction.resetZoom()
-        case .quanjiGallery, .pornyGallery, .tangxinGallery:
+        case .quanjiGallery, .pornyGallery, .tangxinGallery, .taiavGallery:
             return
         }
     }

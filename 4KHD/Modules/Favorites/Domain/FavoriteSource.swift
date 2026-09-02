@@ -12,6 +12,7 @@ enum FavoriteSource: String, CaseIterable {
     case quanji
     case porny
     case tangxin
+    case taiav
 
     var title: String {
         switch self {
@@ -23,6 +24,7 @@ enum FavoriteSource: String, CaseIterable {
         case .quanji: "木瓜视频"
         case .porny: "91PORNY"
         case .tangxin: "糖心Vlog"
+        case .taiav: "TaiAV"
         }
     }
 
@@ -36,6 +38,7 @@ enum FavoriteSource: String, CaseIterable {
         case .quanji: "play.rectangle"
         case .porny: "play.tv"
         case .tangxin: "play.rectangle.on.rectangle"
+        case .taiav: "play.square.stack"
         }
     }
 
@@ -68,6 +71,7 @@ enum FavoriteSource: String, CaseIterable {
         case .quanji: .quanji
         case .porny: .porny
         case .tangxin: .tangxin
+        case .taiav: .taiav
         }
     }
 
@@ -81,6 +85,7 @@ enum FavoriteSource: String, CaseIterable {
         if OnlineSourcePolicy.allows(url, source: .quanji, resource: .html) { return .quanji }
         if OnlineSourcePolicy.allows(url, source: .porny, resource: .html) { return .porny }
         if OnlineSourcePolicy.allows(url, source: .tangxin, resource: .html) { return .tangxin }
+        if OnlineSourcePolicy.allows(url, source: .taiav, resource: .html) { return .taiav }
         return nil
     }
 }
@@ -96,6 +101,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
     case quanji
     case porny
     case tangxin
+    case taiav
 
     var title: String {
         switch self {
@@ -108,6 +114,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .quanji: "木瓜视频"
         case .porny: "91PORNY"
         case .tangxin: "糖心Vlog"
+        case .taiav: "TaiAV"
         }
     }
 
@@ -122,6 +129,7 @@ enum FavoriteSourceFilter: String, CaseIterable {
         case .quanji: .quanji
         case .porny: .porny
         case .tangxin: .tangxin
+        case .taiav: .taiav
         }
     }
 }

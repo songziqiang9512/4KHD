@@ -23,6 +23,7 @@ final class RequestFactoryTests: XCTestCase {
         var quanjiRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://pics.mugua01.cfd/cover.jpg")))
         var pornyRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://int.ucloud161.xyz/thumb/1.jpg")))
         var tangxinRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://t.5gcdn.xyz/videos/36005/cover.jpg")))
+        var taiavRequest = try URLRequest(url: XCTUnwrap(URL(string: "https://img.storyofthepast.xyz/videos/202407/03/66846ff2f40c787c969d3c85/poster2.jpg")))
 
         GalleryRequestFactory.configureImageRequest(&galleryRequest)
         MissKonRequestFactory.configureImageRequest(&missKonRequest)
@@ -32,6 +33,7 @@ final class RequestFactoryTests: XCTestCase {
         QuanjiRequestFactory.configureImageRequest(&quanjiRequest)
         PornyRequestFactory.configureImageRequest(&pornyRequest)
         TangxinRequestFactory.configureImageRequest(&tangxinRequest)
+        TaiavRequestFactory.configureImageRequest(&taiavRequest)
 
         XCTAssertEqual(galleryRequest.value(forHTTPHeaderField: "Referer"), "https://www.4khd.com/")
         XCTAssertEqual(missKonRequest.value(forHTTPHeaderField: "Referer"), "https://misskon.com/")
@@ -41,6 +43,7 @@ final class RequestFactoryTests: XCTestCase {
         XCTAssertEqual(quanjiRequest.value(forHTTPHeaderField: "Referer"), "https://91quanji.com/")
         XCTAssertEqual(pornyRequest.value(forHTTPHeaderField: "Referer"), "https://91porny.com/")
         XCTAssertEqual(tangxinRequest.value(forHTTPHeaderField: "Referer"), "https://tangxinvlog.app/")
+        XCTAssertEqual(taiavRequest.value(forHTTPHeaderField: "Referer"), "https://taiav.com/cn")
     }
 
     func testOnlineSourcePolicyRejectsHTTPAndLookalikeHosts() throws {
@@ -83,6 +86,10 @@ final class RequestFactoryTests: XCTestCase {
         request = URLRequest(url: evil)
         TangxinRequestFactory.configureImageRequest(&request)
         XCTAssertNil(request.url)
+
+        request = URLRequest(url: evil)
+        TaiavRequestFactory.configureImageRequest(&request)
+        XCTAssertNil(request.url)
     }
 
     func testGalleryMediaPolicyAllowsCurrentExactRedirectCDNOnly() throws {
@@ -114,6 +121,7 @@ final class RequestFactoryTests: XCTestCase {
         let quanjiOrigin = try XCTUnwrap(URL(string: "https://pics.mugua01.cfd/cover.jpg"))
         let pornyOrigin = try XCTUnwrap(URL(string: "https://cdn2.jiuse3.cloud/hls/1/index.m3u8"))
         let tangxinOrigin = try XCTUnwrap(URL(string: "https://t.5gcdn.xyz/videos/36005/index.m3u8"))
+        let taiavOrigin = try XCTUnwrap(URL(string: "https://img.storyofthepast.xyz/videos/202407/03/66846ff2f40c787c969d3c85/index.m3u8"))
 
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: galleryOrigin), .gallery)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: galleryRedirect), .gallery)
@@ -124,6 +132,7 @@ final class RequestFactoryTests: XCTestCase {
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: quanjiOrigin), .quanji)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: pornyOrigin), .porny)
         XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: tangxinOrigin), .tangxin)
+        XCTAssertEqual(OnlineSourcePolicy.source(forMediaURL: taiavOrigin), .taiav)
         XCTAssertNil(OnlineSourcePolicy.source(forMediaURL: lookalike))
     }
 

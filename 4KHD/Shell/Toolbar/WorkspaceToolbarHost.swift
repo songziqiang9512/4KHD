@@ -618,7 +618,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private var isVideoDirectoryListing: Bool {
         switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot), let .taiav(snapshot):
             snapshot.showsDirectoryListing
         default:
             false
@@ -627,7 +627,7 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
 
     private func videoSearchPlaceholder() -> String? {
         switch appContext.toolbarContext.snapshot(for: currentModuleID) {
-        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot), let .taiav(snapshot):
             snapshot.searchPlaceholder
         default:
             nil
@@ -675,6 +675,9 @@ final class WorkspaceToolbarHost: NSToolbar, NSToolbarDelegate, NSToolbarItemVal
         case let .tangxin(s):
             _ = s.layout
             _ = s.showsDirectoryListing
+            _ = s.searchPlaceholder
+        case let .taiav(s):
+            _ = s.layout
             _ = s.searchPlaceholder
         }
     }

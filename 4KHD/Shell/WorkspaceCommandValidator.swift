@@ -128,7 +128,7 @@ final class WorkspaceCommandValidator {
 
     private func isVideoDirectoryListing(_ moduleID: WorkspaceModuleID) -> Bool {
         switch appContext.toolbarContext.snapshot(for: moduleID) {
-        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot):
+        case let .quanji(snapshot), let .porny(snapshot), let .tangxin(snapshot), let .taiav(snapshot):
             snapshot.showsDirectoryListing
         default:
             false

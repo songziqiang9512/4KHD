@@ -69,9 +69,6 @@ final class LocalImageGridContainerView: NSView {
         collectionView.doubleClickHandler = { [weak self] indexPath in
             self?.openDetail(at: indexPath)
         }
-        collectionView.cardPressStateHandler = { [weak self] indexPath, isPressed in
-            self?.updateCardPressState(at: indexPath, isPressed: isPressed)
-        }
         collectionView.register(LocalImageGridItemView.self, forItemWithIdentifier: LocalImageGridItemView.reuseID)
         return collectionView
     }()
@@ -482,10 +479,6 @@ final class LocalImageGridContainerView: NSView {
     var selectedEntry: Entry? {
         guard let selectedImageID else { return nil }
         return entries.first { $0.image.id == selectedImageID }
-    }
-
-    func updateCardPressState(at indexPath: IndexPath, isPressed: Bool) {
-        (collectionView.item(at: indexPath) as? LocalImageGridItemView)?.applyPressedState(isPressed)
     }
 
     private func schedulePrefetch() {

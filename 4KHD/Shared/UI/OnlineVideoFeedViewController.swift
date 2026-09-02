@@ -1348,7 +1348,7 @@ private final class OnlineVideoGridItem: NSCollectionViewItem {
         failedCoverLoadUptime = nil
         coverLoadAttemptCount = 0
         requestedMaxPixelSize = 0
-        card.resetForReuse(preservingImage: true)
+        card.resetForReuse()
     }
 
     func configure(
@@ -1410,6 +1410,7 @@ private final class OnlineVideoGridItem: NSCollectionViewItem {
             requestedMaxPixelSize = max(requestedMaxPixelSize, thumbnailMaxPixelSize)
             return
         }
+        let previousCoverURL = currentCoverURL
         imageTask?.cancel()
         imageTask = nil
         coverRetryTask?.cancel()
@@ -1440,7 +1441,8 @@ private final class OnlineVideoGridItem: NSCollectionViewItem {
             }
             return
         }
-        if !card.hasImage {
+        if previousCoverURL != url || !card.hasImage {
+            card.setImage(nil, animated: false)
             card.setPlaceholder("加载中…", isVisible: true)
         }
         coverLoadAttemptCount += 1
@@ -1567,6 +1569,7 @@ private final class OnlineVideoThumbnailView: NSImageView {
             loadAttemptCount = 0
             return
         }
+        image = nil
         loadAttemptCount += 1
         task = RemoteImagePipeline.shared.loadImage(with: request) { [weak self] image in
             Task { @MainActor [weak self] in

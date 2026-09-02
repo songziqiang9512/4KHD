@@ -7,11 +7,11 @@ final class LocalImageGridItemView: NSCollectionViewItem {
     private var representedID: String?
     private var imageTaskID: UUID?
 
-    override init(nibName: NSNib.Name?, bundle: Bundle?) {
+    override init(nibName _: NSNib.Name?, bundle _: Bundle?) {
         super.init(nibName: nil, bundle: nil)
     }
 
-    required init?(coder: NSCoder) {
+    required init?(coder _: NSCoder) {
         nil
     }
 
@@ -55,7 +55,7 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         thumbnailLoader { [weak self] result in
             guard let self, self.imageTaskID == taskID, self.representedID == image.id else { return }
             switch result {
-            case .image(let thumbnail):
+            case let .image(thumbnail):
                 self.cardView.setImage(thumbnail)
                 self.cardView.setMissingVisible(false)
             case .missingFile:
@@ -74,10 +74,6 @@ final class LocalImageGridItemView: NSCollectionViewItem {
         cardView.applySelectionState(isSelected)
     }
 
-    func applyPressedState(_ isPressed: Bool) {
-        cardView.applyPressedState(isPressed)
-    }
-
     func syncHoverState(windowLocation: NSPoint?) {
         cardView.syncHoverState(windowLocation: windowLocation)
     }
@@ -93,14 +89,14 @@ final class LocalImageGridItemView: NSCollectionViewItem {
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             cardView.topAnchor.constraint(equalTo: view.topAnchor),
-            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
     }
 
     private func metadataText(for image: LocalImageItem, metadata: LocalImageMetadata?) -> String {
         let parts = [
             formattedResolution(metadata),
-            formattedSecondaryMetadata(metadata)
+            formattedSecondaryMetadata(metadata),
         ].compactMap { value -> String? in
             guard let value, !value.isEmpty else { return nil }
             return value

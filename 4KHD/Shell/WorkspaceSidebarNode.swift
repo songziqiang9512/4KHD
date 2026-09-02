@@ -10,6 +10,7 @@ enum WorkspaceSidebarNode: Hashable {
     case quanji(QuanjiSection)
     case porny(PornySection)
     case tangxin(TangxinSection)
+    case taiav(TaiavSection)
     case localAllImages(count: Int)
     case localFolder(LocalFolderNode)
     case favoritesModule
@@ -33,6 +34,8 @@ enum WorkspaceSidebarNode: Hashable {
         case let .porny(section):
             section.title
         case let .tangxin(section):
+            section.title
+        case let .taiav(section):
             section.title
         case .localAllImages:
             "我的图片"
@@ -63,6 +66,8 @@ enum WorkspaceSidebarNode: Hashable {
             "porny:\(section.rawValue)"
         case let .tangxin(section):
             "tangxin:\(section.rawValue)"
+        case let .taiav(section):
+            "taiav:\(section.rawValue)"
         case .localAllImages:
             "local:allImages"
         case let .localFolder(folder):
@@ -80,6 +85,16 @@ enum WorkspaceSidebarNode: Hashable {
             folder.imageCount
         default:
             nil
+        }
+    }
+
+    var groupMediaSymbolName: String? {
+        guard case let .group(title) = self else { return nil }
+        switch title {
+        case "木瓜视频", "91PORNY", "糖心Vlog", "TaiAV":
+            return "play.rectangle"
+        default:
+            return "photo.stack"
         }
     }
 }

@@ -247,6 +247,13 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 return
             }
             render(snapshot(for: item, moduleTitle: "糖心Vlog", store: appContext.tangxinStore))
+        case .taiavGallery:
+            cancelLocalMetadata()
+            guard let item = appContext.taiavStore.selectedItem else {
+                renderEmpty(module: "TaiAV", symbolName: "play.square.stack")
+                return
+            }
+            render(snapshot(for: item, moduleTitle: "TaiAV", store: appContext.taiavStore))
         case .localLibrary:
             guard let image = appContext.localLibraryStore.selectedImage else {
                 cancelLocalMetadata()
@@ -728,6 +735,7 @@ private final class WorkspaceInspectorViewController: NSViewController {
         let symbolName = switch store.policySource {
         case .quanji: "play.rectangle"
         case .tangxin: "play.rectangle.on.rectangle"
+        case .taiav: "play.square.stack"
         default: "play.tv"
         }
         let tagText = item.tagFilters.map(\.title).filter { !$0.isEmpty }.joined(separator: "、").nilIfEmpty
@@ -881,6 +889,12 @@ private final class WorkspaceInspectorViewController: NSViewController {
                 _ = appContext.tangxinStore.selectedItem
                 _ = appContext.tangxinStore.videoURL
                 _ = appContext.tangxinStore.isResolvingDetail
+                _ = appContext.favoritesStore.favorites
+            case .taiavGallery:
+                _ = appContext.taiavStore.selectedItemID
+                _ = appContext.taiavStore.selectedItem
+                _ = appContext.taiavStore.videoURL
+                _ = appContext.taiavStore.isResolvingDetail
                 _ = appContext.favoritesStore.favorites
             case .localLibrary:
                 _ = appContext.localLibraryStore.roots
